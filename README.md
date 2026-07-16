@@ -14,7 +14,7 @@ SeatFlow is a full-stack seat reservation and booking platform scaffolded with t
 .
 |-- SeatFlow-be/       Spring Boot 3.5 backend, Java 21, MyBatis, Flyway
 |-- SeatFlow-fe/       React 19, TypeScript, Vite, Ant Design
-|-- docker-compose.yml PostgreSQL, Redis, Kafka, Kafka UI
+|-- docker-compose.yml PostgreSQL
 |-- docs/              Project notes and generated documentation
 `-- README.md
 ```
@@ -30,13 +30,7 @@ SeatFlow is a full-stack seat reservation and booking platform scaffolded with t
 ### Start Infrastructure
 
 ```sh
-docker compose up -d postgres redis
-```
-
-Start Kafka only when testing event pipelines:
-
-```sh
-docker compose up -d kafka kafka-ui
+docker compose up -d postgres
 ```
 
 Local service ports:
@@ -46,9 +40,6 @@ Local service ports:
 | Backend    | `http://localhost:8080` |
 | Frontend   | `http://localhost:5173` |
 | PostgreSQL | `localhost:5432`        |
-| Redis      | `localhost:6379`        |
-| Kafka      | `localhost:9092`        |
-| Kafka UI   | `http://localhost:8081` |
 
 ### Configure Environment
 
@@ -89,9 +80,6 @@ Backend loads optional root `.env` via `spring.config.import`.
 Key variables (see `.env.example`):
 
 - `DATASOURCE_*` — PostgreSQL connection
-- `SEATFLOW_REDIS_*` — Redis connection
-- `SEATFLOW_JWT_*` — JWT signing settings
-- `SEATFLOW_KAFKA_ENABLED` — optional Kafka (off by default)
 
 ## Backend Conventions
 

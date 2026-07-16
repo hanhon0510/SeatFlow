@@ -1,8 +1,6 @@
 package com.seatflow.health;
 
-import java.time.Instant;
-
-import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,12 +9,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/health")
 public class HealthController {
 
-	@GetMapping
-	public ResponseEntity<HealthResponse> health() {
-		return ResponseEntity.ok(new HealthResponse("SeatFlow", "UP", Instant.now()));
+	private final String applicationName;
+
+	public HealthController(@Value("${spring.application.name}") String applicationName) {
+		this.applicationName = applicationName;
 	}
 
-	public record HealthResponse(String application, String status, Instant timestamp) {
+	@GetMapping
+	public HealthResponse health() {
+		return new HealthResponse("UP", applicationName);
+	}
+
+	public record HealthResponse(String status, String application) {
 	}
 
 }

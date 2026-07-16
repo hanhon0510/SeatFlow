@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: ${DATASOURCE_URL:jdbc:postgresql://localhost:5432/seatflow}
+    username: ${DATASOURCE_USERNAME:seatflow}
+    password: ${DATASOURCE_PASSWORD:seatflow}
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+
