@@ -1,12 +1,11 @@
 spring:
   datasource:
-    url: ${TEST_DATASOURCE_URL:jdbc:postgresql://localhost:5432/seatflow_test}
-    username: ${TEST_DATASOURCE_USERNAME:seatflow}
-    password: ${TEST_DATASOURCE_PASSWORD:seatflow}
+    url: jdbc:postgresql://localhost:${POSTGRES_PORT:5432}/${POSTGRES_DB:seatflow_test}
+    username: ${POSTGRES_USER:seatflow}
+    password: ${POSTGRES_PASSWORD:}
     driver-class-name: org.postgresql.Driver
     hikari:
       initialization-fail-timeout: -1
 
   flyway:
-    enabled: false
-
+    enabled: true

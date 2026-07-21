@@ -20,6 +20,7 @@ public class SecurityConfig {
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(
 								"/api/v1/health",
+								"/api/v1/health/database",
 								"/actuator/health",
 								"/actuator/info").permitAll()
 						.anyRequest().authenticated())

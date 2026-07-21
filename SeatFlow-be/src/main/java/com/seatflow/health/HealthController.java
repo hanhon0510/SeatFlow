@@ -10,14 +10,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class HealthController {
 
 	private final String applicationName;
+	private final DatabaseHealthService databaseHealthService;
 
-	public HealthController(@Value("${spring.application.name}") String applicationName) {
+	public HealthController(
+			@Value("${spring.application.name}") String applicationName,
+			DatabaseHealthService databaseHealthService) {
 		this.applicationName = applicationName;
+		this.databaseHealthService = databaseHealthService;
 	}
 
 	@GetMapping
 	public HealthResponse health() {
 		return new HealthResponse("UP", applicationName);
+	}
+
+	@GetMapping("/database")
+	public DatabaseHealthService.DatabaseHealthResponse databaseHealth() {
+		return databaseHealthService.checkDatabase();
 	}
 
 	public record HealthResponse(String status, String application) {

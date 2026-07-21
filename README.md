@@ -47,6 +47,8 @@ Local service ports:
 cp .env.example .env
 ```
 
+Set `POSTGRES_PASSWORD` in `.env` before starting PostgreSQL.
+
 ### Run Backend
 
 Windows:
@@ -79,7 +81,15 @@ Backend loads optional root `.env` via `spring.config.import`.
 
 Key variables (see `.env.example`):
 
-- `DATASOURCE_*` — PostgreSQL connection
+- `POSTGRES_DB` — PostgreSQL database name
+- `POSTGRES_USER` — PostgreSQL user
+- `POSTGRES_PASSWORD` — PostgreSQL password, stored only in local `.env`
+- `POSTGRES_PORT` — local PostgreSQL port
+
+Health endpoints:
+
+- `GET /api/v1/health` — application health
+- `GET /api/v1/health/database` — PostgreSQL health through MyBatis
 
 ## Backend Conventions
 

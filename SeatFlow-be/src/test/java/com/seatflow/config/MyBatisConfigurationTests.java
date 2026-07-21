@@ -7,11 +7,13 @@ import org.junit.jupiter.api.Test;
 import org.mybatis.spring.boot.autoconfigure.MybatisProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import com.seatflow.support.PostgresTestContainerSupport;
 
 @SpringBootTest
-@ActiveProfiles("test")
-class MyBatisConfigurationTests {
+@Testcontainers(disabledWithoutDocker = true)
+class MyBatisConfigurationTests extends PostgresTestContainerSupport {
 
 	@Autowired
 	private SqlSessionFactory sqlSessionFactory;

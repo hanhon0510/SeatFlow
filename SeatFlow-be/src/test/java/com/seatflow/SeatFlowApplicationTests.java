@@ -2,11 +2,13 @@ package com.seatflow;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import com.seatflow.support.PostgresTestContainerSupport;
 
 @SpringBootTest
-@ActiveProfiles("test")
-class SeatFlowApplicationTests {
+@Testcontainers(disabledWithoutDocker = true)
+class SeatFlowApplicationTests extends PostgresTestContainerSupport {
 
 	@Test
 	void contextLoads() {
