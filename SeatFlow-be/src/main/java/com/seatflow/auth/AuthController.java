@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -15,10 +17,18 @@ public class AuthController {
 
 	private final RegistrationService registrationService;
 	private final LoginService loginService;
+	private final RefreshTokenService refreshTokenService;
+	private final RefreshTokenCookieService refreshTokenCookieService;
 
-	public AuthController(RegistrationService registrationService, LoginService loginService) {
+	public AuthController(
+			RegistrationService registrationService,
+			LoginService loginService,
+			RefreshTokenService refreshTokenService,
+			RefreshTokenCookieService refreshTokenCookieService) {
 		this.registrationService = registrationService;
 		this.loginService = loginService;
+		this.refreshTokenService = refreshTokenService;
+		this.refreshTokenCookieService = refreshTokenCookieService;
 	}
 
 	@PostMapping("/register")
@@ -28,8 +38,24 @@ public class AuthController {
 	}
 
 	@PostMapping("/login")
-	public LoginResponse login(@Valid @RequestBody LoginRequest request) {
-		return loginService.login(request);
+	public LoginResponse login(@Valid @RequestBody LoginRequest request, HttpServletResponse response) {
+		AuthSession session = loginService.login(request);
+		refreshTokenCookieService.writeToken(response, session.refreshToken());
+		return session.accessToken();
+	}
+
+	@PostMapping("/refresh")
+	public LoginResponse refresh(HttpServletRequest request, HttpServletResponse response) {
+		AuthSession session = refreshTokenService.refresh(refreshTokenCookieService.requireToken(request));
+		refreshTokenCookieService.writeToken(response, session.refreshToken());
+		return session.accessToken();
+	}
+
+	@PostMapping("/logout")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void logout(HttpServletRequest request, HttpServletResponse response) {
+		refreshTokenService.logout(refreshTokenCookieService.findToken(request).orElse(null));
+		refreshTokenCookieService.clearToken(response);
 	}
 
 }

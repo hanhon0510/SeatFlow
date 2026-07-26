@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.seatflow.auth.AuthenticationFailedException;
+import com.seatflow.auth.InvalidRefreshTokenException;
 import com.seatflow.auth.UserAlreadyExistsException;
 import com.seatflow.health.DatabaseHealthUnavailableException;
 
@@ -31,6 +32,11 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(AuthenticationFailedException.class)
 	public ResponseEntity<ApiResponse<Void>> handleAuthenticationFailed(AuthenticationFailedException ex) {
 		return error("Invalid email or password", HttpStatus.UNAUTHORIZED);
+	}
+
+	@ExceptionHandler(InvalidRefreshTokenException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
+		return error("Invalid refresh token", HttpStatus.UNAUTHORIZED);
 	}
 
 	@ExceptionHandler(Exception.class)

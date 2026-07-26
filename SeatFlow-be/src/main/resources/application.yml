@@ -46,3 +46,8 @@ seatflow:
     secret: ${SEATFLOW_JWT_SECRET:}
     issuer: ${SEATFLOW_JWT_ISSUER:seatflow-backend}
     expires-in-seconds: ${SEATFLOW_JWT_EXPIRES_IN_SECONDS:900}
+  refresh-token:
+    cookie-name: ${SEATFLOW_REFRESH_TOKEN_COOKIE_NAME:seatflow_refresh_token}
+    expires-in-seconds: ${SEATFLOW_REFRESH_TOKEN_EXPIRES_IN_SECONDS:1209600}
+    cookie-secure: ${SEATFLOW_REFRESH_TOKEN_COOKIE_SECURE:false}
+    same-site: ${SEATFLOW_REFRESH_TOKEN_SAME_SITE:Strict}

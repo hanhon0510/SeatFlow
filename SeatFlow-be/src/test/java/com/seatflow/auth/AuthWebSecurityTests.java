@@ -1,11 +1,16 @@
 package com.seatflow.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,6 +21,7 @@ import java.util.UUID;
 
 import javax.crypto.SecretKey;
 
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -41,12 +47,18 @@ import com.seatflow.user.UserRecord;
 import com.seatflow.user.UserRole;
 import com.seatflow.user.UserStatus;
 
+import jakarta.servlet.http.Cookie;
+
 @WebMvcTest({ AuthController.class, UserController.class })
 @Import({
 		SecurityConfig.class,
 		JwtConfig.class,
 		JwtTokenService.class,
 		LoginService.class,
+		RefreshTokenConfig.class,
+		RefreshTokenCookieService.class,
+		RefreshTokenService.class,
+		SecureRefreshTokenGenerator.class,
 		CurrentUserService.class
 })
 @TestPropertySource(properties = {
@@ -57,6 +69,7 @@ class AuthWebSecurityTests {
 
 	private static final Instant NOW = Instant.parse("2099-01-01T00:00:00Z");
 	private static final String PASSWORD = "StrongPassword123!";
+	private static final String REFRESH_COOKIE_NAME = "seatflow_refresh_token";
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -67,14 +80,20 @@ class AuthWebSecurityTests {
 	@Autowired
 	private PasswordEncoder passwordEncoder;
 
+	@Autowired
+	private RefreshTokenGenerator refreshTokenGenerator;
+
 	@MockitoBean
 	private RegistrationService registrationService;
 
 	@MockitoBean
 	private UserMapper userMapper;
 
+	@MockitoBean
+	private RefreshTokenMapper refreshTokenMapper;
+
 	@Test
-	void loginTokenAccessesCurrentUser() throws Exception {
+	void loginSetsRefreshCookieAndAccessTokenAccessesCurrentUser() throws Exception {
 		UserRecord user = user();
 		when(userMapper.findByNormalizedEmail(user.email())).thenReturn(user);
 		when(userMapper.findById(user.id())).thenReturn(user);
@@ -87,6 +106,8 @@ class AuthWebSecurityTests {
 				.andExpect(jsonPath("$.tokenType").value("Bearer"))
 				.andExpect(jsonPath("$.password").doesNotExist())
 				.andExpect(jsonPath("$.passwordHash").doesNotExist())
+				.andExpect(header().string(HttpHeaders.SET_COOKIE, containsString(REFRESH_COOKIE_NAME + "=")))
+				.andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("HttpOnly")))
 				.andExpect(content().string(not(containsString(PASSWORD))))
 				.andReturn();
 
@@ -101,6 +122,87 @@ class AuthWebSecurityTests {
 				.andExpect(jsonPath("$.email").value(user.email()))
 				.andExpect(jsonPath("$.role").value("USER"))
 				.andExpect(jsonPath("$.status").value("ACTIVE"));
+	}
+
+	@Test
+	void refreshRotatesCookieAndReturnsNewAccessToken() throws Exception {
+		UserRecord user = user();
+		String oldToken = "old-refresh-token";
+		String oldTokenHash = refreshTokenGenerator.hashToken(oldToken);
+		RefreshTokenRecord existing = refreshTokenRecord(user.id(), oldTokenHash, null, NOW.plusSeconds(1_209_600));
+		when(refreshTokenMapper.findActiveByHash(eq(oldTokenHash), any(Instant.class))).thenReturn(existing);
+		when(refreshTokenMapper.revoke(eq(existing.id()), any(Instant.class))).thenReturn(1);
+		when(userMapper.findById(user.id())).thenReturn(user);
+
+		MvcResult result = mockMvc.perform(post("/api/v1/auth/refresh")
+						.cookie(new Cookie(REFRESH_COOKIE_NAME, oldToken)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.accessToken").isNotEmpty())
+				.andExpect(jsonPath("$.tokenType").value("Bearer"))
+				.andExpect(header().string(HttpHeaders.SET_COOKIE, containsString(REFRESH_COOKIE_NAME + "=")))
+				.andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("HttpOnly")))
+				.andExpect(header().string(HttpHeaders.SET_COOKIE, not(containsString(oldToken))))
+				.andReturn();
+
+		String token = objectMapper.readTree(result.getResponse().getContentAsString())
+				.get("accessToken")
+				.asText();
+		assertThat(token).isNotBlank();
+
+		ArgumentCaptor<RefreshTokenRecord> insertedToken = ArgumentCaptor.forClass(RefreshTokenRecord.class);
+		verify(refreshTokenMapper).revoke(eq(existing.id()), any(Instant.class));
+		verify(refreshTokenMapper).insert(insertedToken.capture());
+		assertThat(insertedToken.getValue().tokenHash()).isNotEqualTo(oldTokenHash);
+	}
+
+	@Test
+	void revokedRefreshTokenIsRejectedAsReuseAttempt() throws Exception {
+		UserRecord user = user();
+		String rawToken = "revoked-refresh-token";
+		String tokenHash = refreshTokenGenerator.hashToken(rawToken);
+		when(refreshTokenMapper.findActiveByHash(eq(tokenHash), any(Instant.class))).thenReturn(null);
+		when(refreshTokenMapper.findByHash(tokenHash))
+				.thenReturn(refreshTokenRecord(user.id(), tokenHash, NOW.minusSeconds(1), NOW.plusSeconds(1_209_600)));
+
+		mockMvc.perform(post("/api/v1/auth/refresh")
+						.cookie(new Cookie(REFRESH_COOKIE_NAME, rawToken)))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message").value("Invalid refresh token"));
+
+		verify(refreshTokenMapper).revokeAllUserTokens(eq(user.id()), any(Instant.class));
+	}
+
+	@Test
+	void expiredRefreshTokenIsRejected() throws Exception {
+		UserRecord user = user();
+		String rawToken = "expired-refresh-token";
+		String tokenHash = refreshTokenGenerator.hashToken(rawToken);
+		when(refreshTokenMapper.findActiveByHash(eq(tokenHash), any(Instant.class))).thenReturn(null);
+		when(refreshTokenMapper.findByHash(tokenHash))
+				.thenReturn(refreshTokenRecord(user.id(), tokenHash, null, NOW.minusSeconds(1)));
+
+		mockMvc.perform(post("/api/v1/auth/refresh")
+						.cookie(new Cookie(REFRESH_COOKIE_NAME, rawToken)))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message").value("Invalid refresh token"));
+	}
+
+	@Test
+	void logoutRevokesRefreshTokenAndClearsCookie() throws Exception {
+		UserRecord user = user();
+		String rawToken = "logout-refresh-token";
+		String tokenHash = refreshTokenGenerator.hashToken(rawToken);
+		RefreshTokenRecord existing = refreshTokenRecord(user.id(), tokenHash, null, NOW.plusSeconds(1_209_600));
+		when(refreshTokenMapper.findByHash(tokenHash)).thenReturn(existing);
+
+		mockMvc.perform(post("/api/v1/auth/logout")
+						.cookie(new Cookie(REFRESH_COOKIE_NAME, rawToken)))
+				.andExpect(status().isNoContent())
+				.andExpect(header().string(HttpHeaders.SET_COOKIE, containsString(REFRESH_COOKIE_NAME + "=")))
+				.andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")))
+				.andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("HttpOnly")));
+
+		verify(refreshTokenMapper).revoke(eq(existing.id()), any(Instant.class));
 	}
 
 	@Test
@@ -131,6 +233,20 @@ class AuthWebSecurityTests {
 				UserRole.USER,
 				UserStatus.ACTIVE,
 				NOW,
+				NOW);
+	}
+
+	private static RefreshTokenRecord refreshTokenRecord(
+			UUID userId,
+			String tokenHash,
+			Instant revokedAt,
+			Instant expiresAt) {
+		return new RefreshTokenRecord(
+				UUID.randomUUID(),
+				userId,
+				tokenHash,
+				expiresAt,
+				revokedAt,
 				NOW);
 	}
 

@@ -2,6 +2,8 @@ package com.seatflow.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -29,13 +31,15 @@ class LoginServiceTests {
 	@Test
 	void successfulLoginReturnsJwt() {
 		UserRecord user = user("user@example.com", PASSWORD, UserStatus.ACTIVE);
-		LoginService loginService = loginService(new SingleUserMapper(user));
+		LoginService loginService = loginService(user);
 
-		LoginResponse response = loginService.login(new LoginRequest(" User@Example.COM ", PASSWORD));
+		AuthSession session = loginService.login(new LoginRequest(" User@Example.COM ", PASSWORD));
+		LoginResponse response = session.accessToken();
 
 		assertThat(response.accessToken()).isNotBlank();
 		assertThat(response.tokenType()).isEqualTo("Bearer");
 		assertThat(response.expiresAt()).isEqualTo(NOW.plusSeconds(900));
+		assertThat(session.refreshToken().token()).isEqualTo("refresh-token");
 
 		Jwt jwt = JwtTestSupport.decoder(
 				JwtTestSupport.secretKey(JwtTestSupport.DEFAULT_SECRET),
@@ -48,7 +52,7 @@ class LoginServiceTests {
 	@Test
 	void wrongPasswordFailsWithGenericAuthenticationError() {
 		UserRecord user = user("user@example.com", PASSWORD, UserStatus.ACTIVE);
-		LoginService loginService = loginService(new SingleUserMapper(user));
+		LoginService loginService = loginService(user);
 
 		assertThatThrownBy(() -> loginService.login(new LoginRequest("user@example.com", "WrongPassword123!")))
 				.isInstanceOf(AuthenticationFailedException.class)
@@ -58,7 +62,7 @@ class LoginServiceTests {
 
 	@Test
 	void unknownEmailFailsWithGenericAuthenticationError() {
-		LoginService loginService = loginService(new SingleUserMapper(null));
+		LoginService loginService = loginService(null);
 
 		assertThatThrownBy(() -> loginService.login(new LoginRequest("missing@example.com", PASSWORD)))
 				.isInstanceOf(AuthenticationFailedException.class)
@@ -68,18 +72,27 @@ class LoginServiceTests {
 	@Test
 	void disabledUserCannotLogIn() {
 		UserRecord user = user("disabled@example.com", PASSWORD, UserStatus.DISABLED);
-		LoginService loginService = loginService(new SingleUserMapper(user));
+		LoginService loginService = loginService(user);
 
 		assertThatThrownBy(() -> loginService.login(new LoginRequest("disabled@example.com", PASSWORD)))
 				.isInstanceOf(AuthenticationFailedException.class)
 				.hasMessage("Invalid email or password");
 	}
 
-	private LoginService loginService(UserMapper userMapper) {
+	private LoginService loginService(UserRecord user) {
+		RefreshTokenService refreshTokenService = mock(RefreshTokenService.class);
+		if (user != null) {
+			LoginResponse accessToken = JwtTestSupport.tokenService(Clock.fixed(NOW, ZoneOffset.UTC), 900)
+					.issueAccessToken(user);
+			when(refreshTokenService.issueSession(user))
+					.thenReturn(new AuthSession(
+							accessToken,
+							new IssuedRefreshToken("refresh-token", NOW.plusSeconds(1_209_600))));
+		}
 		return new LoginService(
-				userMapper,
+				new SingleUserMapper(user),
 				passwordEncoder,
-				JwtTestSupport.tokenService(Clock.fixed(NOW, ZoneOffset.UTC), 900));
+				refreshTokenService);
 	}
 
 	private UserRecord user(String email, String rawPassword, UserStatus status) {

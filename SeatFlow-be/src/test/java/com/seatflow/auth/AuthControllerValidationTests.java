@@ -61,7 +61,11 @@ class AuthControllerValidationTests {
 		validator.afterPropertiesSet();
 
 		return MockMvcBuilders
-				.standaloneSetup(new AuthController(registrationService, mock(LoginService.class)))
+				.standaloneSetup(new AuthController(
+						registrationService,
+						mock(LoginService.class),
+						mock(RefreshTokenService.class),
+						mock(RefreshTokenCookieService.class)))
 				.setControllerAdvice(new GlobalExceptionHandler())
 				.setValidator(validator)
 				.build();

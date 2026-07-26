@@ -5,7 +5,6 @@ import java.util.Locale;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import com.seatflow.security.JwtTokenService;
 import com.seatflow.user.UserMapper;
 import com.seatflow.user.UserRecord;
 import com.seatflow.user.UserStatus;
@@ -15,15 +14,15 @@ public class LoginService {
 
 	private final UserMapper userMapper;
 	private final PasswordEncoder passwordEncoder;
-	private final JwtTokenService jwtTokenService;
+	private final RefreshTokenService refreshTokenService;
 
-	public LoginService(UserMapper userMapper, PasswordEncoder passwordEncoder, JwtTokenService jwtTokenService) {
+	public LoginService(UserMapper userMapper, PasswordEncoder passwordEncoder, RefreshTokenService refreshTokenService) {
 		this.userMapper = userMapper;
 		this.passwordEncoder = passwordEncoder;
-		this.jwtTokenService = jwtTokenService;
+		this.refreshTokenService = refreshTokenService;
 	}
 
-	public LoginResponse login(LoginRequest request) {
+	public AuthSession login(LoginRequest request) {
 		UserRecord user = userMapper.findByNormalizedEmail(normalizeEmail(request.email()));
 		if (user == null || !passwordEncoder.matches(request.password(), user.passwordHash())) {
 			throw new AuthenticationFailedException();
@@ -32,7 +31,7 @@ public class LoginService {
 			throw new AuthenticationFailedException();
 		}
 
-		return jwtTokenService.issueAccessToken(user);
+		return refreshTokenService.issueSession(user);
 	}
 
 	private static String normalizeEmail(String email) {
