@@ -24,6 +24,7 @@ spring:
 mybatis:
   mapper-locations: classpath*:mappers/**/*.xml
   type-aliases-package: com.seatflow
+  type-handlers-package: com.seatflow.config
   configuration:
     map-underscore-to-camel-case: true
 
@@ -39,3 +40,9 @@ management:
 
 server:
   port: ${PORT:8080}
+
+seatflow:
+  jwt:
+    secret: ${SEATFLOW_JWT_SECRET:}
+    issuer: ${SEATFLOW_JWT_ISSUER:seatflow-backend}
+    expires-in-seconds: ${SEATFLOW_JWT_EXPIRES_IN_SECONDS:900}

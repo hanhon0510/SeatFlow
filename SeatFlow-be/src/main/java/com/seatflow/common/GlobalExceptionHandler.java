@@ -6,6 +6,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.seatflow.auth.AuthenticationFailedException;
+import com.seatflow.auth.UserAlreadyExistsException;
 import com.seatflow.health.DatabaseHealthUnavailableException;
 
 @RestControllerAdvice
@@ -19,6 +21,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(DatabaseHealthUnavailableException.class)
 	public ResponseEntity<ApiResponse<Void>> handleDatabaseHealthUnavailable(DatabaseHealthUnavailableException ex) {
 		return error("Database health check failed", HttpStatus.SERVICE_UNAVAILABLE);
+	}
+
+	@ExceptionHandler(UserAlreadyExistsException.class)
+	public ResponseEntity<ApiResponse<Void>> handleUserAlreadyExists(UserAlreadyExistsException ex) {
+		return error("User already exists", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(AuthenticationFailedException.class)
+	public ResponseEntity<ApiResponse<Void>> handleAuthenticationFailed(AuthenticationFailedException ex) {
+		return error("Invalid email or password", HttpStatus.UNAUTHORIZED);
 	}
 
 	@ExceptionHandler(Exception.class)
