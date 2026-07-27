@@ -26,6 +26,14 @@ public abstract class PostgresTestContainerSupport {
 		registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
 		registry.add("spring.datasource.username", POSTGRES::getUsername);
 		registry.add("spring.datasource.password", POSTGRES::getPassword);
+		registry.add("server.port", () -> "8080");
+		registry.add("seatflow.jwt.secret", () -> JwtTestSupport.DEFAULT_SECRET);
+		registry.add("seatflow.jwt.issuer", () -> JwtTestSupport.ISSUER);
+		registry.add("seatflow.jwt.expires-in-seconds", () -> "900");
+		registry.add("seatflow.refresh-token.cookie-name", () -> "seatflow_refresh_token");
+		registry.add("seatflow.refresh-token.expires-in-seconds", () -> "1209600");
+		registry.add("seatflow.refresh-token.cookie-secure", () -> "false");
+		registry.add("seatflow.refresh-token.same-site", () -> "Strict");
 	}
 
 	protected static PostgreSQLContainer<?> postgres() {

@@ -47,7 +47,7 @@ Local service ports:
 cp .env.example .env
 ```
 
-Set `POSTGRES_PASSWORD` in `.env` before starting PostgreSQL.
+Set all values in `.env` before starting PostgreSQL or the backend. The Spring application YAML does not define fallback values.
 
 ### Run Backend
 
@@ -85,6 +85,14 @@ Key variables (see `.env.example`):
 - `POSTGRES_USER` — PostgreSQL user
 - `POSTGRES_PASSWORD` — PostgreSQL password, stored only in local `.env`
 - `POSTGRES_PORT` — local PostgreSQL port
+- `PORT` — backend HTTP port
+- `SEATFLOW_JWT_SECRET` — JWT signing secret, at least 32 bytes
+- `SEATFLOW_JWT_ISSUER` — JWT issuer
+- `SEATFLOW_JWT_EXPIRES_IN_SECONDS` — access token lifetime
+- `SEATFLOW_REFRESH_TOKEN_COOKIE_NAME` — refresh-token cookie name
+- `SEATFLOW_REFRESH_TOKEN_EXPIRES_IN_SECONDS` — refresh token lifetime
+- `SEATFLOW_REFRESH_TOKEN_COOKIE_SECURE` — whether refresh cookies require HTTPS
+- `SEATFLOW_REFRESH_TOKEN_SAME_SITE` — refresh cookie SameSite policy
 
 Health endpoints:
 

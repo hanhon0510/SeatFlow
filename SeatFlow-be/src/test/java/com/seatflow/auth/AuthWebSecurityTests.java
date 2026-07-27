@@ -62,8 +62,14 @@ import jakarta.servlet.http.Cookie;
 		CurrentUserService.class
 })
 @TestPropertySource(properties = {
+		"server.port=8080",
 		"seatflow.jwt.secret=" + JwtTestSupport.DEFAULT_SECRET,
-		"seatflow.jwt.issuer=" + JwtTestSupport.ISSUER
+		"seatflow.jwt.issuer=" + JwtTestSupport.ISSUER,
+		"seatflow.jwt.expires-in-seconds=900",
+		"seatflow.refresh-token.cookie-name=seatflow_refresh_token",
+		"seatflow.refresh-token.expires-in-seconds=1209600",
+		"seatflow.refresh-token.cookie-secure=false",
+		"seatflow.refresh-token.same-site=Strict"
 })
 class AuthWebSecurityTests {
 

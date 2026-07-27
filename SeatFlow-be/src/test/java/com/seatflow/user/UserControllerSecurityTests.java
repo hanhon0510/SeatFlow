@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -24,6 +25,7 @@ import com.seatflow.security.SecurityConfig;
 
 @WebMvcTest(UserController.class)
 @Import(SecurityConfig.class)
+@TestPropertySource(properties = "server.port=8080")
 class UserControllerSecurityTests {
 
 	@Autowired
