@@ -5,45 +5,86 @@ import {
   HomeOutlined,
   LockOutlined,
   LoginOutlined,
+  LogoutOutlined,
   MenuOutlined,
   UserAddOutlined,
 } from '@ant-design/icons'
 import { Button, Drawer, Layout, Menu, Space, Typography } from 'antd'
 import type { MenuProps } from 'antd'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ROUTES } from '../../shared/constants/routes'
+import { useAuth } from '../../features/auth/context/useAuth'
 
 const { Header, Content, Footer } = Layout
+const logoutKey = 'logout'
 
-const navItems = [
+type NavItem = {
+  key: string
+  label: string
+  icon: ReactNode
+}
+
+const publicNavItems = [
   { key: ROUTES.home, label: 'Health', icon: <HomeOutlined /> },
+] satisfies NavItem[]
+
+const authenticatedNavItems = [
   { key: ROUTES.events, label: 'Events', icon: <CalendarOutlined /> },
   { key: ROUTES.admin, label: 'Admin', icon: <LockOutlined /> },
+] satisfies NavItem[]
+
+const guestNavItems = [
   { key: ROUTES.login, label: 'Login', icon: <LoginOutlined /> },
   { key: ROUTES.register, label: 'Register', icon: <UserAddOutlined /> },
-] satisfies Array<{ key: string; label: string; icon: ReactNode }>
+] satisfies NavItem[]
 
-function buildMenuItems(closeDrawer?: () => void): MenuProps['items'] {
-  return navItems.map((item) => ({
+const logoutNavItem = {
+  key: logoutKey,
+  label: 'Logout',
+  icon: <LogoutOutlined />,
+} satisfies NavItem
+
+function buildMenuItems(items: NavItem[], closeDrawer?: () => void): MenuProps['items'] {
+  return items.map((item) => ({
     key: item.key,
     icon: item.icon,
-    label: (
-      <NavLink to={item.key} onClick={closeDrawer}>
-        {item.label}
-      </NavLink>
-    ),
+    label:
+      item.key === logoutKey ? (
+        item.label
+      ) : (
+        <NavLink to={item.key} onClick={closeDrawer}>
+          {item.label}
+        </NavLink>
+      ),
   }))
 }
 
-function selectedKey(pathname: string) {
-  return navItems.some((item) => item.key === pathname) ? [pathname] : []
+function selectedKey(pathname: string, items: NavItem[]) {
+  return items.some((item) => item.key === pathname) ? [pathname] : []
 }
 
 export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const { isAuthenticated, logout } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
 
   const closeDrawer = () => setDrawerOpen(false)
+  const visibleNavItems = isAuthenticated
+    ? [...publicNavItems, ...authenticatedNavItems, logoutNavItem]
+    : [...publicNavItems, ...guestNavItems]
+
+  const handleLogout = async () => {
+    closeDrawer()
+    await logout()
+    navigate(ROUTES.login, { replace: true })
+  }
+
+  const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === logoutKey) {
+      void handleLogout()
+    }
+  }
 
   return (
     <Layout className="app-layout">
@@ -58,8 +99,9 @@ export function AppShell() {
         <Menu
           className="desktop-nav"
           mode="horizontal"
-          selectedKeys={selectedKey(location.pathname)}
-          items={buildMenuItems()}
+          selectedKeys={selectedKey(location.pathname, visibleNavItems)}
+          items={buildMenuItems(visibleNavItems)}
+          onClick={handleMenuClick}
         />
 
         <Button
@@ -75,12 +117,13 @@ export function AppShell() {
           open={drawerOpen}
           onClose={closeDrawer}
           placement="right"
-          width={280}
+          size="default"
         >
           <Menu
             mode="inline"
-            selectedKeys={selectedKey(location.pathname)}
-            items={buildMenuItems(closeDrawer)}
+            selectedKeys={selectedKey(location.pathname, visibleNavItems)}
+            items={buildMenuItems(visibleNavItems, closeDrawer)}
+            onClick={handleMenuClick}
           />
         </Drawer>
       </Header>

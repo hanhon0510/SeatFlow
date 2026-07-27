@@ -1,6 +1,30 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
-import { afterEach, vi } from 'vitest'
+import { AxiosError } from 'axios'
+import type { InternalAxiosRequestConfig } from 'axios'
+import { afterEach, beforeEach, vi } from 'vitest'
+
+import { apiClient, clearAccessToken } from '../shared/api/httpClient'
+
+beforeEach(() => {
+  clearAccessToken()
+  apiClient.defaults.adapter = async (config) =>
+    Promise.reject(
+      new AxiosError('Invalid refresh token', undefined, config, {}, {
+        data: {
+          success: false,
+          message: 'Invalid refresh token',
+          data: null,
+          timestamp: new Date().toISOString(),
+        },
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config: config as InternalAxiosRequestConfig,
+        request: {},
+      }),
+    )
+})
 
 afterEach(() => {
   cleanup()

@@ -81,6 +81,33 @@ body {
   line-height: 1.12;
 }
 
+.auth-page {
+  display: grid;
+  width: min(100%, 440px);
+  gap: 24px;
+}
+
+.auth-page h1.ant-typography {
+  font-size: 2rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 4px;
+}
+
+.auth-alt-action.ant-typography {
+  margin: 0;
+  color: #59677d;
+  text-align: center;
+}
+
+.auth-loading {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+}
+
 .app-footer {
   border-top: 1px solid #e5eaf2;
   color: #59677d;

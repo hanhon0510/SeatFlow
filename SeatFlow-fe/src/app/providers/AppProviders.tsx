@@ -1,12 +1,24 @@
 import type { PropsWithChildren } from 'react'
+import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntdApp, ConfigProvider } from 'antd'
 import enUS from 'antd/locale/en_US'
 import { BrowserRouter } from 'react-router-dom'
 
-const queryClient = new QueryClient()
+import { AuthProvider } from '../../features/auth/context/AuthContext'
 
 export function AppProviders({ children }: PropsWithChildren) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+          },
+        },
+      }),
+  )
+
   return (
     <QueryClientProvider client={queryClient}>
       <ConfigProvider
@@ -28,7 +40,9 @@ export function AppProviders({ children }: PropsWithChildren) {
         }}
       >
         <AntdApp>
-          <BrowserRouter>{children}</BrowserRouter>
+          <BrowserRouter>
+            <AuthProvider>{children}</AuthProvider>
+          </BrowserRouter>
         </AntdApp>
       </ConfigProvider>
     </QueryClientProvider>
