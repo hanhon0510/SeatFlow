@@ -1,19 +1,30 @@
 package com.seatflow.security;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
-import org.springframework.http.MediaType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
+import org.springframework.core.convert.converter.Converter;
+import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seatflow.common.ApiResponse;
@@ -23,14 +34,20 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
 	@Bean
-	public SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
+	public SecurityFilterChain securityFilterChain(
+			HttpSecurity http,
+			ObjectMapper objectMapper,
+			Converter<Jwt, JwtAuthenticationToken> jwtAuthenticationConverter) throws Exception {
 		return http
 				.csrf(AbstractHttpConfigurer::disable)
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-				.exceptionHandling(exception -> exception.authenticationEntryPoint(authenticationEntryPoint(objectMapper)))
+				.exceptionHandling(exception -> exception
+						.authenticationEntryPoint(authenticationEntryPoint(objectMapper))
+						.accessDeniedHandler(accessDeniedHandler(objectMapper)))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(
 								"/api/v1/auth/login",
@@ -41,10 +58,11 @@ public class SecurityConfig {
 								"/api/v1/health/database",
 								"/actuator/health",
 								"/actuator/info").permitAll()
+						.requestMatchers("/api/v1/admin", "/api/v1/admin/**").hasRole("ADMIN")
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth2 -> oauth2
 						.authenticationEntryPoint(authenticationEntryPoint(objectMapper))
-						.jwt(Customizer.withDefaults()))
+						.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
 				.httpBasic(AbstractHttpConfigurer::disable)
 				.formLogin(AbstractHttpConfigurer::disable)
 				.build();
@@ -53,6 +71,20 @@ public class SecurityConfig {
 	@Bean
 	public PasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder();
+	}
+
+	@Bean
+	public Converter<Jwt, JwtAuthenticationToken> jwtAuthenticationConverter() {
+		return jwt -> new JwtAuthenticationToken(jwt, authorities(jwt), jwt.getSubject());
+	}
+
+	private static Collection<GrantedAuthority> authorities(Jwt jwt) {
+		List<GrantedAuthority> authorities = new ArrayList<>();
+		String role = jwt.getClaimAsString("role");
+		if (StringUtils.hasText(role)) {
+			authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+		}
+		return authorities;
 	}
 
 	private static AuthenticationEntryPoint authenticationEntryPoint(ObjectMapper objectMapper) {
@@ -65,6 +97,20 @@ public class SecurityConfig {
 				response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 				response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 				objectMapper.writeValue(response.getOutputStream(), ApiResponse.error("Unauthorized"));
+			}
+		};
+	}
+
+	private static AccessDeniedHandler accessDeniedHandler(ObjectMapper objectMapper) {
+		return new AccessDeniedHandler() {
+			@Override
+			public void handle(
+					HttpServletRequest request,
+					HttpServletResponse response,
+					AccessDeniedException accessDeniedException) throws IOException, ServletException {
+				response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+				response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+				objectMapper.writeValue(response.getOutputStream(), ApiResponse.error("Forbidden"));
 			}
 		};
 	}

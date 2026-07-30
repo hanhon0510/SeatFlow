@@ -8,6 +8,8 @@ public interface UserMapper {
 
 	void insert(UserRecord user);
 
+	void insertWithRole(UserRecord user);
+
 	UserRecord findById(@Param("id") UUID id);
 
 	UserRecord findByNormalizedEmail(@Param("normalizedEmail") String normalizedEmail);

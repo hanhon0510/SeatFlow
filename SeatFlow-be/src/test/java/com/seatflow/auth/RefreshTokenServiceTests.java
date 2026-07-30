@@ -249,6 +249,10 @@ class RefreshTokenServiceTests {
 		}
 
 		@Override
+		public void insertWithRole(UserRecord user) {
+		}
+
+		@Override
 		public UserRecord findById(UUID id) {
 			return user != null && user.id().equals(id) ? user : null;
 		}

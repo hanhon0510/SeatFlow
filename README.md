@@ -93,6 +93,14 @@ Key variables (see `.env.example`):
 - `SEATFLOW_REFRESH_TOKEN_EXPIRES_IN_SECONDS` — refresh token lifetime
 - `SEATFLOW_REFRESH_TOKEN_COOKIE_SECURE` — whether refresh cookies require HTTPS
 - `SEATFLOW_REFRESH_TOKEN_SAME_SITE` — refresh cookie SameSite policy
+- `SEATFLOW_LOCAL_ADMIN_ENABLED` — opt-in local profile admin seeding, default `false`
+- `SEATFLOW_LOCAL_ADMIN_EMAIL` — local admin seed email
+- `SEATFLOW_LOCAL_ADMIN_PASSWORD` — local admin seed password, at least 12 characters
+
+Local admin seeding runs only with the Spring `local` profile and only when
+`SEATFLOW_LOCAL_ADMIN_ENABLED=true`. It creates the admin if the email does not
+exist, leaves an existing admin unchanged, and refuses to promote an existing
+non-admin account automatically.
 
 Health endpoints:
 

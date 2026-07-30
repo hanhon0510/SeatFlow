@@ -38,6 +38,22 @@ class UserMapperIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	@Test
+	void insertsUserWithExplicitAdminRole() {
+		UserRecord admin = UserRecord.forInsert(
+				UUID.randomUUID(),
+				"admin-%s@example.com".formatted(UUID.randomUUID()),
+				"{bcrypt}admin",
+				UserRole.ADMIN);
+
+		userMapper.insertWithRole(admin);
+
+		UserRecord found = userMapper.findById(admin.id());
+		assertThat(found).isNotNull();
+		assertThat(found.role()).isEqualTo(UserRole.ADMIN);
+		assertThat(found.status()).isEqualTo(UserStatus.ACTIVE);
+	}
+
+	@Test
 	void findsUserByNormalizedEmail() {
 		String email = "Find-%s@Example.com".formatted(UUID.randomUUID());
 		UserRecord user = UserRecord.forInsert(UUID.randomUUID(), email, "{bcrypt}find-email");

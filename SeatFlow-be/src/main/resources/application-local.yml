@@ -7,3 +7,9 @@ spring:
 
   flyway:
     enabled: true
+
+seatflow:
+  local-admin:
+    enabled: ${SEATFLOW_LOCAL_ADMIN_ENABLED:false}
+    email: ${SEATFLOW_LOCAL_ADMIN_EMAIL:}
+    password: ${SEATFLOW_LOCAL_ADMIN_PASSWORD:}

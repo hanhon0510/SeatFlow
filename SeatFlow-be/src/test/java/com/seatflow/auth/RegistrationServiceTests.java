@@ -58,6 +58,11 @@ class RegistrationServiceTests {
 		}
 
 		@Override
+		public void insertWithRole(UserRecord user) {
+			this.inserted = user;
+		}
+
+		@Override
 		public UserRecord findById(UUID id) {
 			return new UserRecord(
 					inserted.id(),
@@ -85,6 +90,11 @@ class RegistrationServiceTests {
 
 		@Override
 		public void insert(UserRecord user) {
+			throw new DuplicateKeyException("duplicate normalized email");
+		}
+
+		@Override
+		public void insertWithRole(UserRecord user) {
 			throw new DuplicateKeyException("duplicate normalized email");
 		}
 

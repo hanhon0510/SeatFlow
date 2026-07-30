@@ -16,9 +16,12 @@ public record UserRecord(
 		return new UserRecord(id, email, passwordHash, null, null, null, null);
 	}
 
+	public static UserRecord forInsert(UUID id, String email, String passwordHash, UserRole role) {
+		return new UserRecord(id, email, passwordHash, role, null, null, null);
+	}
+
 	public User toUser() {
 		return new User(id, email, passwordHash, role, status, createdAt, updatedAt);
 	}
 
 }
-

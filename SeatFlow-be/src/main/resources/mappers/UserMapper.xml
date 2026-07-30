@@ -28,6 +28,21 @@
         )
     </insert>
 
+    <insert id="insertWithRole" parameterType="com.seatflow.user.UserRecord">
+        INSERT INTO users (
+            id,
+            email,
+            password_hash,
+            role
+        )
+        VALUES (
+            #{id},
+            #{email},
+            #{passwordHash},
+            #{role}
+        )
+    </insert>
+
     <select id="findById" resultMap="UserRecordResultMap">
         SELECT
             id,
