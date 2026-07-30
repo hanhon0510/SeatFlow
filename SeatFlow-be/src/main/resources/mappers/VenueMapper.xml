@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.venue.VenueMapper">
+    <resultMap id="VenueRecordResultMap" type="com.seatflow.venue.VenueRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="name" javaType="java.lang.String" />
+            <arg column="address" javaType="java.lang.String" />
+            <arg column="city" javaType="java.lang.String" />
+            <arg column="country" javaType="java.lang.String" />
+            <arg column="timezone" javaType="java.lang.String" />
+            <arg column="status" javaType="com.seatflow.venue.VenueStatus" />
+            <arg column="created_at" javaType="java.time.Instant" />
+            <arg column="updated_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <sql id="VenueColumns">
+        id,
+        name,
+        address,
+        city,
+        country,
+        timezone,
+        status,
+        created_at,
+        updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.seatflow.venue.VenueRecord">
+        INSERT INTO venues (
+            id,
+            name,
+            address,
+            city,
+            country,
+            timezone
+        )
+        VALUES (
+            #{id},
+            #{name},
+            #{address},
+            #{city},
+            #{country},
+            #{timezone}
+        )
+    </insert>
+
+    <update id="update" parameterType="com.seatflow.venue.VenueRecord">
+        UPDATE venues
+        SET
+            name = #{name},
+            address = #{address},
+            city = #{city},
+            country = #{country},
+            timezone = #{timezone},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultMap="VenueRecordResultMap">
+        SELECT
+            <include refid="VenueColumns" />
+        FROM venues
+        WHERE id = #{id}
+    </select>
+
+    <select id="findPage" resultMap="VenueRecordResultMap">
+        SELECT
+            <include refid="VenueColumns" />
+        FROM venues
+        ORDER BY name ASC, id ASC
+        LIMIT #{limit}
+        OFFSET #{offset}
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM venues
+    </select>
+
+    <update id="archive">
+        UPDATE venues
+        SET
+            status = 'ARCHIVED',
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status &lt;&gt; 'ARCHIVED'
+    </update>
+</mapper>
