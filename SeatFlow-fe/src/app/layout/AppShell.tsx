@@ -30,6 +30,9 @@ const publicNavItems = [
 
 const authenticatedNavItems = [
   { key: ROUTES.events, label: 'Events', icon: <CalendarOutlined /> },
+] satisfies NavItem[]
+
+const adminNavItems = [
   { key: ROUTES.admin, label: 'Admin', icon: <LockOutlined /> },
 ] satisfies NavItem[]
 
@@ -65,13 +68,16 @@ function selectedKey(pathname: string, items: NavItem[]) {
 
 export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const { isAuthenticated, logout } = useAuth()
+  const { isAuthenticated, logout, user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
   const closeDrawer = () => setDrawerOpen(false)
+  const roleBasedNavItems = user?.role === 'ADMIN'
+    ? [...authenticatedNavItems, ...adminNavItems]
+    : authenticatedNavItems
   const visibleNavItems = isAuthenticated
-    ? [...publicNavItems, ...authenticatedNavItems, logoutNavItem]
+    ? [...publicNavItems, ...roleBasedNavItems, logoutNavItem]
     : [...publicNavItems, ...guestNavItems]
 
   const handleLogout = async () => {

@@ -7,6 +7,7 @@ export type AuthContextValue = {
   user: AuthUser | null
   isAuthenticated: boolean
   isRestoring: boolean
+  isLoadingUser: boolean
   login: (request: LoginRequest) => Promise<void>
   register: (request: RegisterRequest) => Promise<void>
   logout: () => Promise<void>

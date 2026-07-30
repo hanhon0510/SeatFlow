@@ -102,11 +102,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
       user: currentUserQuery.data ?? null,
       isAuthenticated: Boolean(token),
       isRestoring,
+      isLoadingUser: currentUserQuery.isLoading,
       login,
       register,
       logout,
     }),
-    [currentUserQuery.data, isRestoring, login, logout, register, token],
+    [
+      currentUserQuery.data,
+      currentUserQuery.isLoading,
+      isRestoring,
+      login,
+      logout,
+      register,
+      token,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

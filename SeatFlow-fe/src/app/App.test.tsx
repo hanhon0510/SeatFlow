@@ -18,6 +18,13 @@ const authUser: AuthUser = {
   updatedAt: '2026-07-27T00:00:00Z',
 }
 
+const adminUser: AuthUser = {
+  ...authUser,
+  id: '0ad1e7e0-a1a6-4b4f-9b4e-8c6c0ac83b3e',
+  email: 'admin@example.com',
+  role: 'ADMIN',
+}
+
 const loginResponse: LoginResponse = {
   accessToken: 'access-token',
   tokenType: 'Bearer',
@@ -252,6 +259,67 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument()
+  })
+
+  it('hides admin navigation from normal users', async () => {
+    window.history.pushState({}, '', ROUTES.events)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Events' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /admin/i })).not.toBeInTheDocument()
+  })
+
+  it('shows a 403 result when a normal user opens the admin route directly', async () => {
+    window.history.pushState({}, '', ROUTES.admin)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('403')).toBeInTheDocument()
+    expect(screen.getByText('You are not authorized to access this page.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Admin' })).not.toBeInTheDocument()
+  })
+
+  it('shows admin navigation and route content to admins', async () => {
+    window.history.pushState({}, '', ROUTES.admin)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Admin' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /admin/i })).toBeInTheDocument()
   })
 
   it('logs out and clears the protected session', async () => {

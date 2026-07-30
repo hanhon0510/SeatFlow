@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 import { AppShell } from '../layout/AppShell'
+import { AdminRoute } from '../../features/auth/components/AdminRoute'
 import { ProtectedRoute } from '../../features/auth/components/ProtectedRoute'
 import { LoginPage } from '../../features/auth/pages/LoginPage'
 import { RegisterPage } from '../../features/auth/pages/RegisterPage'
@@ -17,7 +18,9 @@ export function AppRouter() {
         <Route path={ROUTES.register} element={<RegisterPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path={ROUTES.events} element={<PlaceholderPage title="Events" />} />
-          <Route path={ROUTES.admin} element={<PlaceholderPage title="Admin" />} />
+          <Route element={<AdminRoute />}>
+            <Route path={ROUTES.admin} element={<PlaceholderPage title="Admin" />} />
+          </Route>
         </Route>
         <Route path={ROUTES.notFound} element={<NotFoundPage />} />
         <Route path="*" element={<NotFoundPage />} />
