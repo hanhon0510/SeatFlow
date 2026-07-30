@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.seating.VenueSectionMapper">
+    <resultMap id="VenueSectionRecordResultMap" type="com.seatflow.seating.VenueSectionRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="venue_id" javaType="java.util.UUID" />
+            <arg column="name" javaType="java.lang.String" />
+            <arg column="display_order" javaType="_int" />
+            <arg column="created_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <sql id="VenueSectionColumns">
+        id,
+        venue_id,
+        name,
+        display_order,
+        created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.seatflow.seating.VenueSectionRecord">
+        INSERT INTO venue_sections (
+            id,
+            venue_id,
+            name,
+            display_order
+        )
+        VALUES (
+            #{id},
+            #{venueId},
+            #{name},
+            #{displayOrder}
+        )
+    </insert>
+
+    <update id="update" parameterType="com.seatflow.seating.VenueSectionRecord">
+        UPDATE venue_sections
+        SET
+            name = #{name},
+            display_order = #{displayOrder}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM venue_sections
+        WHERE id = #{id}
+    </delete>
+
+    <select id="findById" resultMap="VenueSectionRecordResultMap">
+        SELECT
+            <include refid="VenueSectionColumns" />
+        FROM venue_sections
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByVenueId" resultMap="VenueSectionRecordResultMap">
+        SELECT
+            <include refid="VenueSectionColumns" />
+        FROM venue_sections
+        WHERE venue_id = #{venueId}
+        ORDER BY display_order ASC, name ASC, id ASC
+    </select>
+</mapper>

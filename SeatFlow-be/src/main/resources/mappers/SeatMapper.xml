@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.seating.SeatMapper">
+    <resultMap id="SeatRecordResultMap" type="com.seatflow.seating.SeatRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="section_id" javaType="java.util.UUID" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="seat_number" javaType="_int" />
+            <arg column="seat_label" javaType="java.lang.String" />
+            <arg column="accessible" javaType="_boolean" />
+            <arg column="created_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="SeatLayoutRowResultMap" type="com.seatflow.seating.SeatLayoutRow">
+        <constructor>
+            <idArg column="section_id" javaType="java.util.UUID" />
+            <arg column="section_name" javaType="java.lang.String" />
+            <arg column="display_order" javaType="_int" />
+            <arg column="section_created_at" javaType="java.time.Instant" />
+            <arg column="seat_id" javaType="java.util.UUID" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="seat_number" javaType="java.lang.Integer" />
+            <arg column="seat_label" javaType="java.lang.String" />
+            <arg column="accessible" javaType="java.lang.Boolean" />
+            <arg column="seat_created_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <sql id="SeatColumns">
+        id,
+        section_id,
+        row_label,
+        seat_number,
+        seat_label,
+        accessible,
+        created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.seatflow.seating.SeatRecord">
+        INSERT INTO seats (
+            id,
+            section_id,
+            row_label,
+            seat_number,
+            seat_label,
+            accessible
+        )
+        VALUES (
+            #{id},
+            #{sectionId},
+            #{rowLabel},
+            #{seatNumber},
+            #{seatLabel},
+            #{accessible}
+        )
+    </insert>
+
+    <insert id="insertBatch">
+        INSERT INTO seats (
+            id,
+            section_id,
+            row_label,
+            seat_number,
+            seat_label,
+            accessible
+        )
+        VALUES
+        <foreach collection="seats" item="seat" separator=",">
+            (
+                #{seat.id},
+                #{seat.sectionId},
+                #{seat.rowLabel},
+                #{seat.seatNumber},
+                #{seat.seatLabel},
+                #{seat.accessible}
+            )
+        </foreach>
+    </insert>
+
+    <select id="findById" resultMap="SeatRecordResultMap">
+        SELECT
+            <include refid="SeatColumns" />
+        FROM seats
+        WHERE id = #{id}
+    </select>
+
+    <select id="findBySectionId" resultMap="SeatRecordResultMap">
+        SELECT
+            <include refid="SeatColumns" />
+        FROM seats
+        WHERE section_id = #{sectionId}
+        ORDER BY row_label ASC, seat_number ASC, seat_label ASC, id ASC
+    </select>
+
+    <select id="countBySectionId" resultType="long">
+        SELECT COUNT(*)
+        FROM seats
+        WHERE section_id = #{sectionId}
+    </select>
+
+    <select id="findSeatLayoutByVenueId" resultMap="SeatLayoutRowResultMap">
+        SELECT
+            section.id AS section_id,
+            section.name AS section_name,
+            section.display_order,
+            section.created_at AS section_created_at,
+            seat.id AS seat_id,
+            seat.row_label,
+            seat.seat_number,
+            seat.seat_label,
+            seat.accessible,
+            seat.created_at AS seat_created_at
+        FROM venue_sections section
+        LEFT JOIN seats seat ON seat.section_id = section.id
+        WHERE section.venue_id = #{venueId}
+        ORDER BY
+            section.display_order ASC,
+            section.name ASC,
+            section.id ASC,
+            seat.row_label ASC,
+            seat.seat_number ASC,
+            seat.seat_label ASC,
+            seat.id ASC
+    </select>
+</mapper>

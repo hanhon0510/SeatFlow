@@ -12,6 +12,10 @@ import com.seatflow.auth.AuthenticationFailedException;
 import com.seatflow.auth.InvalidRefreshTokenException;
 import com.seatflow.auth.UserAlreadyExistsException;
 import com.seatflow.health.DatabaseHealthUnavailableException;
+import com.seatflow.seating.DuplicateSeatLabelException;
+import com.seatflow.seating.InvalidSeatBatchException;
+import com.seatflow.seating.SeatNotFoundException;
+import com.seatflow.seating.SectionNotFoundException;
 import com.seatflow.venue.ArchivedVenueCannotHostEventsException;
 import com.seatflow.venue.InvalidVenuePaginationException;
 import com.seatflow.venue.InvalidVenueTimezoneException;
@@ -80,6 +84,26 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
 	public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
 		return error("Method not supported", HttpStatus.METHOD_NOT_ALLOWED);
+	}
+
+	@ExceptionHandler(SectionNotFoundException.class)
+	public ResponseEntity<ApiResponse<Void>> handleSectionNotFound(SectionNotFoundException ex) {
+		return error("Section not found", HttpStatus.NOT_FOUND);
+	}
+
+	@ExceptionHandler(SeatNotFoundException.class)
+	public ResponseEntity<ApiResponse<Void>> handleSeatNotFound(SeatNotFoundException ex) {
+		return error("Seat not found", HttpStatus.NOT_FOUND);
+	}
+
+	@ExceptionHandler(DuplicateSeatLabelException.class)
+	public ResponseEntity<ApiResponse<Void>> handleDuplicateSeatLabel(DuplicateSeatLabelException ex) {
+		return error("Duplicate seat label", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(InvalidSeatBatchException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidSeatBatch(InvalidSeatBatchException ex) {
+		return error("Invalid seat batch", HttpStatus.BAD_REQUEST);
 	}
 
 	@ExceptionHandler(Exception.class)
