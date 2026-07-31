@@ -1,9 +1,15 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError } from 'axios'
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { describe, expect, it, vi } from 'vitest'
 
+import type {
+  SeatCreateRequest,
+  SeatLayout,
+  Venue,
+  VenuePage,
+} from '../features/admin/venues/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
 import { apiClient } from '../shared/api/httpClient'
 import { ROUTES } from '../shared/constants/routes'
@@ -29,6 +35,23 @@ const loginResponse: LoginResponse = {
   accessToken: 'access-token',
   tokenType: 'Bearer',
   expiresAt: '2026-07-27T01:00:00Z',
+}
+
+const venue: Venue = {
+  id: '6c5d2e2b-1817-46d8-b897-65be94a34706',
+  name: 'Concert Hall',
+  address: '100 Main Street',
+  city: 'New York',
+  country: 'United States',
+  timezone: 'America/New_York',
+  status: 'ACTIVE',
+  createdAt: '2026-07-27T00:00:00Z',
+  updatedAt: '2026-07-27T00:00:00Z',
+}
+
+const emptySeatLayout: SeatLayout = {
+  venueId: venue.id,
+  sections: [],
 }
 
 type ApiHandler = (
@@ -81,6 +104,16 @@ function authorization(config: InternalAxiosRequestConfig) {
 
 function requestBody<T>(config: InternalAxiosRequestConfig) {
   return typeof config.data === 'string' ? (JSON.parse(config.data) as T) : (config.data as T)
+}
+
+function venuePage(items: Venue[]): VenuePage {
+  return {
+    items,
+    page: 0,
+    size: 10,
+    totalItems: items.length,
+    totalPages: items.length === 0 ? 0 : 1,
+  }
 }
 
 describe('App', () => {
@@ -281,8 +314,8 @@ describe('App', () => {
     expect(screen.queryByRole('link', { name: /admin/i })).not.toBeInTheDocument()
   })
 
-  it('shows a 403 result when a normal user opens the admin route directly', async () => {
-    window.history.pushState({}, '', ROUTES.admin)
+  it('shows a 403 result when a normal user opens an admin page directly', async () => {
+    window.history.pushState({}, '', ROUTES.adminVenueNew)
     installApiMock((config) => {
       if (endpoint(config) === 'POST /auth/refresh') {
         return response<LoginResponse>(config, 200, loginResponse)
@@ -299,11 +332,36 @@ describe('App', () => {
 
     expect(await screen.findByText('403')).toBeInTheDocument()
     expect(screen.getByText('You are not authorized to access this page.')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Admin' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Create venue' })).not.toBeInTheDocument()
   })
 
   it('shows admin navigation and route content to admins', async () => {
     window.history.pushState({}, '', ROUTES.admin)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/venues') {
+        return response<VenuePage>(config, 200, venuePage([]))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Venues' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /admin/i })).toBeInTheDocument()
+  })
+
+  it('validates required venue form fields', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.adminVenueNew)
     installApiMock((config) => {
       if (endpoint(config) === 'POST /auth/refresh') {
         return response<LoginResponse>(config, 200, loginResponse)
@@ -318,9 +376,241 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: 'Admin' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /admin/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Create venue' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /create venue/i }))
+
+    expect(await screen.findByText('Venue name is required')).toBeInTheDocument()
+    expect(screen.getByText('Address is required')).toBeInTheDocument()
+    expect(screen.getByText('City is required')).toBeInTheDocument()
+    expect(screen.getByText('Country is required')).toBeInTheDocument()
+    expect(screen.getByText('Timezone is required')).toBeInTheDocument()
   })
+
+  it('creates a venue and opens the edit page', async () => {
+    const user = userEvent.setup()
+    const createSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.adminVenueNew)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'POST /admin/venues') {
+        createSpy(requestBody(config))
+        return response<Venue>(config, 201, venue)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}`) {
+        return response<Venue>(config, 200, venue)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}/seat-layout`) {
+        return response<SeatLayout>(config, 200, emptySeatLayout)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Create venue' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Venue name'), venue.name)
+    await user.type(screen.getByLabelText('Address'), venue.address)
+    await user.type(screen.getByLabelText('City'), venue.city)
+    await user.type(screen.getByLabelText('Country'), venue.country)
+    await user.type(screen.getByLabelText('Timezone'), venue.timezone)
+    await user.click(screen.getByRole('button', { name: /create venue/i }))
+
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith({
+        name: venue.name,
+        address: venue.address,
+        city: venue.city,
+        country: venue.country,
+        timezone: venue.timezone,
+      }),
+    )
+    expect(await screen.findByRole('heading', { name: 'Edit venue' })).toBeInTheDocument()
+  })
+
+  it('adds a section to an existing venue', async () => {
+    const user = userEvent.setup()
+    const sectionSpy = vi.fn()
+    let layout: SeatLayout = emptySeatLayout
+    const section = {
+      id: '07e4de90-b0fa-4f16-a74d-8dcb5743f5bb',
+      venueId: venue.id,
+      name: 'Balcony',
+      displayOrder: 2,
+      createdAt: '2026-07-27T00:00:00Z',
+      seats: [],
+    }
+    window.history.pushState({}, '', ROUTES.adminVenueEdit(venue.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}`) {
+        return response<Venue>(config, 200, venue)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}/seat-layout`) {
+        return response<SeatLayout>(config, 200, layout)
+      }
+
+      if (endpoint(config) === `POST /admin/venues/${venue.id}/sections`) {
+        sectionSpy(requestBody(config))
+        layout = { venueId: venue.id, sections: [section] }
+        return response(config, 201, section)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Edit venue' })).toBeInTheDocument()
+    await screen.findByLabelText('Section name')
+    await user.type(screen.getByLabelText('Section name'), section.name)
+    await user.clear(screen.getByLabelText('Display order'))
+    await user.type(screen.getByLabelText('Display order'), String(section.displayOrder))
+    await user.click(screen.getByRole('button', { name: /add section/i }))
+
+    await waitFor(() =>
+      expect(sectionSpy).toHaveBeenCalledWith({
+        name: section.name,
+        displayOrder: section.displayOrder,
+      }),
+    )
+    expect(await screen.findAllByText('Balcony')).toHaveLength(2)
+  })
+
+  it('submits bulk seats and refreshes the layout preview', async () => {
+    const user = userEvent.setup()
+    const bulkSeatSpy = vi.fn()
+    const section = {
+      id: 'cb2fa4a3-e4f9-4d5e-a757-511c5acf4281',
+      venueId: venue.id,
+      name: 'Main',
+      displayOrder: 0,
+      createdAt: '2026-07-27T00:00:00Z',
+      seats: [],
+    }
+    let layout: SeatLayout = { venueId: venue.id, sections: [section] }
+    window.history.pushState({}, '', ROUTES.adminVenueEdit(venue.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}`) {
+        return response<Venue>(config, 200, venue)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}/seat-layout`) {
+        return response<SeatLayout>(config, 200, layout)
+      }
+
+      if (endpoint(config) === `POST /admin/sections/${section.id}/seats/bulk`) {
+        const body = requestBody<{ seats: SeatCreateRequest[] }>(config)
+        bulkSeatSpy(body)
+        layout = {
+          venueId: venue.id,
+          sections: [
+            {
+              ...section,
+              seats: body.seats.map((seat, index) => ({
+                id: `seat-${index}`,
+                sectionId: section.id,
+                createdAt: '2026-07-27T00:00:00Z',
+                ...seat,
+              })),
+            },
+          ],
+        }
+        return response(config, 201, layout.sections[0].seats)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Edit venue' })).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Add seats to Main' }))
+    await user.type(screen.getByLabelText('Row label'), 'A')
+    await user.clear(screen.getByLabelText('Starting seat number'))
+    await user.type(screen.getByLabelText('Starting seat number'), '1')
+    await user.clear(screen.getByLabelText('Seat count'))
+    await user.type(screen.getByLabelText('Seat count'), '3')
+    await user.click(screen.getByLabelText('Accessible seats'))
+    await user.click(screen.getByRole('button', { name: /create seats/i }))
+
+    await waitFor(() =>
+      expect(bulkSeatSpy).toHaveBeenCalledWith({
+        seats: [
+          { rowLabel: 'A', seatNumber: 1, seatLabel: 'A1', accessible: true },
+          { rowLabel: 'A', seatNumber: 2, seatLabel: 'A2', accessible: true },
+          { rowLabel: 'A', seatNumber: 3, seatLabel: 'A3', accessible: true },
+        ],
+      }),
+    )
+    expect(await screen.findByLabelText('Seat A1')).toBeInTheDocument()
+  }, 10000)
+
+  it('requires confirmation before archiving a venue', async () => {
+    const archiveSpy = vi.fn()
+    let archived = false
+    window.history.pushState({}, '', ROUTES.admin)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/venues') {
+        return response<VenuePage>(config, 200, venuePage([
+          { ...venue, status: archived ? 'ARCHIVED' : 'ACTIVE' },
+        ]))
+      }
+
+      if (endpoint(config) === `POST /admin/venues/${venue.id}/archive`) {
+        archiveSpy()
+        archived = true
+        return response<Venue>(config, 200, { ...venue, status: 'ARCHIVED' })
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Venues' })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Archive Concert Hall' }))
+
+    expect(await screen.findByText(/Archive Concert Hall/)).toBeInTheDocument()
+    expect(archiveSpy).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archive venue' }))
+
+    await waitFor(() => expect(archiveSpy).toHaveBeenCalledOnce())
+  }, 10000)
 
   it('logs out and clears the protected session', async () => {
     const user = userEvent.setup()
