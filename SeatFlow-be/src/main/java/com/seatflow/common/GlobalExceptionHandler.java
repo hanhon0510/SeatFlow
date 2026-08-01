@@ -11,6 +11,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.seatflow.auth.AuthenticationFailedException;
 import com.seatflow.auth.InvalidRefreshTokenException;
 import com.seatflow.auth.UserAlreadyExistsException;
+import com.seatflow.event.EventNotFoundException;
+import com.seatflow.event.EventStateConflictException;
+import com.seatflow.event.InvalidEventPaginationException;
+import com.seatflow.event.InvalidEventTimingException;
 import com.seatflow.health.DatabaseHealthUnavailableException;
 import com.seatflow.seating.DuplicateSeatLabelException;
 import com.seatflow.seating.InvalidSeatBatchException;
@@ -65,9 +69,29 @@ public class GlobalExceptionHandler {
 		return error("Invalid pagination", HttpStatus.BAD_REQUEST);
 	}
 
+	@ExceptionHandler(InvalidEventPaginationException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidEventPagination(InvalidEventPaginationException ex) {
+		return error("Invalid pagination", HttpStatus.BAD_REQUEST);
+	}
+
+	@ExceptionHandler(InvalidEventTimingException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidEventTiming(InvalidEventTimingException ex) {
+		return error("Invalid event timing", HttpStatus.BAD_REQUEST);
+	}
+
 	@ExceptionHandler(VenueNotFoundException.class)
 	public ResponseEntity<ApiResponse<Void>> handleVenueNotFound(VenueNotFoundException ex) {
 		return error("Venue not found", HttpStatus.NOT_FOUND);
+	}
+
+	@ExceptionHandler(EventNotFoundException.class)
+	public ResponseEntity<ApiResponse<Void>> handleEventNotFound(EventNotFoundException ex) {
+		return error("Event not found", HttpStatus.NOT_FOUND);
+	}
+
+	@ExceptionHandler(EventStateConflictException.class)
+	public ResponseEntity<ApiResponse<Void>> handleEventStateConflict(EventStateConflictException ex) {
+		return error("Event state conflict", HttpStatus.CONFLICT);
 	}
 
 	@ExceptionHandler(VenueAlreadyArchivedException.class)
