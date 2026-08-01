@@ -221,6 +221,11 @@ class EventServiceTests {
 		}
 
 		@Override
+		public EventRecord findByIdForUpdate(UUID id) {
+			return findById(id);
+		}
+
+		@Override
 		public List<EventRecord> findPage(int limit, long offset) {
 			return events.stream()
 					.sorted(Comparator.comparing(EventRecord::startTime)

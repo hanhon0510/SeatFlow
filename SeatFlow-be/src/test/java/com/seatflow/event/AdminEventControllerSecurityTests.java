@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -42,7 +43,8 @@ import com.seatflow.venue.VenueStatus;
 		JwtConfig.class,
 		JwtTokenService.class,
 		VenueService.class,
-		EventService.class
+		EventService.class,
+		EventSectionPricingService.class
 })
 @TestPropertySource(properties = {
 		"server.port=8080",
@@ -68,6 +70,9 @@ class AdminEventControllerSecurityTests {
 
 	@MockitoBean
 	private EventMapper eventMapper;
+
+	@MockitoBean
+	private EventSectionMapper eventSectionMapper;
 
 	@Test
 	void adminCanCreateDraftEvent() throws Exception {
@@ -200,6 +205,106 @@ class AdminEventControllerSecurityTests {
 	}
 
 	@Test
+	void adminCanReplaceAndReadEventSections() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		UUID sectionId = UUID.randomUUID();
+		EventSectionRecord configuredSection = eventSection(
+				UUID.randomUUID(),
+				eventId,
+				sectionId,
+				new BigDecimal("125000.00"),
+				true);
+		when(eventMapper.findByIdForUpdate(eventId)).thenReturn(event(
+				eventId,
+				venueId,
+				"Opening Night",
+				EventStatus.DRAFT));
+		when(eventSectionMapper.insertForDraftEvent(any(EventSectionRecord.class))).thenReturn(1);
+		when(eventSectionMapper.findByEventId(eventId)).thenReturn(List.of(configuredSection));
+		when(eventMapper.findById(eventId)).thenReturn(event(eventId, venueId, "Opening Night", EventStatus.DRAFT));
+
+		mockMvc.perform(put("/api/v1/admin/events/{eventId}/sections", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(eventSectionsJson(sectionId, "125000.00", true)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.eventId").value(eventId.toString()))
+				.andExpect(jsonPath("$.sections[0].venueSectionId").value(sectionId.toString()))
+				.andExpect(jsonPath("$.sections[0].price").value(125000.00))
+				.andExpect(jsonPath("$.sections[0].salesEnabled").value(true));
+
+		mockMvc.perform(get("/api/v1/admin/events/{eventId}/sections", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.eventId").value(eventId.toString()))
+				.andExpect(jsonPath("$.sections[0].venueSectionId").value(sectionId.toString()));
+
+		ArgumentCaptor<EventSectionRecord> insertedSection = ArgumentCaptor.forClass(EventSectionRecord.class);
+		verify(eventSectionMapper).deleteByEventId(eventId);
+		verify(eventSectionMapper).insertForDraftEvent(insertedSection.capture());
+		org.assertj.core.api.Assertions.assertThat(insertedSection.getValue().eventId()).isEqualTo(eventId);
+		org.assertj.core.api.Assertions.assertThat(insertedSection.getValue().venueSectionId()).isEqualTo(sectionId);
+		org.assertj.core.api.Assertions.assertThat(insertedSection.getValue().price())
+				.isEqualByComparingTo("125000.00");
+	}
+
+	@Test
+	void invalidEventSectionReturnsBadRequest() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		UUID invalidSectionId = UUID.randomUUID();
+		when(eventMapper.findByIdForUpdate(eventId)).thenReturn(event(
+				eventId,
+				venueId,
+				"Opening Night",
+				EventStatus.DRAFT));
+		when(eventSectionMapper.insertForDraftEvent(any(EventSectionRecord.class))).thenReturn(0);
+
+		mockMvc.perform(put("/api/v1/admin/events/{eventId}/sections", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(eventSectionsJson(invalidSectionId, "125000.00", true)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Invalid event section"));
+	}
+
+	@Test
+	void negativeEventSectionPriceReturnsBadRequest() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID sectionId = UUID.randomUUID();
+
+		mockMvc.perform(put("/api/v1/admin/events/{eventId}/sections", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(eventSectionsJson(sectionId, "-1.00", true)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Invalid request"));
+	}
+
+	@Test
+	void publishedEventSectionReplacementReturnsConflict() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		UUID sectionId = UUID.randomUUID();
+		when(eventMapper.findByIdForUpdate(eventId)).thenReturn(event(
+				eventId,
+				venueId,
+				"Published Event",
+				EventStatus.PUBLISHED));
+
+		mockMvc.perform(put("/api/v1/admin/events/{eventId}/sections", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(eventSectionsJson(sectionId, "125000.00", true)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Event state conflict"));
+	}
+
+	@Test
 	void normalUserCannotManageEvents() throws Exception {
 		UUID eventId = UUID.randomUUID();
 		UUID venueId = UUID.randomUUID();
@@ -219,6 +324,16 @@ class AdminEventControllerSecurityTests {
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(eventJson(venueId, "Opening Night", EVENT_START, SALES_START, SALES_END)))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(put("/api/v1/admin/events/{eventId}/sections", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(eventSectionsJson(UUID.randomUUID(), "125000.00", true)))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(get("/api/v1/admin/events/{eventId}/sections", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
 				.andExpect(status().isForbidden());
 	}
 
@@ -257,6 +372,15 @@ class AdminEventControllerSecurityTests {
 				NOW);
 	}
 
+	private static EventSectionRecord eventSection(
+			UUID id,
+			UUID eventId,
+			UUID sectionId,
+			BigDecimal price,
+			boolean salesEnabled) {
+		return new EventSectionRecord(id, eventId, sectionId, price, salesEnabled, NOW, NOW);
+	}
+
 	private static VenueRecord venue(UUID id, VenueStatus status) {
 		return new VenueRecord(
 				id,
@@ -286,5 +410,19 @@ class AdminEventControllerSecurityTests {
 				  "salesEndTime": "%s"
 				}
 				""".formatted(venueId, name, startTime, salesStartTime, salesEndTime);
+	}
+
+	private static String eventSectionsJson(UUID sectionId, String price, boolean salesEnabled) {
+		return """
+				{
+				  "sections": [
+				    {
+				      "venueSectionId": "%s",
+				      "price": %s,
+				      "salesEnabled": %s
+				    }
+				  ]
+				}
+				""".formatted(sectionId, price, salesEnabled);
 	}
 }

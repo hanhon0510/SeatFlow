@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.event.EventSectionMapper">
+    <resultMap id="EventSectionRecordResultMap" type="com.seatflow.event.EventSectionRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="venue_section_id" javaType="java.util.UUID" />
+            <arg column="price" javaType="java.math.BigDecimal" />
+            <arg column="sales_enabled" javaType="_boolean" />
+            <arg column="created_at" javaType="java.time.Instant" />
+            <arg column="updated_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <sql id="EventSectionColumns">
+        event_section.id,
+        event_section.event_id,
+        event_section.venue_section_id,
+        event_section.price,
+        event_section.sales_enabled,
+        event_section.created_at,
+        event_section.updated_at
+    </sql>
+
+    <insert id="insertForDraftEvent" parameterType="com.seatflow.event.EventSectionRecord">
+        INSERT INTO event_sections (
+            id,
+            event_id,
+            venue_section_id,
+            price,
+            sales_enabled
+        )
+        SELECT
+            #{id},
+            e.id,
+            vs.id,
+            #{price},
+            #{salesEnabled}
+        FROM events e
+        JOIN venue_sections vs
+          ON vs.id = #{venueSectionId}
+         AND vs.venue_id = e.venue_id
+        WHERE e.id = #{eventId}
+          AND e.status = 'DRAFT'
+    </insert>
+
+    <delete id="deleteByEventId">
+        DELETE FROM event_sections
+        WHERE event_id = #{eventId}
+    </delete>
+
+    <select id="findByEventId" resultMap="EventSectionRecordResultMap">
+        SELECT
+            <include refid="EventSectionColumns" />
+        FROM event_sections event_section
+        JOIN venue_sections venue_section ON venue_section.id = event_section.venue_section_id
+        WHERE event_section.event_id = #{eventId}
+        ORDER BY venue_section.display_order ASC, venue_section.name ASC, event_section.id ASC
+    </select>
+</mapper>

@@ -11,8 +11,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.seatflow.auth.AuthenticationFailedException;
 import com.seatflow.auth.InvalidRefreshTokenException;
 import com.seatflow.auth.UserAlreadyExistsException;
+import com.seatflow.event.DuplicateEventSectionException;
 import com.seatflow.event.EventNotFoundException;
 import com.seatflow.event.EventStateConflictException;
+import com.seatflow.event.InvalidEventSectionException;
+import com.seatflow.event.InvalidEventSectionPriceException;
 import com.seatflow.event.InvalidEventPaginationException;
 import com.seatflow.event.InvalidEventTimingException;
 import com.seatflow.health.DatabaseHealthUnavailableException;
@@ -77,6 +80,21 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(InvalidEventTimingException.class)
 	public ResponseEntity<ApiResponse<Void>> handleInvalidEventTiming(InvalidEventTimingException ex) {
 		return error("Invalid event timing", HttpStatus.BAD_REQUEST);
+	}
+
+	@ExceptionHandler(InvalidEventSectionException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidEventSection(InvalidEventSectionException ex) {
+		return error("Invalid event section", HttpStatus.BAD_REQUEST);
+	}
+
+	@ExceptionHandler(InvalidEventSectionPriceException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidEventSectionPrice(InvalidEventSectionPriceException ex) {
+		return error("Invalid event section price", HttpStatus.BAD_REQUEST);
+	}
+
+	@ExceptionHandler(DuplicateEventSectionException.class)
+	public ResponseEntity<ApiResponse<Void>> handleDuplicateEventSection(DuplicateEventSectionException ex) {
+		return error("Duplicate event section", HttpStatus.BAD_REQUEST);
 	}
 
 	@ExceptionHandler(VenueNotFoundException.class)

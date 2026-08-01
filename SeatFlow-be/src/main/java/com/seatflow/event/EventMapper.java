@@ -13,6 +13,8 @@ public interface EventMapper {
 
 	EventRecord findById(@Param("id") UUID id);
 
+	EventRecord findByIdForUpdate(@Param("id") UUID id);
+
 	List<EventRecord> findPage(@Param("limit") int limit, @Param("offset") long offset);
 
 	long count();

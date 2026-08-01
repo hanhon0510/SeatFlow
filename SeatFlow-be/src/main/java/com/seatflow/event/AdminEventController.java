@@ -20,9 +20,11 @@ import jakarta.validation.Valid;
 public class AdminEventController {
 
 	private final EventService eventService;
+	private final EventSectionPricingService eventSectionPricingService;
 
-	public AdminEventController(EventService eventService) {
+	public AdminEventController(EventService eventService, EventSectionPricingService eventSectionPricingService) {
 		this.eventService = eventService;
+		this.eventSectionPricingService = eventSectionPricingService;
 	}
 
 	@PostMapping
@@ -46,5 +48,17 @@ public class AdminEventController {
 	@PutMapping("/{eventId}")
 	public EventResponse update(@PathVariable UUID eventId, @Valid @RequestBody EventUpdateRequest request) {
 		return eventService.updateEvent(eventId, request);
+	}
+
+	@PutMapping("/{eventId}/sections")
+	public EventSectionConfigurationResponse replaceSections(
+			@PathVariable UUID eventId,
+			@Valid @RequestBody EventSectionReplaceRequest request) {
+		return eventSectionPricingService.replaceEventSections(eventId, request);
+	}
+
+	@GetMapping("/{eventId}/sections")
+	public EventSectionConfigurationResponse getSections(@PathVariable UUID eventId) {
+		return eventSectionPricingService.getEventSections(eventId);
 	}
 }

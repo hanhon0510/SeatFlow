@@ -36,6 +36,7 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 
 	@BeforeEach
 	void deleteEvents() {
+		jdbcTemplate.update("DELETE FROM event_sections");
 		jdbcTemplate.update("DELETE FROM events");
 		jdbcTemplate.update("DELETE FROM seats");
 		jdbcTemplate.update("DELETE FROM venue_sections");
