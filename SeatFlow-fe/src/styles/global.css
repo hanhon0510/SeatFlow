@@ -164,13 +164,15 @@ body {
 }
 
 .venue-form,
-.section-form {
+.section-form,
+.event-form {
   display: grid;
   gap: 8px;
 }
 
 .venue-form .ant-form-item,
-.section-form .ant-form-item {
+.section-form .ant-form-item,
+.event-form .ant-form-item {
   margin-bottom: 0;
 }
 
@@ -180,8 +182,13 @@ body {
 }
 
 .section-form .ant-input-number,
-.admin-form-grid .ant-input-number {
+.admin-form-grid .ant-input-number,
+.admin-form-grid .ant-picker {
   width: 100%;
+}
+
+#eventPricingForm .ant-form-item {
+  margin-bottom: 0;
 }
 
 .section-form-action {
