@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError } from 'axios'
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
@@ -10,6 +10,11 @@ import type {
   Venue,
   VenuePage,
 } from '../features/admin/venues/types'
+import type {
+  Event,
+  EventPublishResponse,
+  EventSectionConfiguration,
+} from '../features/admin/events/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
 import { apiClient } from '../shared/api/httpClient'
 import { ROUTES } from '../shared/constants/routes'
@@ -51,6 +56,48 @@ const venue: Venue = {
 
 const emptySeatLayout: SeatLayout = {
   venueId: venue.id,
+  sections: [],
+}
+
+const event: Event = {
+  id: 'f91978bb-a882-46e4-85ef-96d9cf778d83',
+  venueId: venue.id,
+  name: 'Opening Night',
+  description: 'Season opener',
+  startTime: '2026-09-01T19:00:00.000Z',
+  salesStartTime: '2026-08-01T00:00:00.000Z',
+  salesEndTime: '2026-09-01T18:00:00.000Z',
+  status: 'DRAFT',
+  createdAt: '2026-08-03T00:00:00Z',
+  updatedAt: '2026-08-03T00:00:00Z',
+}
+
+const layoutWithSection: SeatLayout = {
+  venueId: venue.id,
+  sections: [
+    {
+      id: '1f89f6d1-3bc4-4d46-8c85-24d6db537d87',
+      venueId: venue.id,
+      name: 'Orchestra',
+      displayOrder: 1,
+      createdAt: '2026-08-03T00:00:00Z',
+      seats: [
+        {
+          id: '5f3bc98c-981d-4cf6-8cf1-ee48482e13ea',
+          sectionId: '1f89f6d1-3bc4-4d46-8c85-24d6db537d87',
+          rowLabel: 'A',
+          seatNumber: 1,
+          seatLabel: 'A1',
+          accessible: false,
+          createdAt: '2026-08-03T00:00:00Z',
+        },
+      ],
+    },
+  ],
+}
+
+const emptyEventSections: EventSectionConfiguration = {
+  eventId: event.id,
   sections: [],
 }
 
@@ -114,6 +161,15 @@ function venuePage(items: Venue[]): VenuePage {
     totalItems: items.length,
     totalPages: items.length === 0 ? 0 : 1,
   }
+}
+
+async function fillDate(user: ReturnType<typeof userEvent.setup>, label: string, value: string) {
+  const input = screen.getByLabelText(label)
+  await user.click(input)
+  await user.clear(input)
+  await user.type(input, value)
+  fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
+  fireEvent.blur(input)
 }
 
 describe('App', () => {
@@ -611,6 +667,287 @@ describe('App', () => {
 
     await waitFor(() => expect(archiveSpy).toHaveBeenCalledOnce())
   }, 10000)
+
+  it('validates required event form fields', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.adminEventNew)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/venues') {
+        return response<VenuePage>(config, 200, venuePage([]))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Create event' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /create event/i }))
+
+    expect(await screen.findByText('Venue is required')).toBeInTheDocument()
+    expect(screen.getByText('Event name is required')).toBeInTheDocument()
+    expect(screen.getByText('Event start is required')).toBeInTheDocument()
+    expect(screen.getByText('Sales start is required')).toBeInTheDocument()
+    expect(screen.getByText('Sales end is required')).toBeInTheDocument()
+  })
+
+  it('creates an event with UTC schedule values', async () => {
+    const user = userEvent.setup()
+    const createEventSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.adminEventNew)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/venues') {
+        return response<VenuePage>(config, 200, venuePage([venue]))
+      }
+
+      if (endpoint(config) === 'POST /admin/events') {
+        createEventSpy(requestBody(config))
+        return response<Event>(config, 201, event)
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}`) {
+        return response<Event>(config, 200, event)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}/seat-layout`) {
+        return response<SeatLayout>(config, 200, emptySeatLayout)
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}/sections`) {
+        return response<EventSectionConfiguration>(config, 200, emptyEventSections)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Create event' })).toBeInTheDocument()
+    expect(await screen.findByText(venue.timezone)).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Event name'), event.name)
+    await user.type(screen.getByLabelText('Description'), event.description ?? '')
+    await fillDate(user, 'Event start', '2026-09-01 19:00')
+    await fillDate(user, 'Sales start', '2026-08-01 00:00')
+    await fillDate(user, 'Sales end', '2026-09-01 18:00')
+    await user.click(screen.getByRole('button', { name: /create event/i }))
+
+    await waitFor(() =>
+      expect(createEventSpy).toHaveBeenCalledWith({
+        venueId: venue.id,
+        name: event.name,
+        description: event.description,
+        startTime: '2026-09-01T12:00:00.000Z',
+        salesStartTime: '2026-07-31T17:00:00.000Z',
+        salesEndTime: '2026-09-01T11:00:00.000Z',
+      }),
+    )
+    expect(await screen.findByRole('heading', { name: 'Edit event' })).toBeInTheDocument()
+  }, 10000)
+
+  it('saves section pricing for a draft event', async () => {
+    const user = userEvent.setup()
+    const pricingSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.adminEventEdit(event.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/venues') {
+        return response<VenuePage>(config, 200, venuePage([venue]))
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}`) {
+        return response<Event>(config, 200, event)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}/seat-layout`) {
+        return response<SeatLayout>(config, 200, layoutWithSection)
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}/sections`) {
+        return response<EventSectionConfiguration>(config, 200, emptyEventSections)
+      }
+
+      if (endpoint(config) === `PUT /admin/events/${event.id}/sections`) {
+        pricingSpy(requestBody(config))
+        return response<EventSectionConfiguration>(config, 200, {
+          eventId: event.id,
+          sections: [
+            {
+              id: '5f121e8e-2f1d-4b10-b564-1567ff78e65d',
+              eventId: event.id,
+              venueSectionId: layoutWithSection.sections[0].id,
+              price: 125000,
+              salesEnabled: true,
+              createdAt: '2026-08-03T00:00:00Z',
+              updatedAt: '2026-08-03T00:00:00Z',
+            },
+          ],
+        })
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Edit event' })).toBeInTheDocument()
+    expect(await screen.findByText('Orchestra')).toBeInTheDocument()
+    await user.type(screen.getByRole('spinbutton'), '125000')
+    await user.click(screen.getByRole('button', { name: /save pricing/i }))
+
+    await waitFor(() =>
+      expect(pricingSpy).toHaveBeenCalledWith({
+        sections: [
+          {
+            venueSectionId: layoutWithSection.sections[0].id,
+            price: 125000,
+            salesEnabled: true,
+          },
+        ],
+      }),
+    )
+  }, 10000)
+
+  it('requires confirmation before publishing an event', async () => {
+    const publishSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.adminEventEdit(event.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/venues') {
+        return response<VenuePage>(config, 200, venuePage([venue]))
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}`) {
+        return response<Event>(config, 200, event)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}/seat-layout`) {
+        return response<SeatLayout>(config, 200, layoutWithSection)
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}/sections`) {
+        return response<EventSectionConfiguration>(config, 200, emptyEventSections)
+      }
+
+      if (endpoint(config) === `POST /admin/events/${event.id}/publish`) {
+        publishSpy()
+        return response<EventPublishResponse>(config, 200, {
+          eventId: event.id,
+          status: 'PUBLISHED',
+          inventoryCount: 1,
+        })
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Edit event' })).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: /publish event/i }))
+
+    expect(await screen.findByText(/Publish Opening Night/)).toBeInTheDocument()
+    expect(publishSpy).not.toHaveBeenCalled()
+
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Publish event' }))
+
+    await waitFor(() => expect(publishSpy).toHaveBeenCalledOnce())
+  }, 10000)
+
+  it('displays backend publish errors', async () => {
+    window.history.pushState({}, '', ROUTES.adminEventEdit(event.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/venues') {
+        return response<VenuePage>(config, 200, venuePage([venue]))
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}`) {
+        return response<Event>(config, 200, event)
+      }
+
+      if (endpoint(config) === `GET /admin/venues/${venue.id}/seat-layout`) {
+        return response<SeatLayout>(config, 200, layoutWithSection)
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}/sections`) {
+        return response<EventSectionConfiguration>(config, 200, emptyEventSections)
+      }
+
+      if (endpoint(config) === `POST /admin/events/${event.id}/publish`) {
+        return rejectedResponse(config, 409, 'Event section pricing is incomplete')
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Edit event' })).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: /publish event/i }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Publish event' }))
+
+    expect(await screen.findByText('Event section pricing is incomplete')).toBeInTheDocument()
+  }, 10000)
+
+  it('blocks normal users from event administration pages', async () => {
+    window.history.pushState({}, '', ROUTES.adminEvents)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('403')).toBeInTheDocument()
+    expect(screen.getByText('You are not authorized to access this page.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Events' })).not.toBeInTheDocument()
+  })
 
   it('logs out and clears the protected session', async () => {
     const user = userEvent.setup()
