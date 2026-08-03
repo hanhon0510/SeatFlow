@@ -66,6 +66,15 @@
           AND (status &lt;&gt; 'PUBLISHED' OR venue_id = #{venueId})
     </update>
 
+    <update id="publishDraft">
+        UPDATE events
+        SET
+            status = 'PUBLISHED',
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status = 'DRAFT'
+    </update>
+
     <select id="findById" resultMap="EventRecordResultMap">
         SELECT
             <include refid="EventColumns" />

@@ -13,11 +13,14 @@ import com.seatflow.auth.InvalidRefreshTokenException;
 import com.seatflow.auth.UserAlreadyExistsException;
 import com.seatflow.event.DuplicateEventSectionException;
 import com.seatflow.event.EventNotFoundException;
+import com.seatflow.event.EventPublicationException;
 import com.seatflow.event.EventStateConflictException;
 import com.seatflow.event.InvalidEventSectionException;
 import com.seatflow.event.InvalidEventSectionPriceException;
 import com.seatflow.event.InvalidEventPaginationException;
 import com.seatflow.event.InvalidEventTimingException;
+import com.seatflow.event.MissingEventSectionPricingException;
+import com.seatflow.event.NoEventSeatsException;
 import com.seatflow.health.DatabaseHealthUnavailableException;
 import com.seatflow.seating.DuplicateSeatLabelException;
 import com.seatflow.seating.InvalidSeatBatchException;
@@ -110,6 +113,22 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(EventStateConflictException.class)
 	public ResponseEntity<ApiResponse<Void>> handleEventStateConflict(EventStateConflictException ex) {
 		return error("Event state conflict", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(MissingEventSectionPricingException.class)
+	public ResponseEntity<ApiResponse<Void>> handleMissingEventSectionPricing(
+			MissingEventSectionPricingException ex) {
+		return error("Event section pricing is incomplete", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(NoEventSeatsException.class)
+	public ResponseEntity<ApiResponse<Void>> handleNoEventSeats(NoEventSeatsException ex) {
+		return error("Event has no seats", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(EventPublicationException.class)
+	public ResponseEntity<ApiResponse<Void>> handleEventPublication(EventPublicationException ex) {
+		return error("Event publication failed", HttpStatus.CONFLICT);
 	}
 
 	@ExceptionHandler(VenueAlreadyArchivedException.class)

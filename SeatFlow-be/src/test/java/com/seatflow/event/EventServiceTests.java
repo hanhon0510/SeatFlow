@@ -213,6 +213,11 @@ class EventServiceTests {
 		}
 
 		@Override
+		public int publishDraft(UUID id) {
+			return 0;
+		}
+
+		@Override
 		public EventRecord findById(UUID id) {
 			return events.stream()
 					.filter(event -> event.id().equals(id))

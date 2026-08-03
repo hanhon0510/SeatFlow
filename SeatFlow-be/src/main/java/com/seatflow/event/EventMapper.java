@@ -11,6 +11,8 @@ public interface EventMapper {
 
 	int update(EventRecord event);
 
+	int publishDraft(@Param("id") UUID id);
+
 	EventRecord findById(@Param("id") UUID id);
 
 	EventRecord findByIdForUpdate(@Param("id") UUID id);

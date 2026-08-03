@@ -44,7 +44,8 @@ import com.seatflow.venue.VenueStatus;
 		JwtTokenService.class,
 		VenueService.class,
 		EventService.class,
-		EventSectionPricingService.class
+		EventSectionPricingService.class,
+		EventPublishService.class
 })
 @TestPropertySource(properties = {
 		"server.port=8080",
@@ -73,6 +74,9 @@ class AdminEventControllerSecurityTests {
 
 	@MockitoBean
 	private EventSectionMapper eventSectionMapper;
+
+	@MockitoBean
+	private EventSeatMapper eventSeatMapper;
 
 	@Test
 	void adminCanCreateDraftEvent() throws Exception {
@@ -305,6 +309,88 @@ class AdminEventControllerSecurityTests {
 	}
 
 	@Test
+	void adminCanPublishEvent() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		when(eventMapper.findByIdForUpdate(eventId)).thenReturn(event(
+				eventId,
+				venueId,
+				"Opening Night",
+				EventStatus.DRAFT));
+		when(eventSeatMapper.countSourceSeatsForEvent(eventId)).thenReturn(2L);
+		when(eventSeatMapper.countMissingPricedSeatsForEvent(eventId)).thenReturn(0L);
+		when(eventSeatMapper.insertForDraftEvent(eventId)).thenReturn(2);
+		when(eventMapper.publishDraft(eventId)).thenReturn(1);
+		when(eventSeatMapper.countByEventId(eventId)).thenReturn(2L);
+
+		mockMvc.perform(post("/api/v1/admin/events/{eventId}/publish", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.eventId").value(eventId.toString()))
+				.andExpect(jsonPath("$.status").value("PUBLISHED"))
+				.andExpect(jsonPath("$.inventoryCount").value(2));
+
+		verify(eventSeatMapper).insertForDraftEvent(eventId);
+		verify(eventMapper).publishDraft(eventId);
+	}
+
+	@Test
+	void duplicatePublishReturnsCurrentInventoryCount() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		when(eventMapper.findByIdForUpdate(eventId)).thenReturn(event(
+				eventId,
+				venueId,
+				"Opening Night",
+				EventStatus.PUBLISHED));
+		when(eventSeatMapper.countByEventId(eventId)).thenReturn(2L);
+
+		mockMvc.perform(post("/api/v1/admin/events/{eventId}/publish", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.eventId").value(eventId.toString()))
+				.andExpect(jsonPath("$.status").value("PUBLISHED"))
+				.andExpect(jsonPath("$.inventoryCount").value(2));
+	}
+
+	@Test
+	void missingPricingPublishReturnsConflict() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		when(eventMapper.findByIdForUpdate(eventId)).thenReturn(event(
+				eventId,
+				venueId,
+				"Opening Night",
+				EventStatus.DRAFT));
+		when(eventSeatMapper.countSourceSeatsForEvent(eventId)).thenReturn(2L);
+		when(eventSeatMapper.countMissingPricedSeatsForEvent(eventId)).thenReturn(1L);
+
+		mockMvc.perform(post("/api/v1/admin/events/{eventId}/publish", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Event section pricing is incomplete"));
+	}
+
+	@Test
+	void noSeatsPublishReturnsConflict() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		when(eventMapper.findByIdForUpdate(eventId)).thenReturn(event(
+				eventId,
+				venueId,
+				"Opening Night",
+				EventStatus.DRAFT));
+		when(eventSeatMapper.countSourceSeatsForEvent(eventId)).thenReturn(0L);
+
+		mockMvc.perform(post("/api/v1/admin/events/{eventId}/publish", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Event has no seats"));
+	}
+
+	@Test
 	void normalUserCannotManageEvents() throws Exception {
 		UUID eventId = UUID.randomUUID();
 		UUID venueId = UUID.randomUUID();
@@ -333,6 +419,10 @@ class AdminEventControllerSecurityTests {
 				.andExpect(status().isForbidden());
 
 		mockMvc.perform(get("/api/v1/admin/events/{eventId}/sections", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(post("/api/v1/admin/events/{eventId}/publish", eventId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
 				.andExpect(status().isForbidden());
 	}

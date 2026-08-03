@@ -36,6 +36,7 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 
 	@BeforeEach
 	void deleteEvents() {
+		jdbcTemplate.update("DELETE FROM event_seats");
 		jdbcTemplate.update("DELETE FROM event_sections");
 		jdbcTemplate.update("DELETE FROM events");
 		jdbcTemplate.update("DELETE FROM seats");
@@ -170,6 +171,20 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(found.name()).isEqualTo("Published Event Updated");
 		assertThat(found.venueId()).isEqualTo(venue.id());
 		assertThat(found.status()).isEqualTo(EventStatus.PUBLISHED);
+	}
+
+	@Test
+	void publishDraftUsesConditionalUpdate() {
+		VenueRecord venue = insertVenue("Main Hall");
+		EventRecord event = event(venue.id(), "Opening Night", EVENT_START);
+		eventMapper.insert(event);
+
+		int publishedRows = eventMapper.publishDraft(event.id());
+		int publishedAgainRows = eventMapper.publishDraft(event.id());
+
+		assertThat(publishedRows).isEqualTo(1);
+		assertThat(publishedAgainRows).isZero();
+		assertThat(eventMapper.findById(event.id()).status()).isEqualTo(EventStatus.PUBLISHED);
 	}
 
 	private VenueRecord insertVenue(String name) {
