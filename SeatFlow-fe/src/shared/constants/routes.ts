@@ -3,6 +3,8 @@ export const ROUTES = {
   login: '/login',
   register: '/register',
   events: '/events',
+  eventDetailPattern: '/events/:eventId',
+  eventDetail: (eventId: string) => `/events/${eventId}`,
   admin: '/admin',
   adminEvents: '/admin/events',
   adminEventNew: '/admin/events/new',

@@ -10,7 +10,8 @@ import { EventFormPage } from '../../features/admin/events/pages/EventFormPage'
 import { EventListPage } from '../../features/admin/events/pages/EventListPage'
 import { HealthPage } from '../../features/health/pages/HealthPage'
 import { NotFoundPage } from '../../features/not-found/pages/NotFoundPage'
-import { PlaceholderPage } from '../../features/placeholder/pages/PlaceholderPage'
+import { EventCatalogPage } from '../../features/events/pages/EventCatalogPage'
+import { EventDetailPage } from '../../features/events/pages/EventDetailPage'
 import { ROUTES } from '../../shared/constants/routes'
 
 export function AppRouter() {
@@ -20,8 +21,9 @@ export function AppRouter() {
         <Route index element={<HealthPage />} />
         <Route path={ROUTES.login} element={<LoginPage />} />
         <Route path={ROUTES.register} element={<RegisterPage />} />
+        <Route path={ROUTES.events} element={<EventCatalogPage />} />
+        <Route path={ROUTES.eventDetailPattern} element={<EventDetailPage />} />
         <Route element={<ProtectedRoute />}>
-          <Route path={ROUTES.events} element={<PlaceholderPage title="Events" />} />
           <Route element={<AdminRoute />}>
             <Route path={ROUTES.admin} element={<VenueListPage />} />
             <Route path={ROUTES.adminEvents} element={<EventListPage />} />

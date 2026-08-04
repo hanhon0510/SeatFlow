@@ -15,6 +15,7 @@ import type {
   EventPublishResponse,
   EventSectionConfiguration,
 } from '../features/admin/events/types'
+import type { PublicEvent, PublicEventPage } from '../features/events/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
 import { apiClient } from '../shared/api/httpClient'
 import { ROUTES } from '../shared/constants/routes'
@@ -70,6 +71,22 @@ const event: Event = {
   status: 'DRAFT',
   createdAt: '2026-08-03T00:00:00Z',
   updatedAt: '2026-08-03T00:00:00Z',
+}
+
+const publishedEvent: PublicEvent = {
+  id: '8fb3eb5f-9a73-45d8-8494-ffb98a3137d2',
+  venueId: venue.id,
+  venueName: venue.name,
+  venueAddress: venue.address,
+  venueCity: venue.city,
+  venueCountry: venue.country,
+  venueTimezone: venue.timezone,
+  name: 'Opening Gala',
+  description: 'A published concert',
+  startTime: '2026-09-01T19:00:00.000Z',
+  salesStartTime: '2026-08-01T00:00:00.000Z',
+  salesEndTime: '2026-09-01T18:00:00.000Z',
+  minimumPrice: 50000,
 }
 
 const layoutWithSection: SeatLayout = {
@@ -163,6 +180,28 @@ function venuePage(items: Venue[]): VenuePage {
   }
 }
 
+function publicEventPage(
+  items: PublicEvent[],
+  page = 0,
+  size = 12,
+  totalItems = items.length,
+): PublicEventPage {
+  return {
+    items,
+    page,
+    size,
+    totalItems,
+    totalPages: totalItems === 0 ? 0 : Math.ceil(totalItems / size),
+  }
+}
+
+function publicEventsResponse(config: InternalAxiosRequestConfig, items: PublicEvent[] = []) {
+  const params = config.params as { page?: number; size?: number } | undefined
+  const page = params?.page ?? 0
+  const size = params?.size ?? 12
+  return response<PublicEventPage>(config, 200, publicEventPage(items, page, size))
+}
+
 async function fillDate(user: ReturnType<typeof userEvent.setup>, label: string, value: string) {
   const input = screen.getByLabelText(label)
   await user.click(input)
@@ -197,6 +236,72 @@ describe('App', () => {
 
     expect(screen.getByText('404')).toBeInTheDocument()
     expect(screen.getByText('Page not found')).toBeInTheDocument()
+  })
+
+  it('shows public event catalog and applies search with pagination', async () => {
+    const user = userEvent.setup()
+    const listParams: unknown[] = []
+    window.history.pushState({}, '', ROUTES.events)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === 'GET /events') {
+        listParams.push(config.params)
+        const params = config.params as { size?: number; page?: number }
+        if (params.size === 100) {
+          return response<PublicEventPage>(config, 200, publicEventPage([publishedEvent], 0, 100))
+        }
+
+        return response<PublicEventPage>(
+          config,
+          200,
+          publicEventPage([publishedEvent], params.page ?? 0, 12, 13),
+        )
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Events' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: publishedEvent.name })).toBeInTheDocument()
+    expect(screen.getByText(venue.name)).toBeInTheDocument()
+    expect(screen.getByText(/From 50,000/)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Search events'), 'gala{enter}')
+    await waitFor(() =>
+      expect(listParams).toContainEqual(expect.objectContaining({ search: 'gala' })),
+    )
+
+    fireEvent.click(await screen.findByTitle('2'))
+    await waitFor(() =>
+      expect(listParams).toContainEqual(expect.objectContaining({ page: 1 })),
+    )
+  }, 10000)
+
+  it('shows public event detail', async () => {
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: publishedEvent.name })).toBeInTheDocument()
+    expect(screen.getByText(venue.name)).toBeInTheDocument()
+    expect(screen.getByText(venue.timezone)).toBeInTheDocument()
+    expect(screen.getByText(/From 50,000/)).toBeInTheDocument()
   })
 
   it('validates required login fields', async () => {
@@ -279,6 +384,10 @@ describe('App', () => {
         return response<AuthUser>(config, 200, authUser)
       }
 
+      if (endpoint(config) === 'GET /events') {
+        return publicEventsResponse(config)
+      }
+
       return rejectedResponse(config, 500, 'Unexpected request')
     })
 
@@ -333,6 +442,10 @@ describe('App', () => {
         return response<AuthUser>(config, 200, authUser)
       }
 
+      if (endpoint(config) === 'GET /events') {
+        return publicEventsResponse(config)
+      }
+
       return rejectedResponse(config, 500, 'Unexpected request')
     })
 
@@ -359,6 +472,10 @@ describe('App', () => {
 
       if (endpoint(config) === 'GET /users/me') {
         return response<AuthUser>(config, 200, authUser)
+      }
+
+      if (endpoint(config) === 'GET /events') {
+        return publicEventsResponse(config)
       }
 
       return rejectedResponse(config, 500, 'Unexpected request')
@@ -962,6 +1079,10 @@ describe('App', () => {
         return response<AuthUser>(config, 200, authUser)
       }
 
+      if (endpoint(config) === 'GET /events') {
+        return publicEventsResponse(config)
+      }
+
       if (endpoint(config) === 'POST /auth/logout') {
         logoutSpy()
         return response(config, 204, undefined)
@@ -983,7 +1104,7 @@ describe('App', () => {
   it('stops after one refresh retry when session restoration fails', async () => {
     let refreshCalls = 0
     let currentUserCalls = 0
-    window.history.pushState({}, '', ROUTES.events)
+    window.history.pushState({}, '', ROUTES.admin)
     installApiMock((config) => {
       if (endpoint(config) === 'POST /auth/refresh') {
         refreshCalls += 1

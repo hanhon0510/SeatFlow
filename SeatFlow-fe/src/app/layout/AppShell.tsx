@@ -27,11 +27,10 @@ type NavItem = {
 
 const publicNavItems = [
   { key: ROUTES.home, label: 'Health', icon: <HomeOutlined /> },
-] satisfies NavItem[]
-
-const authenticatedNavItems = [
   { key: ROUTES.events, label: 'Events', icon: <CalendarOutlined /> },
 ] satisfies NavItem[]
+
+const authenticatedNavItems = [] satisfies NavItem[]
 
 const adminNavItems = [
   { key: ROUTES.admin, label: 'Admin', icon: <LockOutlined /> },
