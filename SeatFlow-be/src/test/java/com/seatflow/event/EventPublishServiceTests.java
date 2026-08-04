@@ -195,6 +195,21 @@ class EventPublishServiceTests {
 		public long count() {
 			return events.size();
 		}
+
+		@Override
+		public List<PublicEventCatalogRecord> findPublishedCatalogPage(PublicEventCatalogQuery query) {
+			return List.of();
+		}
+
+		@Override
+		public long countPublishedCatalog(PublicEventCatalogQuery query) {
+			return 0;
+		}
+
+		@Override
+		public PublicEventCatalogRecord findPublishedCatalogById(UUID id) {
+			return null;
+		}
 	}
 
 	private static final class InMemoryEventSeatMapper implements EventSeatMapper {

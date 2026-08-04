@@ -15,6 +15,7 @@ import com.seatflow.event.DuplicateEventSectionException;
 import com.seatflow.event.EventNotFoundException;
 import com.seatflow.event.EventPublicationException;
 import com.seatflow.event.EventStateConflictException;
+import com.seatflow.event.InvalidEventCatalogQueryException;
 import com.seatflow.event.InvalidEventSectionException;
 import com.seatflow.event.InvalidEventSectionPriceException;
 import com.seatflow.event.InvalidEventPaginationException;
@@ -78,6 +79,11 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(InvalidEventPaginationException.class)
 	public ResponseEntity<ApiResponse<Void>> handleInvalidEventPagination(InvalidEventPaginationException ex) {
 		return error("Invalid pagination", HttpStatus.BAD_REQUEST);
+	}
+
+	@ExceptionHandler(InvalidEventCatalogQueryException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidEventCatalogQuery(InvalidEventCatalogQueryException ex) {
+		return error("Invalid event catalog query", HttpStatus.BAD_REQUEST);
 	}
 
 	@ExceptionHandler(InvalidEventTimingException.class)

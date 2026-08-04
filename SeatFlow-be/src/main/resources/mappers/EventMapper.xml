@@ -18,6 +18,24 @@
         </constructor>
     </resultMap>
 
+    <resultMap id="PublicEventCatalogRecordResultMap" type="com.seatflow.event.PublicEventCatalogRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="venue_id" javaType="java.util.UUID" />
+            <arg column="venue_name" javaType="java.lang.String" />
+            <arg column="venue_address" javaType="java.lang.String" />
+            <arg column="venue_city" javaType="java.lang.String" />
+            <arg column="venue_country" javaType="java.lang.String" />
+            <arg column="venue_timezone" javaType="java.lang.String" />
+            <arg column="name" javaType="java.lang.String" />
+            <arg column="description" javaType="java.lang.String" />
+            <arg column="start_time" javaType="java.time.Instant" />
+            <arg column="sales_start_time" javaType="java.time.Instant" />
+            <arg column="sales_end_time" javaType="java.time.Instant" />
+            <arg column="minimum_price" javaType="java.math.BigDecimal" />
+        </constructor>
+    </resultMap>
+
     <sql id="EventColumns">
         id,
         venue_id,
@@ -29,6 +47,60 @@
         status,
         created_at,
         updated_at
+    </sql>
+
+    <sql id="PublicEventCatalogColumns">
+        e.id,
+        e.venue_id,
+        v.name AS venue_name,
+        v.address AS venue_address,
+        v.city AS venue_city,
+        v.country AS venue_country,
+        v.timezone AS venue_timezone,
+        e.name,
+        e.description,
+        e.start_time,
+        e.sales_start_time,
+        e.sales_end_time,
+        MIN(CASE WHEN event_seat.permanent_status = 'AVAILABLE' THEN event_seat.price END) AS minimum_price
+    </sql>
+
+    <sql id="PublicEventCatalogGroupBy">
+        e.id,
+        e.venue_id,
+        v.name,
+        v.address,
+        v.city,
+        v.country,
+        v.timezone,
+        e.name,
+        e.description,
+        e.start_time,
+        e.sales_start_time,
+        e.sales_end_time
+    </sql>
+
+    <sql id="PublishedCatalogFilters">
+        <where>
+            e.status = 'PUBLISHED'
+            <if test="query.search != null and query.search != ''">
+                AND (
+                    LOWER(e.name) LIKE CONCAT('%', LOWER(#{query.search}), '%')
+                    OR LOWER(COALESCE(e.description, '')) LIKE CONCAT('%', LOWER(#{query.search}), '%')
+                    OR LOWER(v.name) LIKE CONCAT('%', LOWER(#{query.search}), '%')
+                    OR LOWER(v.city) LIKE CONCAT('%', LOWER(#{query.search}), '%')
+                )
+            </if>
+            <if test="query.venueId != null">
+                AND e.venue_id = #{query.venueId}
+            </if>
+            <if test="query.startDate != null">
+                AND e.start_time &gt;= #{query.startDate}
+            </if>
+            <if test="query.endDate != null">
+                AND e.start_time &lt;= #{query.endDate}
+            </if>
+        </where>
     </sql>
 
     <insert id="insert" parameterType="com.seatflow.event.EventRecord">
@@ -102,5 +174,51 @@
     <select id="count" resultType="long">
         SELECT COUNT(*)
         FROM events
+    </select>
+
+    <select id="findPublishedCatalogPage" resultMap="PublicEventCatalogRecordResultMap">
+        SELECT
+            <include refid="PublicEventCatalogColumns" />
+        FROM events e
+        JOIN venues v ON v.id = e.venue_id
+        LEFT JOIN event_seats event_seat ON event_seat.event_id = e.id
+        <include refid="PublishedCatalogFilters" />
+        GROUP BY
+            <include refid="PublicEventCatalogGroupBy" />
+        <choose>
+            <when test="query.sort == 'START_DESC'">
+                ORDER BY e.start_time DESC, e.name ASC, e.id ASC
+            </when>
+            <when test="query.sort == 'PRICE_ASC'">
+                ORDER BY minimum_price ASC NULLS LAST, e.start_time ASC, e.id ASC
+            </when>
+            <when test="query.sort == 'PRICE_DESC'">
+                ORDER BY minimum_price DESC NULLS LAST, e.start_time ASC, e.id ASC
+            </when>
+            <otherwise>
+                ORDER BY e.start_time ASC, e.name ASC, e.id ASC
+            </otherwise>
+        </choose>
+        LIMIT #{query.limit}
+        OFFSET #{query.offset}
+    </select>
+
+    <select id="countPublishedCatalog" resultType="long">
+        SELECT COUNT(*)
+        FROM events e
+        JOIN venues v ON v.id = e.venue_id
+        <include refid="PublishedCatalogFilters" />
+    </select>
+
+    <select id="findPublishedCatalogById" resultMap="PublicEventCatalogRecordResultMap">
+        SELECT
+            <include refid="PublicEventCatalogColumns" />
+        FROM events e
+        JOIN venues v ON v.id = e.venue_id
+        LEFT JOIN event_seats event_seat ON event_seat.event_id = e.id
+        WHERE e.id = #{id}
+          AND e.status = 'PUBLISHED'
+        GROUP BY
+            <include refid="PublicEventCatalogGroupBy" />
     </select>
 </mapper>

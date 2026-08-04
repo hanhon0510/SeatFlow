@@ -20,4 +20,10 @@ public interface EventMapper {
 	List<EventRecord> findPage(@Param("limit") int limit, @Param("offset") long offset);
 
 	long count();
+
+	List<PublicEventCatalogRecord> findPublishedCatalogPage(@Param("query") PublicEventCatalogQuery query);
+
+	long countPublishedCatalog(@Param("query") PublicEventCatalogQuery query);
+
+	PublicEventCatalogRecord findPublishedCatalogById(@Param("id") UUID id);
 }

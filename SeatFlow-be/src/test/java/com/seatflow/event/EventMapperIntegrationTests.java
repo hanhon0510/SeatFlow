@@ -2,6 +2,7 @@ package com.seatflow.event;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -13,6 +14,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import com.seatflow.seating.SeatMapper;
+import com.seatflow.seating.SeatRecord;
+import com.seatflow.seating.VenueSectionMapper;
+import com.seatflow.seating.VenueSectionRecord;
 import com.seatflow.support.PostgresTestContainerSupport;
 import com.seatflow.venue.VenueMapper;
 import com.seatflow.venue.VenueRecord;
@@ -30,6 +35,18 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 
 	@Autowired
 	private EventMapper eventMapper;
+
+	@Autowired
+	private VenueSectionMapper venueSectionMapper;
+
+	@Autowired
+	private SeatMapper seatMapper;
+
+	@Autowired
+	private EventSectionMapper eventSectionMapper;
+
+	@Autowired
+	private EventSeatMapper eventSeatMapper;
 
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
@@ -187,6 +204,88 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(eventMapper.findById(event.id()).status()).isEqualTo(EventStatus.PUBLISHED);
 	}
 
+	@Test
+	void publicCatalogFiltersCountsAndExcludesDraftEvents() {
+		VenueRecord mainVenue = insertVenue("Main Hall");
+		VenueSectionRecord mainSection = insertSection(mainVenue, "Orchestra");
+		insertSeat(mainSection, "A", 1);
+		EventRecord opening = insertPublishedEvent(
+				mainVenue,
+				mainSection,
+				"Opening Gala",
+				EVENT_START,
+				new BigDecimal("50000.00"));
+		EventRecord draft = event(mainVenue.id(), "Opening Draft", EVENT_START.plusSeconds(3600));
+		eventMapper.insert(draft);
+
+		VenueRecord secondVenue = insertVenue("Second Hall");
+		VenueSectionRecord secondSection = insertSection(secondVenue, "Balcony");
+		insertSeat(secondSection, "B", 1);
+		insertPublishedEvent(
+				secondVenue,
+				secondSection,
+				"Jazz Evening",
+				EVENT_START.plusSeconds(7200),
+				new BigDecimal("30000.00"));
+
+		PublicEventCatalogQuery query = new PublicEventCatalogQuery(
+				"opening",
+				mainVenue.id(),
+				EVENT_START.minusSeconds(60),
+				EVENT_START.plusSeconds(60),
+				"START_ASC",
+				10,
+				0);
+
+		List<PublicEventCatalogRecord> events = eventMapper.findPublishedCatalogPage(query);
+		PublicEventCatalogRecord detail = eventMapper.findPublishedCatalogById(opening.id());
+
+		assertThat(eventMapper.countPublishedCatalog(query)).isEqualTo(1);
+		assertThat(events).extracting(PublicEventCatalogRecord::id).containsExactly(opening.id());
+		assertThat(events.getFirst().venueName()).isEqualTo("Main Hall");
+		assertThat(events.getFirst().venueTimezone()).isEqualTo("Asia/Ho_Chi_Minh");
+		assertThat(events.getFirst().minimumPrice()).isEqualByComparingTo("50000.00");
+		assertThat(detail).isNotNull();
+		assertThat(detail.id()).isEqualTo(opening.id());
+		assertThat(detail.minimumPrice()).isEqualByComparingTo("50000.00");
+		assertThat(eventMapper.findPublishedCatalogById(draft.id())).isNull();
+	}
+
+	@Test
+	void publicCatalogPaginatesWithStableOrdering() {
+		VenueRecord venue = insertVenue("Main Hall");
+		VenueSectionRecord section = insertSection(venue, "Orchestra");
+		insertSeat(section, "A", 1);
+		insertPublishedEvent(venue, section, "Charlie Event", EVENT_START, new BigDecimal("70000.00"));
+		insertPublishedEvent(venue, section, "Alpha Event", EVENT_START, new BigDecimal("90000.00"));
+		insertPublishedEvent(venue, section, "Bravo Event", EVENT_START, new BigDecimal("80000.00"));
+		PublicEventCatalogQuery firstPageQuery = new PublicEventCatalogQuery(
+				null,
+				null,
+				null,
+				null,
+				"START_ASC",
+				2,
+				0);
+		PublicEventCatalogQuery secondPageQuery = new PublicEventCatalogQuery(
+				null,
+				null,
+				null,
+				null,
+				"START_ASC",
+				2,
+				2);
+
+		List<PublicEventCatalogRecord> firstPage = eventMapper.findPublishedCatalogPage(firstPageQuery);
+		List<PublicEventCatalogRecord> secondPage = eventMapper.findPublishedCatalogPage(secondPageQuery);
+
+		assertThat(eventMapper.countPublishedCatalog(firstPageQuery)).isEqualTo(3);
+		assertThat(firstPage).extracting(PublicEventCatalogRecord::name)
+				.containsExactly("Alpha Event", "Bravo Event");
+		assertThat(secondPage).extracting(PublicEventCatalogRecord::name)
+				.containsExactly("Charlie Event");
+	}
+
 	private VenueRecord insertVenue(String name) {
 		VenueRecord venue = VenueRecord.forInsert(
 				UUID.randomUUID(),
@@ -197,6 +296,43 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 				"Asia/Ho_Chi_Minh");
 		venueMapper.insert(venue);
 		return venueMapper.findById(venue.id());
+	}
+
+	private VenueSectionRecord insertSection(VenueRecord venue, String name) {
+		VenueSectionRecord section = VenueSectionRecord.forInsert(UUID.randomUUID(), venue.id(), name, 1);
+		venueSectionMapper.insert(section);
+		return venueSectionMapper.findById(section.id());
+	}
+
+	private SeatRecord insertSeat(VenueSectionRecord section, String rowLabel, int seatNumber) {
+		SeatRecord seat = SeatRecord.forInsert(
+				UUID.randomUUID(),
+				section.id(),
+				rowLabel,
+				seatNumber,
+				rowLabel + seatNumber,
+				false);
+		seatMapper.insert(seat);
+		return seatMapper.findById(seat.id());
+	}
+
+	private EventRecord insertPublishedEvent(
+			VenueRecord venue,
+			VenueSectionRecord section,
+			String name,
+			Instant startTime,
+			BigDecimal price) {
+		EventRecord event = event(venue.id(), name, startTime);
+		eventMapper.insert(event);
+		eventSectionMapper.insertForDraftEvent(EventSectionRecord.forInsert(
+				UUID.randomUUID(),
+				event.id(),
+				section.id(),
+				price,
+				true));
+		assertThat(eventSeatMapper.insertForDraftEvent(event.id())).isEqualTo(1);
+		assertThat(eventMapper.publishDraft(event.id())).isEqualTo(1);
+		return eventMapper.findById(event.id());
 	}
 
 	private static EventRecord event(UUID venueId, String name, Instant startTime) {
