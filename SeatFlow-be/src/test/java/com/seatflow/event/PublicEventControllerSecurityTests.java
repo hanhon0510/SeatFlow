@@ -31,7 +31,8 @@ import com.seatflow.support.JwtTestSupport;
 		SecurityConfig.class,
 		JwtConfig.class,
 		JwtTokenService.class,
-		PublicEventCatalogService.class
+		PublicEventCatalogService.class,
+		EventSeatLayoutService.class
 })
 @TestPropertySource(properties = {
 		"server.port=8080",
@@ -50,6 +51,9 @@ class PublicEventControllerSecurityTests {
 
 	@MockitoBean
 	private EventMapper eventMapper;
+
+	@MockitoBean
+	private EventSeatMapper eventSeatMapper;
 
 	@Test
 	void unauthenticatedUserCanBrowsePublishedEvents() throws Exception {
@@ -103,6 +107,48 @@ class PublicEventControllerSecurityTests {
 				.andExpect(jsonPath("$.message").value("Invalid event catalog query"));
 	}
 
+	@Test
+	void unauthenticatedUserCanReadPublishedEventSeatLayout() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID sectionId = UUID.randomUUID();
+		UUID eventSeatId = UUID.randomUUID();
+		when(eventSeatMapper.findPublishedLayoutByEventId(eventId)).thenReturn(List.of(eventSeatRow(
+				sectionId,
+				"Orchestra",
+				1,
+				"A",
+				eventSeatId,
+				"A1",
+				1,
+				"125000.00",
+				EventSeatStatus.AVAILABLE,
+				true)));
+
+		mockMvc.perform(get("/api/v1/events/{eventId}/seats", eventId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.eventId").value(eventId.toString()))
+				.andExpect(jsonPath("$.sections[0].id").value(sectionId.toString()))
+				.andExpect(jsonPath("$.sections[0].name").value("Orchestra"))
+				.andExpect(jsonPath("$.sections[0].rows[0].rowLabel").value("A"))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].eventSeatId").value(eventSeatId.toString()))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].seatLabel").value("A1"))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].seatNumber").value(1))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].price").value(125000.00))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].permanentStatus").value("AVAILABLE"))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].accessible").value(true));
+	}
+
+	@Test
+	void draftEventSeatLayoutIsUnavailablePublicly() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		when(eventSeatMapper.findPublishedLayoutByEventId(eventId)).thenReturn(List.of());
+
+		mockMvc.perform(get("/api/v1/events/{eventId}/seats", eventId))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Event not found"));
+	}
+
 	private static PublicEventCatalogRecord publicEvent(UUID eventId, UUID venueId) {
 		return new PublicEventCatalogRecord(
 				eventId,
@@ -118,5 +164,29 @@ class PublicEventControllerSecurityTests {
 				SALES_START,
 				SALES_END,
 				new BigDecimal("50000.00"));
+	}
+
+	private static EventSeatLayoutRow eventSeatRow(
+			UUID sectionId,
+			String sectionName,
+			int displayOrder,
+			String rowLabel,
+			UUID eventSeatId,
+			String seatLabel,
+			int seatNumber,
+			String price,
+			EventSeatStatus status,
+			boolean accessible) {
+		return new EventSeatLayoutRow(
+				sectionId,
+				sectionName,
+				displayOrder,
+				rowLabel,
+				eventSeatId,
+				seatLabel,
+				seatNumber,
+				new BigDecimal(price),
+				status,
+				accessible);
 	}
 }

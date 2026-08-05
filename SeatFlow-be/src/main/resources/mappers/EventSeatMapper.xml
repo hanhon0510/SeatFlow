@@ -16,6 +16,21 @@
         </constructor>
     </resultMap>
 
+    <resultMap id="EventSeatLayoutRowResultMap" type="com.seatflow.event.EventSeatLayoutRow">
+        <constructor>
+            <idArg column="section_id" javaType="java.util.UUID" />
+            <arg column="section_name" javaType="java.lang.String" />
+            <arg column="section_display_order" javaType="_int" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="event_seat_id" javaType="java.util.UUID" />
+            <arg column="seat_label" javaType="java.lang.String" />
+            <arg column="seat_number" javaType="_int" />
+            <arg column="price" javaType="java.math.BigDecimal" />
+            <arg column="permanent_status" javaType="com.seatflow.event.EventSeatStatus" />
+            <arg column="accessible" javaType="_boolean" />
+        </constructor>
+    </resultMap>
+
     <sql id="EventSeatColumns">
         event_seat.id,
         event_seat.event_id,
@@ -100,6 +115,34 @@
         ORDER BY
             venue_section.display_order ASC,
             venue_section.name ASC,
+            seat.row_label ASC,
+            seat.seat_number ASC,
+            seat.seat_label ASC,
+            event_seat.id ASC
+    </select>
+
+    <select id="findPublishedLayoutByEventId" resultMap="EventSeatLayoutRowResultMap">
+        SELECT
+            venue_section.id AS section_id,
+            venue_section.name AS section_name,
+            venue_section.display_order AS section_display_order,
+            seat.row_label,
+            event_seat.id AS event_seat_id,
+            seat.seat_label,
+            seat.seat_number,
+            event_seat.price,
+            event_seat.permanent_status,
+            seat.accessible
+        FROM events e
+        JOIN event_seats event_seat ON event_seat.event_id = e.id
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        JOIN venue_sections venue_section ON venue_section.id = seat.section_id
+        WHERE e.id = #{eventId}
+          AND e.status = 'PUBLISHED'
+        ORDER BY
+            venue_section.display_order ASC,
+            venue_section.name ASC,
+            venue_section.id ASC,
             seat.row_label ASC,
             seat.seat_number ASC,
             seat.seat_label ASC,

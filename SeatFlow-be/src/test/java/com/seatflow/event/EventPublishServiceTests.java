@@ -253,5 +253,10 @@ class EventPublishServiceTests {
 					NOW,
 					NOW));
 		}
+
+		@Override
+		public List<EventSeatLayoutRow> findPublishedLayoutByEventId(UUID eventId) {
+			return List.of();
+		}
 	}
 }

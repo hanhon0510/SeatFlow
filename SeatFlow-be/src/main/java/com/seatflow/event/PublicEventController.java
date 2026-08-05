@@ -13,9 +13,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class PublicEventController {
 
 	private final PublicEventCatalogService eventCatalogService;
+	private final EventSeatLayoutService eventSeatLayoutService;
 
-	public PublicEventController(PublicEventCatalogService eventCatalogService) {
+	public PublicEventController(
+			PublicEventCatalogService eventCatalogService,
+			EventSeatLayoutService eventSeatLayoutService) {
 		this.eventCatalogService = eventCatalogService;
+		this.eventSeatLayoutService = eventSeatLayoutService;
 	}
 
 	@GetMapping
@@ -33,5 +37,10 @@ public class PublicEventController {
 	@GetMapping("/{eventId}")
 	public PublicEventResponse get(@PathVariable UUID eventId) {
 		return eventCatalogService.getEvent(eventId);
+	}
+
+	@GetMapping("/{eventId}/seats")
+	public EventSeatLayoutResponse seats(@PathVariable UUID eventId) {
+		return eventSeatLayoutService.getSeatLayout(eventId);
 	}
 }

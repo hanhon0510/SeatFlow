@@ -16,4 +16,6 @@ public interface EventSeatMapper {
 	long countMissingPricedSeatsForEvent(@Param("eventId") UUID eventId);
 
 	List<EventSeatRecord> findByEventId(@Param("eventId") UUID eventId);
+
+	List<EventSeatLayoutRow> findPublishedLayoutByEventId(@Param("eventId") UUID eventId);
 }
