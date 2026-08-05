@@ -96,6 +96,57 @@ class EventSeatMapperIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	@Test
+	void publishedSeatLayoutUsesInventoryJoinWithStableOrderingAndStatuses() {
+		VenueRecord venue = insertVenue("Main Hall");
+		VenueSectionRecord orchestra = insertSection(venue.id(), "Orchestra", 1);
+		VenueSectionRecord balcony = insertSection(venue.id(), "Balcony", 2);
+		SeatRecord orchestraA2 = insertSeat(orchestra.id(), "A", 2, "A2");
+		SeatRecord orchestraA1 = insertSeat(orchestra.id(), "A", 1, "A1", true);
+		insertSeat(balcony.id(), "B", 1, "B1");
+		EventRecord event = insertEvent(venue.id(), "Opening Night");
+		insertEventSection(event.id(), orchestra.id(), "125000.00", true);
+		insertEventSection(event.id(), balcony.id(), "75000.00", false);
+		assertThat(eventSeatMapper.insertForDraftEvent(event.id())).isEqualTo(3);
+		assertThat(eventMapper.publishDraft(event.id())).isEqualTo(1);
+		jdbcTemplate.update(
+				"UPDATE event_seats SET permanent_status = 'SOLD' WHERE event_id = ? AND seat_id = ?",
+				event.id(),
+				orchestraA2.id());
+
+		List<EventSeatLayoutRow> rows = eventSeatMapper.findPublishedLayoutByEventId(event.id());
+
+		assertThat(rows).hasSize(3);
+		assertThat(rows).extracting(EventSeatLayoutRow::sectionName)
+				.containsExactly("Orchestra", "Orchestra", "Balcony");
+		assertThat(rows).extracting(EventSeatLayoutRow::rowLabel).containsExactly("A", "A", "B");
+		assertThat(rows).extracting(EventSeatLayoutRow::seatLabel).containsExactly("A1", "A2", "B1");
+		assertThat(rows.getFirst().eventSeatId()).isNotNull();
+		assertThat(rows.getFirst().price()).isEqualByComparingTo("125000.00");
+		assertThat(rows.getFirst().permanentStatus()).isEqualTo(EventSeatStatus.AVAILABLE);
+		assertThat(rows.getFirst().accessible()).isTrue();
+		assertThat(rows.get(1).price()).isEqualByComparingTo("125000.00");
+		assertThat(rows.get(1).permanentStatus()).isEqualTo(EventSeatStatus.SOLD);
+		assertThat(rows.get(2).price()).isEqualByComparingTo("75000.00");
+		assertThat(rows.get(2).permanentStatus()).isEqualTo(EventSeatStatus.BLOCKED);
+		assertThat(rows.get(2).accessible()).isFalse();
+		assertThat(rows.getFirst().seatNumber()).isEqualTo(orchestraA1.seatNumber());
+	}
+
+	@Test
+	void draftEventSeatLayoutIsUnavailableEvenWhenInventoryRowsExist() {
+		VenueRecord venue = insertVenue("Main Hall");
+		VenueSectionRecord orchestra = insertSection(venue.id(), "Orchestra", 1);
+		insertSeat(orchestra.id(), "A", 1, "A1");
+		EventRecord event = insertEvent(venue.id(), "Opening Night");
+		insertEventSection(event.id(), orchestra.id(), "125000.00", true);
+
+		assertThat(eventSeatMapper.insertForDraftEvent(event.id())).isEqualTo(1);
+
+		assertThat(eventSeatMapper.countByEventId(event.id())).isEqualTo(1);
+		assertThat(eventSeatMapper.findPublishedLayoutByEventId(event.id())).isEmpty();
+	}
+
+	@Test
 	void missingPricesAreCountedForSeatsInUnpricedSections() {
 		VenueRecord venue = insertVenue("Main Hall");
 		VenueSectionRecord orchestra = insertSection(venue.id(), "Orchestra", 1);
@@ -210,7 +261,17 @@ class EventSeatMapperIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	private SeatRecord insertSeat(UUID sectionId, String rowLabel, int seatNumber, String seatLabel) {
-		SeatRecord seat = SeatRecord.forInsert(UUID.randomUUID(), sectionId, rowLabel, seatNumber, seatLabel, false);
+		return insertSeat(sectionId, rowLabel, seatNumber, seatLabel, false);
+	}
+
+	private SeatRecord insertSeat(
+			UUID sectionId,
+			String rowLabel,
+			int seatNumber,
+			String seatLabel,
+			boolean accessible) {
+		SeatRecord seat = SeatRecord.forInsert(UUID.randomUUID(), sectionId, rowLabel, seatNumber, seatLabel,
+				accessible);
 		seatMapper.insert(seat);
 		return seatMapper.findById(seat.id());
 	}
