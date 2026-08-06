@@ -15,7 +15,7 @@ import type {
   EventPublishResponse,
   EventSectionConfiguration,
 } from '../features/admin/events/types'
-import type { PublicEvent, PublicEventPage } from '../features/events/types'
+import type { EventSeatLayout, PublicEvent, PublicEventPage } from '../features/events/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
 import { apiClient } from '../shared/api/httpClient'
 import { ROUTES } from '../shared/constants/routes'
@@ -87,6 +87,76 @@ const publishedEvent: PublicEvent = {
   salesStartTime: '2026-08-01T00:00:00.000Z',
   salesEndTime: '2026-09-01T18:00:00.000Z',
   minimumPrice: 50000,
+}
+
+const publicSeatLayout: EventSeatLayout = {
+  eventId: publishedEvent.id,
+  sections: [
+    {
+      id: 'f5936746-4e3c-4e50-a64d-a0d45f3d3861',
+      name: 'Orchestra',
+      displayOrder: 1,
+      rows: [
+        {
+          rowLabel: 'A',
+          seats: [
+            {
+              eventSeatId: '8a58df81-409e-4f2d-bf7b-2270c35b9087',
+              seatLabel: 'A1',
+              seatNumber: 1,
+              price: 50000,
+              permanentStatus: 'AVAILABLE',
+              accessible: true,
+            },
+            {
+              eventSeatId: '868af2d5-42c2-4ea4-8406-87137214ca2a',
+              seatLabel: 'A2',
+              seatNumber: 2,
+              price: 75000,
+              permanentStatus: 'AVAILABLE',
+              accessible: false,
+            },
+            {
+              eventSeatId: 'b4f68b2b-c2db-470d-95ad-0d34290d8a51',
+              seatLabel: 'A3',
+              seatNumber: 3,
+              price: 50000,
+              permanentStatus: 'SOLD',
+              accessible: false,
+            },
+            {
+              eventSeatId: 'cf4117c9-0915-4e72-83be-8c331887f28c',
+              seatLabel: 'A4',
+              seatNumber: 4,
+              price: 50000,
+              permanentStatus: 'BLOCKED',
+              accessible: false,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: '9839e2e2-4afd-419c-ab78-c7385882ff14',
+      name: 'Balcony',
+      displayOrder: 2,
+      rows: [
+        {
+          rowLabel: 'B',
+          seats: [
+            {
+              eventSeatId: 'fe2c4c9b-b219-4a59-ab98-8fa24b869c92',
+              seatLabel: 'B1',
+              seatNumber: 1,
+              price: 30000,
+              permanentStatus: 'AVAILABLE',
+              accessible: false,
+            },
+          ],
+        },
+      ],
+    },
+  ],
 }
 
 const layoutWithSection: SeatLayout = {
@@ -202,6 +272,32 @@ function publicEventsResponse(config: InternalAxiosRequestConfig, items: PublicE
   return response<PublicEventPage>(config, 200, publicEventPage(items, page, size))
 }
 
+function availableSeatLayout(count: number, price = 50000): EventSeatLayout {
+  return {
+    eventId: publishedEvent.id,
+    sections: [
+      {
+        id: publicSeatLayout.sections[0].id,
+        name: 'Orchestra',
+        displayOrder: 1,
+        rows: [
+          {
+            rowLabel: 'A',
+            seats: Array.from({ length: count }, (_, index) => ({
+              eventSeatId: `available-seat-${index + 1}`,
+              seatLabel: `A${index + 1}`,
+              seatNumber: index + 1,
+              price,
+              permanentStatus: 'AVAILABLE',
+              accessible: false,
+            })),
+          },
+        ],
+      },
+    ],
+  }
+}
+
 async function fillDate(user: ReturnType<typeof userEvent.setup>, label: string, value: string) {
   const input = screen.getByLabelText(label)
   await user.click(input)
@@ -293,6 +389,10 @@ describe('App', () => {
         return response<PublicEvent>(config, 200, publishedEvent)
       }
 
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
       return rejectedResponse(config, 500, 'Unexpected request')
     })
 
@@ -302,7 +402,109 @@ describe('App', () => {
     expect(screen.getByText(venue.name)).toBeInTheDocument()
     expect(screen.getByText(venue.timezone)).toBeInTheDocument()
     expect(screen.getByText(/From 50,000/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Seat A1, available/i })).toBeInTheDocument()
   })
+
+  it('renders seat states and prevents sold or blocked seat selection', async () => {
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Select seats')).toBeInTheDocument()
+    expect(screen.getByText('Available')).toBeInTheDocument()
+    expect(screen.getByText('Selected')).toBeInTheDocument()
+    expect(screen.getByText('Sold')).toBeInTheDocument()
+    expect(screen.getByText('Blocked')).toBeInTheDocument()
+    expect(screen.getByText('Accessible')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Seat A3, sold/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Seat A4, blocked/i })).toBeDisabled()
+  })
+
+  it('selects and deselects available seats while calculating total price', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: /Seat A1, available/i }))
+    await user.click(screen.getByRole('button', { name: /Seat A2, available/i }))
+
+    const summaryCard = screen.getByText('Selection summary').closest('.ant-card') as HTMLElement
+    expect(screen.getByText('2 of 8 selected')).toBeInTheDocument()
+    expect(screen.getByText('125,000')).toBeInTheDocument()
+    expect(within(summaryCard).getByText('A1')).toBeInTheDocument()
+    expect(within(summaryCard).getByText('A2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: /Seat A1, selected/i }))
+
+    expect(screen.getByText('1 of 8 selected')).toBeInTheDocument()
+    expect(screen.getByText('75,000')).toBeInTheDocument()
+    expect(within(summaryCard).queryByText('A1')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Seat A1, available/i })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('enforces the seat selection limit', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, availableSeatLayout(9))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    for (let seatNumber = 1; seatNumber <= 8; seatNumber += 1) {
+      await user.click(await screen.findByRole('button', { name: new RegExp(`Seat A${seatNumber}, available`, 'i') }))
+    }
+    await user.click(screen.getByRole('button', { name: /Seat A9, available/i }))
+
+    expect(screen.getByText('8 of 8 selected')).toBeInTheDocument()
+    expect(screen.getByText('400,000')).toBeInTheDocument()
+    expect(screen.getByText('You can select up to 8 seats.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Seat A9, available/i })).toHaveAttribute('aria-pressed', 'false')
+  }, 10000)
 
   it('validates required login fields', async () => {
     const user = userEvent.setup()
