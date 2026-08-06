@@ -23,6 +23,7 @@ import com.seatflow.event.InvalidEventTimingException;
 import com.seatflow.event.MissingEventSectionPricingException;
 import com.seatflow.event.NoEventSeatsException;
 import com.seatflow.health.DatabaseHealthUnavailableException;
+import com.seatflow.health.RedisHealthUnavailableException;
 import com.seatflow.seating.DuplicateSeatLabelException;
 import com.seatflow.seating.InvalidSeatBatchException;
 import com.seatflow.seating.SeatNotFoundException;
@@ -44,6 +45,11 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(DatabaseHealthUnavailableException.class)
 	public ResponseEntity<ApiResponse<Void>> handleDatabaseHealthUnavailable(DatabaseHealthUnavailableException ex) {
 		return error("Database health check failed", HttpStatus.SERVICE_UNAVAILABLE);
+	}
+
+	@ExceptionHandler(RedisHealthUnavailableException.class)
+	public ResponseEntity<ApiResponse<Void>> handleRedisHealthUnavailable(RedisHealthUnavailableException ex) {
+		return error("Redis health check failed", HttpStatus.SERVICE_UNAVAILABLE);
 	}
 
 	@ExceptionHandler(UserAlreadyExistsException.class)

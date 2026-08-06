@@ -11,12 +11,15 @@ public class HealthController {
 
 	private final String applicationName;
 	private final DatabaseHealthService databaseHealthService;
+	private final RedisHealthService redisHealthService;
 
 	public HealthController(
 			@Value("${spring.application.name}") String applicationName,
-			DatabaseHealthService databaseHealthService) {
+			DatabaseHealthService databaseHealthService,
+			RedisHealthService redisHealthService) {
 		this.applicationName = applicationName;
 		this.databaseHealthService = databaseHealthService;
+		this.redisHealthService = redisHealthService;
 	}
 
 	@GetMapping
@@ -27,6 +30,11 @@ public class HealthController {
 	@GetMapping("/database")
 	public DatabaseHealthService.DatabaseHealthResponse databaseHealth() {
 		return databaseHealthService.checkDatabase();
+	}
+
+	@GetMapping("/redis")
+	public RedisHealthService.RedisHealthResponse redisHealth() {
+		return redisHealthService.checkRedis();
 	}
 
 	public record HealthResponse(String status, String application) {
