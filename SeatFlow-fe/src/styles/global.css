@@ -165,6 +165,111 @@ body {
   line-height: 1.7;
 }
 
+.seat-map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 20px;
+  align-items: start;
+}
+
+.seat-map-card,
+.selection-summary-card {
+  border-radius: 8px;
+}
+
+.seat-map-tools {
+  display: grid;
+  gap: 16px;
+}
+
+.seat-section-selector {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.seat-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+}
+
+.seat-map-alert {
+  margin-top: 16px;
+}
+
+.public-seat-layout {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.public-seat-row {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 10px;
+  align-items: center;
+  min-width: max-content;
+}
+
+.public-seat-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.public-seat-button.ant-btn {
+  width: 48px;
+  min-width: 48px;
+  height: 38px;
+  padding: 0;
+  border-color: #b8c3d1;
+  background: #ffffff;
+  color: #172033;
+  font-weight: 700;
+}
+
+.public-seat-button.state-selected.ant-btn {
+  border-color: #1f6feb;
+  background: #1f6feb;
+  color: #ffffff;
+}
+
+.public-seat-button.state-sold.ant-btn,
+.public-seat-button.state-blocked.ant-btn {
+  color: #ffffff;
+}
+
+.public-seat-button.state-sold.ant-btn:disabled {
+  border-color: #b8c3d1;
+  background: #b8c3d1;
+  color: #ffffff;
+}
+
+.public-seat-button.state-blocked.ant-btn:disabled {
+  border-color: #4b5563;
+  background: #4b5563;
+  color: #ffffff;
+}
+
+.public-seat-button.accessible.ant-btn {
+  box-shadow: inset 0 -4px 0 #16a34a;
+}
+
+.selection-summary-card .ant-card-body {
+  display: grid;
+  gap: 16px;
+}
+
+.selected-seat-tags {
+  display: flex;
+  min-height: 32px;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .admin-page {
   width: min(100%, 1180px);
   display: grid;
@@ -362,6 +467,19 @@ body {
 
   .event-catalog-filters {
     grid-template-columns: 1fr;
+  }
+
+  .seat-map-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .selection-summary-card {
+    order: -1;
+  }
+
+  .public-seat-button.ant-btn {
+    width: 44px;
+    min-width: 44px;
   }
 
   .admin-page-header {

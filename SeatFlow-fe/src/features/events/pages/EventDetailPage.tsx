@@ -6,6 +6,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { apiErrorMessage } from '../../../shared/api/apiError'
 import { ROUTES } from '../../../shared/constants/routes'
 import { getPublicEvent, publicEventQueryKeys } from '../api/eventsApi'
+import { EventSeatMap } from '../components/EventSeatMap'
 import { formatDateTime, formatMinimumPrice } from '../utils/eventFormatters'
 
 export function EventDetailPage() {
@@ -90,6 +91,8 @@ export function EventDetailPage() {
           </Typography.Paragraph>
         ) : null}
       </Card>
+
+      <EventSeatMap key={event.id} eventId={event.id} />
     </section>
   )
 }

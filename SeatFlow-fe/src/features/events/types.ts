@@ -33,3 +33,31 @@ export type EventCatalogFilters = {
 }
 
 export type EventCatalogSort = 'startAsc' | 'startDesc' | 'priceAsc' | 'priceDesc'
+
+export type EventSeatPermanentStatus = 'AVAILABLE' | 'SOLD' | 'BLOCKED'
+
+export type EventSeatLayoutSeat = {
+  eventSeatId: string
+  seatLabel: string
+  seatNumber: number
+  price: number
+  permanentStatus: EventSeatPermanentStatus
+  accessible: boolean
+}
+
+export type EventSeatLayoutRow = {
+  rowLabel: string
+  seats: EventSeatLayoutSeat[]
+}
+
+export type EventSeatLayoutSection = {
+  id: string
+  name: string
+  displayOrder: number
+  rows: EventSeatLayoutRow[]
+}
+
+export type EventSeatLayout = {
+  eventId: string
+  sections: EventSeatLayoutSection[]
+}
