@@ -31,7 +31,11 @@ class SeatHoldServiceTests {
 	private static final UUID EVENT_ID = UUID.fromString("5d2b80f6-4a0e-4f91-9676-e2c2d8b59e42");
 	private static final UUID OTHER_EVENT_ID = UUID.fromString("d7c03613-dcad-4b06-9df3-54c3ea256371");
 	private static final UUID EVENT_SEAT_ID = UUID.fromString("0ab96cb6-0b8b-4db4-855e-1bd12f3fc0e5");
+	private static final UUID EVENT_SEAT_ID_2 = UUID.fromString("252d8a6e-5dab-4ab2-bcb1-c4baeb017fd2");
+	private static final UUID EVENT_SEAT_ID_3 = UUID.fromString("65f02189-cbc6-4097-a8ed-50e6b9464b64");
 	private static final UUID SEAT_ID = UUID.fromString("9eaf1782-8239-4c83-a2a0-9b622b468bf0");
+	private static final UUID SEAT_ID_2 = UUID.fromString("86b8769e-080e-491f-9290-2eed6ef139e2");
+	private static final UUID SEAT_ID_3 = UUID.fromString("12dca0ce-07e1-4bc9-9523-12cfe5ec93a5");
 	private static final UUID USER_ID = UUID.fromString("c144397b-1b17-4a45-a1ef-b30ef84d5a79");
 	private static final UUID OTHER_USER_ID = UUID.fromString("d3329056-39f7-457e-a27c-95b9d52dfdf6");
 	private static final Instant NOW = Instant.parse("2026-08-08T10:00:00Z");
@@ -48,11 +52,96 @@ class SeatHoldServiceTests {
 		assertThat(response.holdId()).isNotNull();
 		assertThat(response.eventId()).isEqualTo(EVENT_ID);
 		assertThat(response.eventSeatId()).isEqualTo(EVENT_SEAT_ID);
+		assertThat(response.eventSeatIds()).containsExactly(EVENT_SEAT_ID);
 		assertThat(response.userId()).isEqualTo(USER_ID);
 		assertThat(response.expiresAt()).isEqualTo(NOW.plus(TTL));
 		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isTrue();
 		assertThat(store.dataHolds).containsKey(response.holdId());
 		assertThat(store.userHolds).containsEntry(USER_ID, response.holdId());
+	}
+
+	@Test
+	void createsHoldForMultipleSeatsAtomically() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(List.of(
+				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)), store, clock);
+
+		SeatHoldResponse response = service.createHold(
+				EVENT_ID,
+				USER_ID,
+				new SeatHoldRequest(null, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2)));
+
+		assertThat(response.eventSeatId()).isEqualTo(EVENT_SEAT_ID);
+		assertThat(response.eventSeatIds()).containsExactly(EVENT_SEAT_ID, EVENT_SEAT_ID_2);
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isTrue();
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID_2)).isTrue();
+		assertThat(store.dataHolds.get(response.holdId()).eventSeatIds())
+				.containsExactly(EVENT_SEAT_ID, EVENT_SEAT_ID_2);
+		assertThat(store.dataHolds.get(response.holdId()).seatIds())
+				.containsExactly(SEAT_ID, SEAT_ID_2);
+	}
+
+	@Test
+	void rejectsWholeMultiSeatHoldWhenAnyRequestedSeatIsAlreadyHeld() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(List.of(
+				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)), store, clock);
+
+		service.createHold(EVENT_ID, USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
+
+		assertThatThrownBy(() -> service.createHold(
+				EVENT_ID,
+				OTHER_USER_ID,
+				new SeatHoldRequest(null, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2))))
+				.isInstanceOf(SeatHoldConflictException.class);
+
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isTrue();
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID_2)).isFalse();
+		assertThat(store.dataHolds).hasSize(1);
+	}
+
+	@Test
+	void rejectsDuplicateSeatIdsBeforeRedisAcquisition() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(List.of(
+				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)), store, clock);
+
+		assertThatThrownBy(() -> service.createHold(
+				EVENT_ID,
+				USER_ID,
+				new SeatHoldRequest(null, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID))))
+				.isInstanceOf(InvalidSeatHoldRequestException.class);
+
+		assertThat(store.seatHoldCount()).isZero();
+		assertThat(store.dataHolds).isEmpty();
+	}
+
+	@Test
+	void rejectsRequestsOverConfiguredMaximumSeatCount() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(
+				List.of(
+						candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+						candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)),
+				store,
+				clock,
+				1);
+
+		assertThatThrownBy(() -> service.createHold(
+				EVENT_ID,
+				USER_ID,
+				new SeatHoldRequest(null, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2))))
+				.isInstanceOf(InvalidSeatHoldRequestException.class);
+
+		assertThat(store.seatHoldCount()).isZero();
+		assertThat(store.dataHolds).isEmpty();
 	}
 
 	@Test
@@ -183,14 +272,95 @@ class SeatHoldServiceTests {
 		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isTrue();
 	}
 
+	@Test
+	void onlyOneConcurrentOverlappingMultiSeatRequestWinsCompletely() throws Exception {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(List.of(
+				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_3, SEAT_ID_3, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)), store, clock);
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		var executor = Executors.newFixedThreadPool(2);
+		AtomicBoolean failed = new AtomicBoolean(false);
+		ConcurrentMap<UUID, SeatHoldResponse> successfulUsers = new ConcurrentHashMap<>();
+
+		submitHold(
+				executor,
+				ready,
+				start,
+				failed,
+				successfulUsers,
+				service,
+				USER_ID,
+				List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2));
+		submitHold(
+				executor,
+				ready,
+				start,
+				failed,
+				successfulUsers,
+				service,
+				OTHER_USER_ID,
+				List.of(EVENT_SEAT_ID_2, EVENT_SEAT_ID_3));
+
+		assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+		start.countDown();
+		executor.shutdown();
+		assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+
+		assertThat(failed).isFalse();
+		assertThat(successfulUsers).hasSize(1);
+		SeatHoldResponse winner = successfulUsers.values().iterator().next();
+		assertThat(winner.eventSeatIds()).hasSize(2);
+		assertThat(store.seatHoldCount()).isEqualTo(2);
+		assertThat(store.dataHolds).hasSize(1);
+	}
+
+	@Test
+	void storageFailureDoesNotLeavePartialMultiSeatHold() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		store.failCreate = true;
+		SeatHoldService service = service(List.of(
+				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)), store, clock);
+
+		assertThatThrownBy(() -> service.createHold(
+				EVENT_ID,
+				USER_ID,
+				new SeatHoldRequest(null, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2))))
+				.isInstanceOf(SeatHoldStorageException.class);
+
+		assertThat(store.seatHoldCount()).isZero();
+		assertThat(store.dataHolds).isEmpty();
+		assertThat(store.userHolds).isEmpty();
+	}
+
 	private static SeatHoldService service(
 			EventSeatHoldCandidate candidate,
 			FakeSeatHoldStore store,
 			Clock clock) {
+		return service(candidate == null ? List.of() : List.of(candidate), store, clock);
+	}
+
+	private static SeatHoldService service(
+			List<EventSeatHoldCandidate> candidates,
+			FakeSeatHoldStore store,
+			Clock clock) {
+		return service(candidates, store, clock, 8);
+	}
+
+	private static SeatHoldService service(
+			List<EventSeatHoldCandidate> candidates,
+			FakeSeatHoldStore store,
+			Clock clock,
+			int maxSeats) {
 		return new SeatHoldService(
-				new StubEventSeatMapper(candidate),
+				new StubEventSeatMapper(candidates),
 				store,
-				new SeatHoldProperties(TTL),
+				new SeatHoldProperties(TTL, maxSeats),
 				clock);
 	}
 
@@ -207,10 +377,34 @@ class SeatHoldServiceTests {
 			EventSeatStatus permanentStatus,
 			Instant salesStart,
 			Instant salesEnd) {
+		return candidate(EVENT_SEAT_ID, SEAT_ID, eventStatus, permanentStatus, salesStart, salesEnd);
+	}
+
+	private static EventSeatHoldCandidate candidate(
+			UUID eventSeatId,
+			UUID seatId,
+			EventStatus eventStatus,
+			EventSeatStatus permanentStatus) {
+		return candidate(
+				eventSeatId,
+				seatId,
+				eventStatus,
+				permanentStatus,
+				NOW.minus(Duration.ofHours(1)),
+				NOW.plus(Duration.ofHours(1)));
+	}
+
+	private static EventSeatHoldCandidate candidate(
+			UUID eventSeatId,
+			UUID seatId,
+			EventStatus eventStatus,
+			EventSeatStatus permanentStatus,
+			Instant salesStart,
+			Instant salesEnd) {
 		return new EventSeatHoldCandidate(
 				EVENT_ID,
-				EVENT_SEAT_ID,
-				SEAT_ID,
+				eventSeatId,
+				seatId,
 				eventStatus,
 				salesStart,
 				salesEnd,
@@ -219,10 +413,10 @@ class SeatHoldServiceTests {
 
 	private static final class StubEventSeatMapper implements EventSeatMapper {
 
-		private final EventSeatHoldCandidate candidate;
+		private final List<EventSeatHoldCandidate> candidates;
 
-		private StubEventSeatMapper(EventSeatHoldCandidate candidate) {
-			this.candidate = candidate;
+		private StubEventSeatMapper(List<EventSeatHoldCandidate> candidates) {
+			this.candidates = candidates;
 		}
 
 		@Override
@@ -257,13 +451,19 @@ class SeatHoldServiceTests {
 
 		@Override
 		public EventSeatHoldCandidate findHoldCandidate(UUID eventId, UUID eventSeatId) {
-			if (candidate == null) {
-				return null;
-			}
-			if (!candidate.eventId().equals(eventId) || !candidate.eventSeatId().equals(eventSeatId)) {
-				return null;
-			}
-			return candidate;
+			return candidates.stream()
+					.filter(candidate -> candidate.eventId().equals(eventId))
+					.filter(candidate -> candidate.eventSeatId().equals(eventSeatId))
+					.findFirst()
+					.orElse(null);
+		}
+
+		@Override
+		public List<EventSeatHoldCandidate> findHoldCandidates(UUID eventId, List<UUID> eventSeatIds) {
+			return candidates.stream()
+					.filter(candidate -> candidate.eventId().equals(eventId))
+					.filter(candidate -> eventSeatIds.contains(candidate.eventSeatId()))
+					.toList();
 		}
 	}
 
@@ -273,35 +473,34 @@ class SeatHoldServiceTests {
 		private final ConcurrentMap<String, SeatEntry> seatHolds = new ConcurrentHashMap<>();
 		private final ConcurrentMap<UUID, SeatHoldRecord> dataHolds = new ConcurrentHashMap<>();
 		private final ConcurrentMap<UUID, UUID> userHolds = new ConcurrentHashMap<>();
+		private boolean failCreate;
 
 		private FakeSeatHoldStore(Clock clock) {
 			this.clock = clock;
 		}
 
 		@Override
-		public boolean tryAcquireSeat(UUID eventId, UUID eventSeatId, UUID holdId, Duration ttl) {
-			String key = SeatHoldRedisKeys.seat(eventId, eventSeatId);
+		public boolean createHold(SeatHoldRecord hold, Duration ttl) {
+			if (failCreate) {
+				throw new IllegalStateException("Lua execution failed");
+			}
 			Instant now = clock.instant();
-			AtomicBoolean acquired = new AtomicBoolean(false);
-			seatHolds.compute(key, (ignored, existing) -> {
-				if (existing == null || !existing.expiresAt().isAfter(now)) {
-					acquired.set(true);
-					return new SeatEntry(holdId, now.plus(ttl));
+			synchronized (seatHolds) {
+				for (UUID eventSeatId : hold.eventSeatIds()) {
+					SeatEntry existing = seatHolds.get(SeatHoldRedisKeys.seat(hold.eventId(), eventSeatId));
+					if (existing != null && existing.expiresAt().isAfter(now)) {
+						return false;
+					}
 				}
-				return existing;
-			});
-			return acquired.get();
-		}
-
-		@Override
-		public void storeHold(SeatHoldRecord hold, Duration ttl) {
-			dataHolds.put(hold.holdId(), hold);
-			userHolds.put(hold.userId(), hold.holdId());
-		}
-
-		@Override
-		public void releaseSeat(UUID eventId, UUID eventSeatId) {
-			seatHolds.remove(SeatHoldRedisKeys.seat(eventId, eventSeatId));
+				for (UUID eventSeatId : hold.eventSeatIds()) {
+					seatHolds.put(
+							SeatHoldRedisKeys.seat(hold.eventId(), eventSeatId),
+							new SeatEntry(hold.holdId(), now.plus(ttl)));
+				}
+				dataHolds.put(hold.holdId(), hold);
+				userHolds.put(hold.userId(), hold.holdId());
+				return true;
+			}
 		}
 
 		private boolean hasSeatHold(UUID eventId, UUID eventSeatId) {
@@ -309,8 +508,46 @@ class SeatHoldServiceTests {
 			return entry != null && entry.expiresAt().isAfter(clock.instant());
 		}
 
+		private int seatHoldCount() {
+			Instant now = clock.instant();
+			return (int) seatHolds.values().stream()
+					.filter(entry -> entry.expiresAt().isAfter(now))
+					.count();
+		}
+
 		private record SeatEntry(UUID holdId, Instant expiresAt) {
 		}
+	}
+
+	private static void submitHold(
+			java.util.concurrent.ExecutorService executor,
+			CountDownLatch ready,
+			CountDownLatch start,
+			AtomicBoolean failed,
+			ConcurrentMap<UUID, SeatHoldResponse> successfulUsers,
+			SeatHoldService service,
+			UUID userId,
+			List<UUID> eventSeatIds) {
+		executor.submit(() -> {
+			ready.countDown();
+			try {
+				start.await();
+				SeatHoldResponse response = service.createHold(
+						EVENT_ID,
+						userId,
+						new SeatHoldRequest(null, eventSeatIds));
+				successfulUsers.put(userId, response);
+			}
+			catch (SeatHoldConflictException ignored) {
+			}
+			catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				failed.set(true);
+			}
+			catch (RuntimeException ex) {
+				failed.set(true);
+			}
+		});
 	}
 
 	private static final class MutableClock extends Clock {

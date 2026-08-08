@@ -24,4 +24,8 @@ public interface EventSeatMapper {
 	EventSeatHoldCandidate findHoldCandidate(
 			@Param("eventId") UUID eventId,
 			@Param("eventSeatId") UUID eventSeatId);
+
+	List<EventSeatHoldCandidate> findHoldCandidates(
+			@Param("eventId") UUID eventId,
+			@Param("eventSeatIds") List<UUID> eventSeatIds);
 }

@@ -175,4 +175,22 @@
         WHERE e.id = #{eventId}
           AND event_seat.id = #{eventSeatId}
     </select>
+
+    <select id="findHoldCandidates" resultMap="EventSeatHoldCandidateResultMap">
+        SELECT
+            e.id AS event_id,
+            event_seat.id AS event_seat_id,
+            event_seat.seat_id,
+            e.status AS event_status,
+            e.sales_start_time,
+            e.sales_end_time,
+            event_seat.permanent_status
+        FROM events e
+        JOIN event_seats event_seat ON event_seat.event_id = e.id
+        WHERE e.id = #{eventId}
+          AND event_seat.id IN
+          <foreach collection="eventSeatIds" item="eventSeatId" open="(" separator="," close=")">
+              #{eventSeatId}
+          </foreach>
+    </select>
 </mapper>

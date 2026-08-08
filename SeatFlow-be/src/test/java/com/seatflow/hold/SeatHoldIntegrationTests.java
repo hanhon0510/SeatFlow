@@ -125,6 +125,32 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 	}
 
 	@Test
+	void multiSeatRequestCreatesOneHoldForAllSeats() throws Exception {
+		PublishedSeats publishedSeats = insertPublishedSeats(openSalesWindow(), true, 2);
+		UserRecord user = insertUser("holder@example.com");
+		EventSeatRecord firstSeat = publishedSeats.eventSeats().get(0);
+		EventSeatRecord secondSeat = publishedSeats.eventSeats().get(1);
+
+		mockMvc.perform(post("/api/v1/events/{eventId}/holds", publishedSeats.event().id())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(user))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(multiSeatRequestBody(firstSeat.id(), secondSeat.id())))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.eventId").value(publishedSeats.event().id().toString()))
+				.andExpect(jsonPath("$.eventSeatId").value(firstSeat.id().toString()))
+				.andExpect(jsonPath("$.eventSeatIds[0]").value(firstSeat.id().toString()))
+				.andExpect(jsonPath("$.eventSeatIds[1]").value(secondSeat.id().toString()))
+				.andExpect(jsonPath("$.userId").value(user.id().toString()));
+
+		String firstSeatHold = redisTemplate.opsForValue()
+				.get(SeatHoldRedisKeys.seat(publishedSeats.event().id(), firstSeat.id()));
+		String secondSeatHold = redisTemplate.opsForValue()
+				.get(SeatHoldRedisKeys.seat(publishedSeats.event().id(), secondSeat.id()));
+		assertThat(firstSeatHold).isNotBlank();
+		assertThat(secondSeatHold).isEqualTo(firstSeatHold);
+	}
+
+	@Test
 	void holdExpiresAndSeatCanBeHeldAgain() throws Exception {
 		PublishedSeat publishedSeat = insertPublishedSeat(openSalesWindow(), true);
 		UserRecord firstUser = insertUser("first@example.com");
@@ -202,14 +228,21 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 	}
 
 	private PublishedSeat insertPublishedSeat(SalesWindow salesWindow, boolean salesEnabled) {
+		PublishedSeats publishedSeats = insertPublishedSeats(salesWindow, salesEnabled, 1);
+		return new PublishedSeat(publishedSeats.event(), publishedSeats.eventSeats().getFirst());
+	}
+
+	private PublishedSeats insertPublishedSeats(SalesWindow salesWindow, boolean salesEnabled, int seatCount) {
 		VenueRecord venue = insertVenue();
 		VenueSectionRecord section = insertSection(venue.id());
-		insertSeat(section.id());
+		for (int seatNumber = 1; seatNumber <= seatCount; seatNumber++) {
+			insertSeat(section.id(), seatNumber);
+		}
 		EventRecord event = insertEvent(venue.id(), salesWindow);
 		insertEventSection(event.id(), section.id(), salesEnabled);
-		assertThat(eventSeatMapper.insertForDraftEvent(event.id())).isEqualTo(1);
+		assertThat(eventSeatMapper.insertForDraftEvent(event.id())).isEqualTo(seatCount);
 		assertThat(eventMapper.publishDraft(event.id())).isEqualTo(1);
-		return new PublishedSeat(eventMapper.findById(event.id()), eventSeatMapper.findByEventId(event.id()).getFirst());
+		return new PublishedSeats(eventMapper.findById(event.id()), eventSeatMapper.findByEventId(event.id()));
 	}
 
 	private UserRecord insertUser(String email) {
@@ -237,7 +270,17 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 	}
 
 	private SeatRecord insertSeat(UUID sectionId) {
-		SeatRecord seat = SeatRecord.forInsert(UUID.randomUUID(), sectionId, "A", 1, "A1", false);
+		return insertSeat(sectionId, 1);
+	}
+
+	private SeatRecord insertSeat(UUID sectionId, int seatNumber) {
+		SeatRecord seat = SeatRecord.forInsert(
+				UUID.randomUUID(),
+				sectionId,
+				"A",
+				seatNumber,
+				"A%s".formatted(seatNumber),
+				false);
 		seatMapper.insert(seat);
 		return seatMapper.findById(seat.id());
 	}
@@ -273,6 +316,10 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 		return "{\"eventSeatId\":\"%s\"}".formatted(eventSeatId);
 	}
 
+	private static String multiSeatRequestBody(UUID firstEventSeatId, UUID secondEventSeatId) {
+		return "{\"eventSeatIds\":[\"%s\",\"%s\"]}".formatted(firstEventSeatId, secondEventSeatId);
+	}
+
 	private static SalesWindow openSalesWindow() {
 		Instant now = Instant.now();
 		return new SalesWindow(now.plus(Duration.ofDays(1)), now.minus(Duration.ofHours(1)), now.plus(Duration.ofHours(2)));
@@ -287,5 +334,8 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 	}
 
 	private record PublishedSeat(EventRecord event, EventSeatRecord eventSeat) {
+	}
+
+	private record PublishedSeats(EventRecord event, java.util.List<EventSeatRecord> eventSeats) {
 	}
 }

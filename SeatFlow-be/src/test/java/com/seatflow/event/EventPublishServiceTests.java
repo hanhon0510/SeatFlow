@@ -263,5 +263,10 @@ class EventPublishServiceTests {
 		public EventSeatHoldCandidate findHoldCandidate(UUID eventId, UUID eventSeatId) {
 			return null;
 		}
+
+		@Override
+		public List<EventSeatHoldCandidate> findHoldCandidates(UUID eventId, List<UUID> eventSeatIds) {
+			return List.of();
+		}
 	}
 }

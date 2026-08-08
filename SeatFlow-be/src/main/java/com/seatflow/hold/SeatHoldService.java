@@ -3,6 +3,11 @@ package com.seatflow.hold;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -33,37 +38,83 @@ public class SeatHoldService {
 
 	public SeatHoldResponse createHold(UUID eventId, UUID userId, SeatHoldRequest request) {
 		Instant now = clock.instant();
-		EventSeatHoldCandidate candidate = eventSeatMapper.findHoldCandidate(eventId, request.eventSeatId());
-		validateHoldCandidate(candidate, now);
+		List<UUID> requestedEventSeatIds = request.requestedEventSeatIds();
+		validateRequestSeatIds(requestedEventSeatIds);
+
+		List<EventSeatHoldCandidate> candidates = orderedCandidates(
+				eventId,
+				requestedEventSeatIds,
+				eventSeatMapper.findHoldCandidates(eventId, requestedEventSeatIds));
+		candidates.forEach(candidate -> validateHoldCandidate(candidate, now));
 
 		UUID holdId = UUID.randomUUID();
 		Duration ttl = properties.ttl();
 		Instant expiresAt = now.plus(ttl);
+		EventSeatHoldCandidate firstCandidate = candidates.getFirst();
 		SeatHoldRecord hold = new SeatHoldRecord(
 				holdId,
-				candidate.eventId(),
-				candidate.eventSeatId(),
-				candidate.seatId(),
+				firstCandidate.eventId(),
+				candidates.stream().map(EventSeatHoldCandidate::eventSeatId).toList(),
+				candidates.stream().map(EventSeatHoldCandidate::seatId).toList(),
 				userId,
 				expiresAt);
-		if (!tryAcquireSeat(candidate, holdId, ttl)) {
+		if (!createHold(hold, ttl)) {
 			throw new SeatHoldConflictException();
 		}
 
-		try {
-			seatHoldStore.storeHold(hold, ttl);
-		}
-		catch (RuntimeException ex) {
-			releaseSeatQuietly(candidate);
-			throw new SeatHoldStorageException(ex);
-		}
-
-		return new SeatHoldResponse(holdId, candidate.eventId(), candidate.eventSeatId(), userId, expiresAt);
+		return new SeatHoldResponse(
+				holdId,
+				firstCandidate.eventId(),
+				firstCandidate.eventSeatId(),
+				hold.eventSeatIds(),
+				userId,
+				expiresAt);
 	}
 
-	private boolean tryAcquireSeat(EventSeatHoldCandidate candidate, UUID holdId, Duration ttl) {
+	private void validateRequestSeatIds(List<UUID> requestedEventSeatIds) {
+		if (requestedEventSeatIds.isEmpty()) {
+			throw new InvalidSeatHoldRequestException();
+		}
+		if (requestedEventSeatIds.size() > properties.maxSeats()) {
+			throw new InvalidSeatHoldRequestException();
+		}
+		if (new HashSet<>(requestedEventSeatIds).size() != requestedEventSeatIds.size()) {
+			throw new InvalidSeatHoldRequestException();
+		}
+	}
+
+	private static List<EventSeatHoldCandidate> orderedCandidates(
+			UUID eventId,
+			List<UUID> requestedEventSeatIds,
+			List<EventSeatHoldCandidate> candidates) {
+		if (candidates.size() != requestedEventSeatIds.size()) {
+			throw new SeatHoldConflictException();
+		}
+
+		Map<UUID, EventSeatHoldCandidate> candidatesByEventSeatId = new HashMap<>();
+		for (EventSeatHoldCandidate candidate : candidates) {
+			if (!eventId.equals(candidate.eventId())) {
+				throw new SeatHoldConflictException();
+			}
+			if (candidatesByEventSeatId.put(candidate.eventSeatId(), candidate) != null) {
+				throw new SeatHoldConflictException();
+			}
+		}
+
+		List<EventSeatHoldCandidate> ordered = new ArrayList<>(requestedEventSeatIds.size());
+		for (UUID eventSeatId : requestedEventSeatIds) {
+			EventSeatHoldCandidate candidate = candidatesByEventSeatId.get(eventSeatId);
+			if (candidate == null) {
+				throw new SeatHoldConflictException();
+			}
+			ordered.add(candidate);
+		}
+		return ordered;
+	}
+
+	private boolean createHold(SeatHoldRecord hold, Duration ttl) {
 		try {
-			return seatHoldStore.tryAcquireSeat(candidate.eventId(), candidate.eventSeatId(), holdId, ttl);
+			return seatHoldStore.createHold(hold, ttl);
 		}
 		catch (RuntimeException ex) {
 			throw new SeatHoldStorageException(ex);
@@ -82,14 +133,6 @@ public class SeatHoldService {
 		}
 		if (candidate.permanentStatus() != EventSeatStatus.AVAILABLE) {
 			throw new SeatHoldConflictException();
-		}
-	}
-
-	private void releaseSeatQuietly(EventSeatHoldCandidate candidate) {
-		try {
-			seatHoldStore.releaseSeat(candidate.eventId(), candidate.eventSeatId());
-		}
-		catch (RuntimeException ignored) {
 		}
 	}
 }

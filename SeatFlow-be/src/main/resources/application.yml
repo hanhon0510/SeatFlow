@@ -60,3 +60,4 @@ seatflow:
     same-site: ${SEATFLOW_REFRESH_TOKEN_SAME_SITE}
   holds:
     ttl: ${SEATFLOW_HOLD_TTL:5m}
+    max-seats: ${SEATFLOW_HOLD_MAX_SEATS:8}

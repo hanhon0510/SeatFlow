@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -60,7 +61,13 @@ class SeatHoldControllerSecurityTests {
 	@Test
 	void authenticatedUserCanHoldSeat() throws Exception {
 		when(seatHoldService.createHold(eq(EVENT_ID), eq(USER_ID), any(SeatHoldRequest.class)))
-				.thenReturn(new SeatHoldResponse(HOLD_ID, EVENT_ID, EVENT_SEAT_ID, USER_ID, EXPIRES_AT));
+				.thenReturn(new SeatHoldResponse(
+						HOLD_ID,
+						EVENT_ID,
+						EVENT_SEAT_ID,
+						List.of(EVENT_SEAT_ID),
+						USER_ID,
+						EXPIRES_AT));
 
 		mockMvc.perform(post("/api/v1/events/{eventId}/holds", EVENT_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER))
@@ -70,6 +77,7 @@ class SeatHoldControllerSecurityTests {
 				.andExpect(jsonPath("$.holdId").value(HOLD_ID.toString()))
 				.andExpect(jsonPath("$.eventId").value(EVENT_ID.toString()))
 				.andExpect(jsonPath("$.eventSeatId").value(EVENT_SEAT_ID.toString()))
+				.andExpect(jsonPath("$.eventSeatIds[0]").value(EVENT_SEAT_ID.toString()))
 				.andExpect(jsonPath("$.userId").value(USER_ID.toString()))
 				.andExpect(jsonPath("$.expiresAt").value("2026-08-08T10:05:00Z"));
 	}
