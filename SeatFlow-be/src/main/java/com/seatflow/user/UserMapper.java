@@ -2,8 +2,10 @@ package com.seatflow.user;
 
 import java.util.UUID;
 
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+@Mapper
 public interface UserMapper {
 
 	void insert(UserRecord user);

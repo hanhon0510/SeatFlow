@@ -3,8 +3,10 @@ package com.seatflow.venue;
 import java.util.List;
 import java.util.UUID;
 
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+@Mapper
 public interface VenueMapper {
 
 	void insert(VenueRecord venue);

@@ -3,8 +3,10 @@ package com.seatflow.seating;
 import java.util.List;
 import java.util.UUID;
 
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+@Mapper
 public interface SeatMapper {
 
 	void insert(SeatRecord seat);

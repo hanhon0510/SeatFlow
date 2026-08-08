@@ -3,8 +3,10 @@ package com.seatflow.auth;
 import java.time.Instant;
 import java.util.UUID;
 
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+@Mapper
 public interface RefreshTokenMapper {
 
 	void insert(RefreshTokenRecord refreshToken);
