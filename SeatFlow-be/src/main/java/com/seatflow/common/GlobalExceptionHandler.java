@@ -26,6 +26,7 @@ import com.seatflow.health.DatabaseHealthUnavailableException;
 import com.seatflow.health.RedisHealthUnavailableException;
 import com.seatflow.hold.InvalidSeatHoldRequestException;
 import com.seatflow.hold.SeatHoldConflictException;
+import com.seatflow.hold.SeatHoldNotFoundException;
 import com.seatflow.hold.SeatHoldStorageException;
 import com.seatflow.seating.DuplicateSeatLabelException;
 import com.seatflow.seating.InvalidSeatBatchException;
@@ -154,6 +155,11 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(InvalidSeatHoldRequestException.class)
 	public ResponseEntity<ApiResponse<Void>> handleInvalidSeatHoldRequest(InvalidSeatHoldRequestException ex) {
 		return error("Invalid seat hold request", HttpStatus.BAD_REQUEST);
+	}
+
+	@ExceptionHandler(SeatHoldNotFoundException.class)
+	public ResponseEntity<ApiResponse<Void>> handleSeatHoldNotFound(SeatHoldNotFoundException ex) {
+		return error("Seat hold not found", HttpStatus.NOT_FOUND);
 	}
 
 	@ExceptionHandler(SeatHoldStorageException.class)

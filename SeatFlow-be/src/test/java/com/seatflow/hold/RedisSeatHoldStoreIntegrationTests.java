@@ -65,6 +65,22 @@ class RedisSeatHoldStoreIntegrationTests extends RedisTestContainerSupport {
 	}
 
 	@Test
+	void findsActiveHoldFromStoredMetadata() {
+		SeatHoldRecord hold = hold(HOLD_ID, USER_ID);
+		assertThat(store.createHold(hold, Duration.ofSeconds(5))).isTrue();
+
+		assertThat(store.findHold(HOLD_ID))
+				.hasValueSatisfying(retrieved -> {
+					assertThat(retrieved.holdId()).isEqualTo(HOLD_ID);
+					assertThat(retrieved.eventId()).isEqualTo(EVENT_ID);
+					assertThat(retrieved.eventSeatIds()).containsExactly(EVENT_SEAT_ID, EVENT_SEAT_ID_2);
+					assertThat(retrieved.seatIds()).containsExactly(SEAT_ID, SEAT_ID_2);
+					assertThat(retrieved.userId()).isEqualTo(USER_ID);
+				});
+		assertThat(store.isHoldActive(hold)).isTrue();
+	}
+
+	@Test
 	void existingSeatKeyRejectsWholeHoldWithoutPartialKeys() {
 		UUID otherHoldId = UUID.fromString("712a54fa-0786-4471-8634-c0e01ad55c11");
 		redisTemplate.opsForValue().set(
@@ -94,6 +110,54 @@ class RedisSeatHoldStoreIntegrationTests extends RedisTestContainerSupport {
 		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.seat(EVENT_ID, EVENT_SEAT_ID_2))).isNull();
 		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.data(HOLD_ID))).isNull();
 		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.user(USER_ID))).isNull();
+	}
+
+	@Test
+	void releaseHoldRemovesAllSeatAndMetadataKeysAtomically() {
+		SeatHoldRecord hold = hold(HOLD_ID, USER_ID);
+		assertThat(store.createHold(hold, Duration.ofSeconds(5))).isTrue();
+
+		store.releaseHold(hold);
+
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.seat(EVENT_ID, EVENT_SEAT_ID))).isNull();
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.seat(EVENT_ID, EVENT_SEAT_ID_2))).isNull();
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.data(HOLD_ID))).isNull();
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.user(USER_ID))).isNull();
+		assertThat(store.createHold(hold(UUID.randomUUID(), USER_ID), Duration.ofSeconds(5))).isTrue();
+	}
+
+	@Test
+	void repeatedReleaseIsSafe() {
+		SeatHoldRecord hold = hold(HOLD_ID, USER_ID);
+		assertThat(store.createHold(hold, Duration.ofSeconds(5))).isTrue();
+
+		store.releaseHold(hold);
+		store.releaseHold(hold);
+
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.data(HOLD_ID))).isNull();
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.seat(EVENT_ID, EVENT_SEAT_ID))).isNull();
+	}
+
+	@Test
+	void releaseHandlesPartialDataAndDoesNotDeleteAnotherHoldSeatKey() {
+		SeatHoldRecord hold = hold(HOLD_ID, USER_ID);
+		UUID otherHoldId = UUID.fromString("712a54fa-0786-4471-8634-c0e01ad55c11");
+		assertThat(store.createHold(hold, Duration.ofSeconds(5))).isTrue();
+		redisTemplate.delete(SeatHoldRedisKeys.seat(EVENT_ID, EVENT_SEAT_ID));
+		redisTemplate.opsForValue().set(
+				SeatHoldRedisKeys.seat(EVENT_ID, EVENT_SEAT_ID_2),
+				otherHoldId.toString(),
+				Duration.ofSeconds(5));
+
+		assertThat(store.isHoldActive(hold)).isFalse();
+
+		store.releaseHold(hold);
+
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.data(HOLD_ID))).isNull();
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.user(USER_ID))).isNull();
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.seat(EVENT_ID, EVENT_SEAT_ID))).isNull();
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.seat(EVENT_ID, EVENT_SEAT_ID_2)))
+				.isEqualTo(otherHoldId.toString());
 	}
 
 	private boolean anyHoldKeyExists(SeatHoldRecord hold) {

@@ -2,7 +2,10 @@ package com.seatflow.hold;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -17,6 +20,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -29,7 +33,10 @@ import com.seatflow.user.UserRecord;
 import com.seatflow.user.UserRole;
 import com.seatflow.user.UserStatus;
 
-@WebMvcTest(SeatHoldController.class)
+@WebMvcTest({
+		SeatHoldController.class,
+		UserSeatHoldController.class
+})
 @Import({
 		SecurityConfig.class,
 		JwtConfig.class,
@@ -115,6 +122,80 @@ class SeatHoldControllerSecurityTests {
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.success").value(false))
 				.andExpect(jsonPath("$.message").value("Seat hold conflict"));
+	}
+
+	@Test
+	void authenticatedUserCanRetrieveHold() throws Exception {
+		when(seatHoldService.getHold(HOLD_ID, USER_ID))
+				.thenReturn(new SeatHoldResponse(
+						HOLD_ID,
+						EVENT_ID,
+						EVENT_SEAT_ID,
+						List.of(EVENT_SEAT_ID),
+						USER_ID,
+						EXPIRES_AT));
+
+		mockMvc.perform(get("/api/v1/holds/{holdId}", HOLD_ID)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.holdId").value(HOLD_ID.toString()))
+				.andExpect(jsonPath("$.eventId").value(EVENT_ID.toString()))
+				.andExpect(jsonPath("$.eventSeatIds[0]").value(EVENT_SEAT_ID.toString()))
+				.andExpect(jsonPath("$.userId").value(USER_ID.toString()));
+	}
+
+	@Test
+	void authenticatedUserCanReleaseHold() throws Exception {
+		mockMvc.perform(delete("/api/v1/holds/{holdId}", HOLD_ID)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
+				.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void unauthenticatedUserCannotRetrieveOrReleaseHold() throws Exception {
+		mockMvc.perform(get("/api/v1/holds/{holdId}", HOLD_ID))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message").value("Unauthorized"));
+
+		mockMvc.perform(delete("/api/v1/holds/{holdId}", HOLD_ID))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message").value("Unauthorized"));
+	}
+
+	@Test
+	void wrongOwnerCannotRetrieveHold() throws Exception {
+		when(seatHoldService.getHold(HOLD_ID, USER_ID))
+				.thenThrow(new AccessDeniedException("Hold belongs to another user"));
+
+		mockMvc.perform(get("/api/v1/holds/{holdId}", HOLD_ID)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Forbidden"));
+	}
+
+	@Test
+	void wrongOwnerCannotReleaseHold() throws Exception {
+		doThrow(new AccessDeniedException("Hold belongs to another user"))
+				.when(seatHoldService).releaseHold(HOLD_ID, USER_ID);
+
+		mockMvc.perform(delete("/api/v1/holds/{holdId}", HOLD_ID)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Forbidden"));
+	}
+
+	@Test
+	void missingHoldReturnsNotFoundOnRetrieve() throws Exception {
+		when(seatHoldService.getHold(HOLD_ID, USER_ID))
+				.thenThrow(new SeatHoldNotFoundException());
+
+		mockMvc.perform(get("/api/v1/holds/{holdId}", HOLD_ID)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Seat hold not found"));
 	}
 
 	private String bearerToken(UserRole role) {

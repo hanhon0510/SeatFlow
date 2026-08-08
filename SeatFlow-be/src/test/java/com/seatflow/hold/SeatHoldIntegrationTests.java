@@ -1,6 +1,8 @@
 package com.seatflow.hold;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -10,6 +12,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +26,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.seatflow.event.EventMapper;
@@ -50,6 +55,9 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private ObjectMapper objectMapper;
 
 	@Autowired
 	private StringRedisTemplate redisTemplate;
@@ -148,6 +156,94 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 				.get(SeatHoldRedisKeys.seat(publishedSeats.event().id(), secondSeat.id()));
 		assertThat(firstSeatHold).isNotBlank();
 		assertThat(secondSeatHold).isEqualTo(firstSeatHold);
+	}
+
+	@Test
+	void ownerRetrievesHold() throws Exception {
+		PublishedSeats publishedSeats = insertPublishedSeats(openSalesWindow(), true, 2);
+		UserRecord user = insertUser("holder@example.com");
+		EventSeatRecord firstSeat = publishedSeats.eventSeats().get(0);
+		EventSeatRecord secondSeat = publishedSeats.eventSeats().get(1);
+		UUID holdId = createMultiSeatHold(publishedSeats, user, firstSeat, secondSeat);
+
+		mockMvc.perform(get("/api/v1/holds/{holdId}", holdId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.holdId").value(holdId.toString()))
+				.andExpect(jsonPath("$.eventId").value(publishedSeats.event().id().toString()))
+				.andExpect(jsonPath("$.eventSeatIds[0]").value(firstSeat.id().toString()))
+				.andExpect(jsonPath("$.eventSeatIds[1]").value(secondSeat.id().toString()))
+				.andExpect(jsonPath("$.userId").value(user.id().toString()));
+	}
+
+	@Test
+	void ownerReleasesHoldAndSeatCanBeHeldImmediately() throws Exception {
+		PublishedSeat publishedSeat = insertPublishedSeat(openSalesWindow(), true);
+		UserRecord firstUser = insertUser("first@example.com");
+		UserRecord secondUser = insertUser("second@example.com");
+		UUID holdId = createHold(publishedSeat, firstUser);
+		String seatKey = SeatHoldRedisKeys.seat(publishedSeat.event().id(), publishedSeat.eventSeat().id());
+
+		mockMvc.perform(delete("/api/v1/holds/{holdId}", holdId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(firstUser)))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(delete("/api/v1/holds/{holdId}", holdId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(firstUser)))
+				.andExpect(status().isNoContent());
+
+		assertThat(redisTemplate.opsForValue().get(seatKey)).isNull();
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.data(holdId))).isNull();
+		assertThat(redisTemplate.opsForValue().get(SeatHoldRedisKeys.user(firstUser.id()))).isNull();
+
+		mockMvc.perform(post("/api/v1/events/{eventId}/holds", publishedSeat.event().id())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(secondUser))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestBody(publishedSeat.eventSeat().id())))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.userId").value(secondUser.id().toString()));
+	}
+
+	@Test
+	void otherUserCannotRetrieveOrReleaseHold() throws Exception {
+		PublishedSeat publishedSeat = insertPublishedSeat(openSalesWindow(), true);
+		UserRecord owner = insertUser("owner@example.com");
+		UserRecord otherUser = insertUser("other@example.com");
+		UUID holdId = createHold(publishedSeat, owner);
+		String seatKey = SeatHoldRedisKeys.seat(publishedSeat.event().id(), publishedSeat.eventSeat().id());
+
+		mockMvc.perform(get("/api/v1/holds/{holdId}", holdId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser)))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("Forbidden"));
+		mockMvc.perform(delete("/api/v1/holds/{holdId}", holdId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser)))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("Forbidden"));
+
+		assertThat(redisTemplate.opsForValue().get(seatKey)).isNotBlank();
+	}
+
+	@Test
+	void expiredHoldCannotBeRetrievedAndReleaseIsIdempotent() throws Exception {
+		PublishedSeat publishedSeat = insertPublishedSeat(openSalesWindow(), true);
+		UserRecord user = insertUser("holder@example.com");
+		UUID holdId = createHold(publishedSeat, user);
+		String seatKey = SeatHoldRedisKeys.seat(publishedSeat.event().id(), publishedSeat.eventSeat().id());
+
+		for (int attempt = 0; attempt < 20 && redisTemplate.opsForValue().get(seatKey) != null; attempt++) {
+			Thread.sleep(100);
+		}
+
+		mockMvc.perform(get("/api/v1/holds/{holdId}", holdId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.message").value("Seat hold not found"));
+		mockMvc.perform(delete("/api/v1/holds/{holdId}", holdId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(delete("/api/v1/holds/{holdId}", holdId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
+				.andExpect(status().isNoContent());
 	}
 
 	@Test
@@ -310,6 +406,36 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 
 	private String bearerToken(UserRecord user) {
 		return "Bearer " + jwtTokenService.issueAccessToken(user).accessToken();
+	}
+
+	private UUID createHold(PublishedSeat publishedSeat, UserRecord user) throws Exception {
+		MvcResult result = mockMvc.perform(post("/api/v1/events/{eventId}/holds", publishedSeat.event().id())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(user))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestBody(publishedSeat.eventSeat().id())))
+				.andExpect(status().isCreated())
+				.andReturn();
+		return holdId(result);
+	}
+
+	private UUID createMultiSeatHold(
+			PublishedSeats publishedSeats,
+			UserRecord user,
+			EventSeatRecord firstSeat,
+			EventSeatRecord secondSeat) throws Exception {
+		MvcResult result = mockMvc.perform(post("/api/v1/events/{eventId}/holds", publishedSeats.event().id())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(user))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(multiSeatRequestBody(firstSeat.id(), secondSeat.id())))
+				.andExpect(status().isCreated())
+				.andReturn();
+		return holdId(result);
+	}
+
+	private UUID holdId(MvcResult result) throws Exception {
+		return UUID.fromString(objectMapper.readTree(result.getResponse().getContentAsString())
+				.get("holdId")
+				.asText());
 	}
 
 	private static String requestBody(UUID eventSeatId) {

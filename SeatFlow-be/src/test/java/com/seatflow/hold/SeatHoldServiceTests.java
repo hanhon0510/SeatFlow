@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -18,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
 
 import com.seatflow.event.EventSeatHoldCandidate;
 import com.seatflow.event.EventSeatLayoutRow;
@@ -338,6 +340,99 @@ class SeatHoldServiceTests {
 		assertThat(store.userHolds).isEmpty();
 	}
 
+	@Test
+	void ownerCanRetrieveActiveHold() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(List.of(
+				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)), store, clock);
+		SeatHoldResponse created = service.createHold(
+				EVENT_ID,
+				USER_ID,
+				new SeatHoldRequest(null, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2)));
+
+		SeatHoldResponse retrieved = service.getHold(created.holdId(), USER_ID);
+
+		assertThat(retrieved.holdId()).isEqualTo(created.holdId());
+		assertThat(retrieved.eventId()).isEqualTo(EVENT_ID);
+		assertThat(retrieved.eventSeatIds()).containsExactly(EVENT_SEAT_ID, EVENT_SEAT_ID_2);
+		assertThat(retrieved.userId()).isEqualTo(USER_ID);
+	}
+
+	@Test
+	void wrongUserCannotRetrieveHold() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE), store, clock);
+		SeatHoldResponse created = service.createHold(EVENT_ID, USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
+
+		assertThatThrownBy(() -> service.getHold(created.holdId(), OTHER_USER_ID))
+				.isInstanceOf(AccessDeniedException.class);
+	}
+
+	@Test
+	void expiredHoldCannotBeRetrieved() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE), store, clock);
+		SeatHoldResponse created = service.createHold(EVENT_ID, USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
+
+		clock.advance(TTL.plusMillis(1));
+
+		assertThatThrownBy(() -> service.getHold(created.holdId(), USER_ID))
+				.isInstanceOf(SeatHoldNotFoundException.class);
+	}
+
+	@Test
+	void ownerCanReleaseMultiSeatHoldAndSeatsBecomeAvailable() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(List.of(
+				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)), store, clock);
+		SeatHoldResponse created = service.createHold(
+				EVENT_ID,
+				USER_ID,
+				new SeatHoldRequest(null, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2)));
+
+		service.releaseHold(created.holdId(), USER_ID);
+
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isFalse();
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID_2)).isFalse();
+		assertThat(store.dataHolds).doesNotContainKey(created.holdId());
+		assertThat(store.userHolds).doesNotContainKey(USER_ID);
+		SeatHoldResponse secondHold = service.createHold(EVENT_ID, OTHER_USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
+		assertThat(secondHold.userId()).isEqualTo(OTHER_USER_ID);
+	}
+
+	@Test
+	void wrongUserCannotReleaseHold() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE), store, clock);
+		SeatHoldResponse created = service.createHold(EVENT_ID, USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
+
+		assertThatThrownBy(() -> service.releaseHold(created.holdId(), OTHER_USER_ID))
+				.isInstanceOf(AccessDeniedException.class);
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isTrue();
+	}
+
+	@Test
+	void expiredAndRepeatedReleaseAreIdempotent() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		SeatHoldService service = service(candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE), store, clock);
+		SeatHoldResponse created = service.createHold(EVENT_ID, USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
+
+		clock.advance(TTL.plusMillis(1));
+
+		service.releaseHold(created.holdId(), USER_ID);
+		service.releaseHold(created.holdId(), USER_ID);
+
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isFalse();
+	}
+
 	private static SeatHoldService service(
 			EventSeatHoldCandidate candidate,
 			FakeSeatHoldStore store,
@@ -500,6 +595,41 @@ class SeatHoldServiceTests {
 				dataHolds.put(hold.holdId(), hold);
 				userHolds.put(hold.userId(), hold.holdId());
 				return true;
+			}
+		}
+
+		@Override
+		public Optional<SeatHoldRecord> findHold(UUID holdId) {
+			SeatHoldRecord hold = dataHolds.get(holdId);
+			if (hold == null || !hold.expiresAt().isAfter(clock.instant())) {
+				return Optional.empty();
+			}
+			return Optional.of(hold);
+		}
+
+		@Override
+		public boolean isHoldActive(SeatHoldRecord hold) {
+			return hold.eventSeatIds().stream()
+					.allMatch(eventSeatId -> {
+						SeatEntry entry = seatHolds.get(SeatHoldRedisKeys.seat(hold.eventId(), eventSeatId));
+						return entry != null
+								&& entry.holdId().equals(hold.holdId())
+								&& entry.expiresAt().isAfter(clock.instant());
+					});
+		}
+
+		@Override
+		public void releaseHold(SeatHoldRecord hold) {
+			synchronized (seatHolds) {
+				for (UUID eventSeatId : hold.eventSeatIds()) {
+					String key = SeatHoldRedisKeys.seat(hold.eventId(), eventSeatId);
+					SeatEntry entry = seatHolds.get(key);
+					if (entry != null && entry.holdId().equals(hold.holdId())) {
+						seatHolds.remove(key);
+					}
+				}
+				dataHolds.remove(hold.holdId());
+				userHolds.remove(hold.userId(), hold.holdId());
 			}
 		}
 

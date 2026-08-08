@@ -62,6 +62,8 @@ public class SecurityConfig {
 								"/actuator/info").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/events", "/api/v1/events/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/events/*/holds").hasAnyRole("USER", "ADMIN")
+						.requestMatchers(HttpMethod.GET, "/api/v1/holds/*").hasAnyRole("USER", "ADMIN")
+						.requestMatchers(HttpMethod.DELETE, "/api/v1/holds/*").hasAnyRole("USER", "ADMIN")
 						.requestMatchers("/api/v1/admin", "/api/v1/admin/**").hasRole("ADMIN")
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth2 -> oauth2

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import com.seatflow.event.EventSeatHoldCandidate;
@@ -71,6 +72,29 @@ public class SeatHoldService {
 				expiresAt);
 	}
 
+	public SeatHoldResponse getHold(UUID holdId, UUID userId) {
+		SeatHoldRecord hold = findHold(holdId);
+		validateOwner(hold, userId);
+		if (!isHoldActive(hold)) {
+			throw new SeatHoldNotFoundException();
+		}
+		return response(hold);
+	}
+
+	public void releaseHold(UUID holdId, UUID userId) {
+		SeatHoldRecord hold = findHoldOrNull(holdId);
+		if (hold == null) {
+			return;
+		}
+		validateOwner(hold, userId);
+		try {
+			seatHoldStore.releaseHold(hold);
+		}
+		catch (RuntimeException ex) {
+			throw new SeatHoldStorageException(ex);
+		}
+	}
+
 	private void validateRequestSeatIds(List<UUID> requestedEventSeatIds) {
 		if (requestedEventSeatIds.isEmpty()) {
 			throw new InvalidSeatHoldRequestException();
@@ -119,6 +143,48 @@ public class SeatHoldService {
 		catch (RuntimeException ex) {
 			throw new SeatHoldStorageException(ex);
 		}
+	}
+
+	private SeatHoldRecord findHold(UUID holdId) {
+		SeatHoldRecord hold = findHoldOrNull(holdId);
+		if (hold == null) {
+			throw new SeatHoldNotFoundException();
+		}
+		return hold;
+	}
+
+	private SeatHoldRecord findHoldOrNull(UUID holdId) {
+		try {
+			return seatHoldStore.findHold(holdId).orElse(null);
+		}
+		catch (RuntimeException ex) {
+			throw new SeatHoldStorageException(ex);
+		}
+	}
+
+	private boolean isHoldActive(SeatHoldRecord hold) {
+		try {
+			return seatHoldStore.isHoldActive(hold);
+		}
+		catch (RuntimeException ex) {
+			throw new SeatHoldStorageException(ex);
+		}
+	}
+
+	private static void validateOwner(SeatHoldRecord hold, UUID userId) {
+		if (!hold.userId().equals(userId)) {
+			throw new AccessDeniedException("Hold belongs to another user");
+		}
+	}
+
+	private static SeatHoldResponse response(SeatHoldRecord hold) {
+		return new SeatHoldResponse(
+				hold.holdId(),
+				hold.eventId(),
+				hold.eventSeatId(),
+				hold.eventSeatIds(),
+				hold.userId(),
+				hold.expiresAt());
 	}
 
 	private static void validateHoldCandidate(EventSeatHoldCandidate candidate, Instant now) {
