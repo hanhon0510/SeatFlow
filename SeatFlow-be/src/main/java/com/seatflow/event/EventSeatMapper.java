@@ -18,4 +18,8 @@ public interface EventSeatMapper {
 	List<EventSeatRecord> findByEventId(@Param("eventId") UUID eventId);
 
 	List<EventSeatLayoutRow> findPublishedLayoutByEventId(@Param("eventId") UUID eventId);
+
+	EventSeatHoldCandidate findHoldCandidate(
+			@Param("eventId") UUID eventId,
+			@Param("eventSeatId") UUID eventSeatId);
 }

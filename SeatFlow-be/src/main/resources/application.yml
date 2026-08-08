@@ -58,3 +58,5 @@ seatflow:
     expires-in-seconds: ${SEATFLOW_REFRESH_TOKEN_EXPIRES_IN_SECONDS}
     cookie-secure: ${SEATFLOW_REFRESH_TOKEN_COOKIE_SECURE}
     same-site: ${SEATFLOW_REFRESH_TOKEN_SAME_SITE}
+  holds:
+    ttl: ${SEATFLOW_HOLD_TTL:5m}

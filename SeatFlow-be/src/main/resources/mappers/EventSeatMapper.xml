@@ -31,6 +31,18 @@
         </constructor>
     </resultMap>
 
+    <resultMap id="EventSeatHoldCandidateResultMap" type="com.seatflow.event.EventSeatHoldCandidate">
+        <constructor>
+            <idArg column="event_id" javaType="java.util.UUID" />
+            <idArg column="event_seat_id" javaType="java.util.UUID" />
+            <arg column="seat_id" javaType="java.util.UUID" />
+            <arg column="event_status" javaType="com.seatflow.event.EventStatus" />
+            <arg column="sales_start_time" javaType="java.time.Instant" />
+            <arg column="sales_end_time" javaType="java.time.Instant" />
+            <arg column="permanent_status" javaType="com.seatflow.event.EventSeatStatus" />
+        </constructor>
+    </resultMap>
+
     <sql id="EventSeatColumns">
         event_seat.id,
         event_seat.event_id,
@@ -147,5 +159,20 @@
             seat.seat_number ASC,
             seat.seat_label ASC,
             event_seat.id ASC
+    </select>
+
+    <select id="findHoldCandidate" resultMap="EventSeatHoldCandidateResultMap">
+        SELECT
+            e.id AS event_id,
+            event_seat.id AS event_seat_id,
+            event_seat.seat_id,
+            e.status AS event_status,
+            e.sales_start_time,
+            e.sales_end_time,
+            event_seat.permanent_status
+        FROM events e
+        JOIN event_seats event_seat ON event_seat.event_id = e.id
+        WHERE e.id = #{eventId}
+          AND event_seat.id = #{eventSeatId}
     </select>
 </mapper>

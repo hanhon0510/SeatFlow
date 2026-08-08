@@ -24,6 +24,8 @@ import com.seatflow.event.MissingEventSectionPricingException;
 import com.seatflow.event.NoEventSeatsException;
 import com.seatflow.health.DatabaseHealthUnavailableException;
 import com.seatflow.health.RedisHealthUnavailableException;
+import com.seatflow.hold.SeatHoldConflictException;
+import com.seatflow.hold.SeatHoldStorageException;
 import com.seatflow.seating.DuplicateSeatLabelException;
 import com.seatflow.seating.InvalidSeatBatchException;
 import com.seatflow.seating.SeatNotFoundException;
@@ -141,6 +143,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(EventPublicationException.class)
 	public ResponseEntity<ApiResponse<Void>> handleEventPublication(EventPublicationException ex) {
 		return error("Event publication failed", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(SeatHoldConflictException.class)
+	public ResponseEntity<ApiResponse<Void>> handleSeatHoldConflict(SeatHoldConflictException ex) {
+		return error("Seat hold conflict", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(SeatHoldStorageException.class)
+	public ResponseEntity<ApiResponse<Void>> handleSeatHoldStorage(SeatHoldStorageException ex) {
+		return error("Seat hold storage unavailable", HttpStatus.SERVICE_UNAVAILABLE);
 	}
 
 	@ExceptionHandler(VenueAlreadyArchivedException.class)

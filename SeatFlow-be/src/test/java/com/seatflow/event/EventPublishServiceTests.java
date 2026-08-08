@@ -258,5 +258,10 @@ class EventPublishServiceTests {
 		public List<EventSeatLayoutRow> findPublishedLayoutByEventId(UUID eventId) {
 			return List.of();
 		}
+
+		@Override
+		public EventSeatHoldCandidate findHoldCandidate(UUID eventId, UUID eventSeatId) {
+			return null;
+		}
 	}
 }

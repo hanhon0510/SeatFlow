@@ -8,6 +8,7 @@ import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -54,13 +55,13 @@ public class SecurityConfig {
 								"/api/v1/auth/logout",
 								"/api/v1/auth/refresh",
 								"/api/v1/auth/register",
-								"/api/v1/events",
-								"/api/v1/events/**",
 								"/api/v1/health",
 								"/api/v1/health/database",
 								"/api/v1/health/redis",
 								"/actuator/health",
 								"/actuator/info").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/v1/events", "/api/v1/events/**").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/v1/events/*/holds").hasAnyRole("USER", "ADMIN")
 						.requestMatchers("/api/v1/admin", "/api/v1/admin/**").hasRole("ADMIN")
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth2 -> oauth2

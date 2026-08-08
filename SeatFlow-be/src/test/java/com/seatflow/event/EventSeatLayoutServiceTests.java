@@ -126,5 +126,10 @@ class EventSeatLayoutServiceTests {
 			requestedEventId = eventId;
 			return rows;
 		}
+
+		@Override
+		public EventSeatHoldCandidate findHoldCandidate(UUID eventId, UUID eventSeatId) {
+			return null;
+		}
 	}
 }
