@@ -758,7 +758,7 @@ describe('App', () => {
     expect(screen.getByText('Address is required')).toBeInTheDocument()
     expect(screen.getByText('City is required')).toBeInTheDocument()
     expect(screen.getByText('Country is required')).toBeInTheDocument()
-    expect(screen.getByText('Timezone is required')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Timezone' })).toBeInTheDocument()
   })
 
   it('creates a venue and opens the edit page', async () => {
@@ -797,7 +797,9 @@ describe('App', () => {
     await user.type(screen.getByLabelText('Address'), venue.address)
     await user.type(screen.getByLabelText('City'), venue.city)
     await user.type(screen.getByLabelText('Country'), venue.country)
-    await user.type(screen.getByLabelText('Timezone'), venue.timezone)
+    await user.click(screen.getByRole('combobox', { name: 'Timezone' }))
+    await user.type(screen.getByRole('combobox', { name: 'Timezone' }), venue.timezone)
+    await user.click(await screen.findByTitle(venue.timezone))
     await user.click(screen.getByRole('button', { name: /create venue/i }))
 
     await waitFor(() =>

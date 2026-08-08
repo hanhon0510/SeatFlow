@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { SaveOutlined } from '@ant-design/icons'
-import { Button, Form, Input } from 'antd'
+import { Button, Form, Input, Select } from 'antd'
 
+import { getBrowserTimezone, timezoneOptions } from '../../../../shared/utils/timezones'
 import type { VenueFormValues } from '../types'
 
 type VenueFormProps = {
@@ -26,6 +27,7 @@ export function VenueForm({
     }
 
     form.resetFields()
+    form.setFieldValue('timezone', getBrowserTimezone())
   }, [form, initialValues])
 
   return (
@@ -91,7 +93,13 @@ export function VenueForm({
             { max: 64, message: 'Timezone must be 64 characters or fewer' },
           ]}
         >
-          <Input autoComplete="off" placeholder="America/New_York" />
+          <Select
+            aria-label="Timezone"
+            optionFilterProp="label"
+            options={timezoneOptions}
+            placeholder="Select timezone"
+            showSearch
+          />
         </Form.Item>
       </div>
 
