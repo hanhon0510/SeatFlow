@@ -2,6 +2,7 @@ package com.seatflow.event;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -9,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Map;
 import java.util.List;
 import java.util.UUID;
 
@@ -17,14 +19,19 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.seatflow.hold.SeatHoldStore;
 import com.seatflow.security.JwtConfig;
 import com.seatflow.security.JwtTokenService;
 import com.seatflow.security.SecurityConfig;
 import com.seatflow.support.JwtTestSupport;
+import com.seatflow.user.UserRecord;
+import com.seatflow.user.UserRole;
+import com.seatflow.user.UserStatus;
 
 @WebMvcTest(PublicEventController.class)
 @Import({
@@ -45,15 +52,22 @@ class PublicEventControllerSecurityTests {
 	private static final Instant EVENT_START = Instant.parse("2026-09-01T19:00:00Z");
 	private static final Instant SALES_START = Instant.parse("2026-08-01T00:00:00Z");
 	private static final Instant SALES_END = Instant.parse("2026-09-01T18:00:00Z");
+	private static final UUID USER_ID = UUID.fromString("c144397b-1b17-4a45-a1ef-b30ef84d5a79");
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private JwtTokenService jwtTokenService;
 
 	@MockitoBean
 	private EventMapper eventMapper;
 
 	@MockitoBean
 	private EventSeatMapper eventSeatMapper;
+
+	@MockitoBean
+	private SeatHoldStore seatHoldStore;
 
 	@Test
 	void unauthenticatedUserCanBrowsePublishedEvents() throws Exception {
@@ -135,7 +149,33 @@ class PublicEventControllerSecurityTests {
 				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].seatNumber").value(1))
 				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].price").value(125000.00))
 				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].permanentStatus").value("AVAILABLE"))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].status").value("AVAILABLE"))
 				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].accessible").value(true));
+	}
+
+	@Test
+	void authenticatedUserSeesOwnHeldSeatInPublishedSeatLayout() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID sectionId = UUID.randomUUID();
+		UUID eventSeatId = UUID.randomUUID();
+		when(eventSeatMapper.findPublishedLayoutByEventId(eventId)).thenReturn(List.of(eventSeatRow(
+				sectionId,
+				"Orchestra",
+				1,
+				"A",
+				eventSeatId,
+				"A1",
+				1,
+				"125000.00",
+				EventSeatStatus.AVAILABLE,
+				true)));
+		when(seatHoldStore.findActiveSeatHoldOwners(eq(eventId), any()))
+				.thenReturn(Map.of(eventSeatId, USER_ID));
+
+		mockMvc.perform(get("/api/v1/events/{eventId}/seats", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].status").value("HELD_BY_YOU"));
 	}
 
 	@Test
@@ -188,5 +228,16 @@ class PublicEventControllerSecurityTests {
 				new BigDecimal(price),
 				status,
 				accessible);
+	}
+
+	private String bearerToken() {
+		return "Bearer " + jwtTokenService.issueAccessToken(new UserRecord(
+				USER_ID,
+				"user@example.com",
+				"{bcrypt}hash",
+				UserRole.USER,
+				UserStatus.ACTIVE,
+				Instant.parse("2026-08-08T09:00:00Z"),
+				Instant.parse("2026-08-08T09:00:00Z"))).accessToken();
 	}
 }

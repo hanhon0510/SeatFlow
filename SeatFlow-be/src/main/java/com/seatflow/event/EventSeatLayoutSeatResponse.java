@@ -9,15 +9,17 @@ public record EventSeatLayoutSeatResponse(
 		int seatNumber,
 		BigDecimal price,
 		EventSeatStatus permanentStatus,
+		EventSeatLayoutStatus status,
 		boolean accessible) {
 
-	public static EventSeatLayoutSeatResponse from(EventSeatLayoutRow row) {
+	public static EventSeatLayoutSeatResponse from(EventSeatLayoutRow row, EventSeatLayoutStatus status) {
 		return new EventSeatLayoutSeatResponse(
 				row.eventSeatId(),
 				row.seatLabel(),
 				row.seatNumber(),
 				row.price(),
 				row.permanentStatus(),
+				status,
 				row.accessible());
 	}
 }

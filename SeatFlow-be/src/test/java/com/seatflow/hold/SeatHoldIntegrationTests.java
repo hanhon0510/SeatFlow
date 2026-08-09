@@ -177,6 +177,41 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 	}
 
 	@Test
+	void seatMapShowsCurrentUserAndOtherUserHeldStatuses() throws Exception {
+		PublishedSeats publishedSeats = insertPublishedSeats(openSalesWindow(), true, 2);
+		UserRecord currentUser = insertUser("current@example.com");
+		UserRecord otherUser = insertUser("other@example.com");
+		EventSeatRecord currentUserSeat = publishedSeats.eventSeats().get(0);
+		EventSeatRecord otherUserSeat = publishedSeats.eventSeats().get(1);
+		createHold(publishedSeats.event(), currentUserSeat, currentUser);
+		createHold(publishedSeats.event(), otherUserSeat, otherUser);
+
+		mockMvc.perform(get("/api/v1/events/{eventId}/seats", publishedSeats.event().id())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(currentUser)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].status").value("HELD_BY_YOU"))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[1].status").value("HELD"))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].userId").doesNotExist())
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[1].userId").doesNotExist());
+	}
+
+	@Test
+	void soldSeatOverridesStaleHoldKeyInSeatMap() throws Exception {
+		PublishedSeat publishedSeat = insertPublishedSeat(openSalesWindow(), true);
+		UserRecord user = insertUser("holder@example.com");
+		createHold(publishedSeat, user);
+		jdbcTemplate.update(
+				"UPDATE event_seats SET permanent_status = 'SOLD' WHERE id = ?",
+				publishedSeat.eventSeat().id());
+
+		mockMvc.perform(get("/api/v1/events/{eventId}/seats", publishedSeat.event().id())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].permanentStatus").value("SOLD"))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].status").value("SOLD"));
+	}
+
+	@Test
 	void ownerReleasesHoldAndSeatCanBeHeldImmediately() throws Exception {
 		PublishedSeat publishedSeat = insertPublishedSeat(openSalesWindow(), true);
 		UserRecord firstUser = insertUser("first@example.com");
@@ -409,10 +444,14 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 	}
 
 	private UUID createHold(PublishedSeat publishedSeat, UserRecord user) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/v1/events/{eventId}/holds", publishedSeat.event().id())
+		return createHold(publishedSeat.event(), publishedSeat.eventSeat(), user);
+	}
+
+	private UUID createHold(EventRecord event, EventSeatRecord eventSeat, UserRecord user) throws Exception {
+		MvcResult result = mockMvc.perform(post("/api/v1/events/{eventId}/holds", event.id())
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(user))
 						.contentType(MediaType.APPLICATION_JSON)
-						.content(requestBody(publishedSeat.eventSeat().id())))
+						.content(requestBody(eventSeat.id())))
 				.andExpect(status().isCreated())
 				.andReturn();
 		return holdId(result);

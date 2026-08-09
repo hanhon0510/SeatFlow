@@ -237,7 +237,21 @@ body {
 }
 
 .public-seat-button.state-sold.ant-btn,
-.public-seat-button.state-blocked.ant-btn {
+.public-seat-button.state-blocked.ant-btn,
+.public-seat-button.state-held.ant-btn,
+.public-seat-button.state-held-by-you.ant-btn {
+  color: #ffffff;
+}
+
+.public-seat-button.state-held.ant-btn:disabled {
+  border-color: #d97706;
+  background: #d97706;
+  color: #ffffff;
+}
+
+.public-seat-button.state-held-by-you.ant-btn:disabled {
+  border-color: #0f766e;
+  background: #0f766e;
   color: #ffffff;
 }
 

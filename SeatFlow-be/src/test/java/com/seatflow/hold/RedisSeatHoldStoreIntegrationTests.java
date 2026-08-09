@@ -29,7 +29,7 @@ class RedisSeatHoldStoreIntegrationTests extends RedisTestContainerSupport {
 	private static final UUID SEAT_ID_2 = UUID.fromString("86b8769e-080e-491f-9290-2eed6ef139e2");
 	private static final UUID USER_ID = UUID.fromString("c144397b-1b17-4a45-a1ef-b30ef84d5a79");
 	private static final UUID HOLD_ID = UUID.fromString("0ffae24a-c058-4e4e-8783-b556a70e097e");
-	private static final Instant EXPIRES_AT = Instant.parse("2026-08-08T10:05:00Z");
+	private static final Duration HOLD_EXPIRY = Duration.ofMinutes(5);
 
 	@Autowired
 	private RedisSeatHoldStore store;
@@ -78,6 +78,31 @@ class RedisSeatHoldStoreIntegrationTests extends RedisTestContainerSupport {
 					assertThat(retrieved.userId()).isEqualTo(USER_ID);
 				});
 		assertThat(store.isHoldActive(hold)).isTrue();
+	}
+
+	@Test
+	void findsActiveSeatHoldOwnersForSeatMapOverlay() {
+		SeatHoldRecord hold = hold(HOLD_ID, USER_ID);
+		assertThat(store.createHold(hold, Duration.ofSeconds(5))).isTrue();
+
+		assertThat(store.findActiveSeatHoldOwners(EVENT_ID, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2, UUID.randomUUID())))
+				.containsOnly(
+						org.assertj.core.api.Assertions.entry(EVENT_SEAT_ID, USER_ID),
+						org.assertj.core.api.Assertions.entry(EVENT_SEAT_ID_2, USER_ID));
+	}
+
+	@Test
+	void expiredHoldMetadataIsIgnoredForSeatMapOverlay() {
+		SeatHoldRecord expiredHold = new SeatHoldRecord(
+				HOLD_ID,
+				EVENT_ID,
+				List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2),
+				List.of(SEAT_ID, SEAT_ID_2),
+				USER_ID,
+				Instant.now().minusSeconds(1));
+		assertThat(store.createHold(expiredHold, Duration.ofSeconds(5))).isTrue();
+
+		assertThat(store.findActiveSeatHoldOwners(EVENT_ID, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2))).isEmpty();
 	}
 
 	@Test
@@ -175,6 +200,6 @@ class RedisSeatHoldStoreIntegrationTests extends RedisTestContainerSupport {
 				List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2),
 				List.of(SEAT_ID, SEAT_ID_2),
 				userId,
-				EXPIRES_AT);
+				Instant.now().plus(HOLD_EXPIRY));
 	}
 }

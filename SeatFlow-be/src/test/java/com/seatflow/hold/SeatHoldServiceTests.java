@@ -633,6 +633,25 @@ class SeatHoldServiceTests {
 			}
 		}
 
+		@Override
+		public java.util.Map<UUID, UUID> findActiveSeatHoldOwners(UUID eventId, List<UUID> eventSeatIds) {
+			java.util.Map<UUID, UUID> ownersByEventSeatId = new java.util.HashMap<>();
+			for (UUID eventSeatId : eventSeatIds) {
+				SeatEntry entry = seatHolds.get(SeatHoldRedisKeys.seat(eventId, eventSeatId));
+				if (entry == null || !entry.expiresAt().isAfter(clock.instant())) {
+					continue;
+				}
+				SeatHoldRecord hold = dataHolds.get(entry.holdId());
+				if (hold != null
+						&& hold.eventId().equals(eventId)
+						&& hold.eventSeatIds().contains(eventSeatId)
+						&& hold.expiresAt().isAfter(clock.instant())) {
+					ownersByEventSeatId.put(eventSeatId, hold.userId());
+				}
+			}
+			return ownersByEventSeatId;
+		}
+
 		private boolean hasSeatHold(UUID eventId, UUID eventSeatId) {
 			SeatEntry entry = seatHolds.get(SeatHoldRedisKeys.seat(eventId, eventSeatId));
 			return entry != null && entry.expiresAt().isAfter(clock.instant());

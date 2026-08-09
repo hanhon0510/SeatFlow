@@ -35,6 +35,7 @@ export type EventCatalogFilters = {
 export type EventCatalogSort = 'startAsc' | 'startDesc' | 'priceAsc' | 'priceDesc'
 
 export type EventSeatPermanentStatus = 'AVAILABLE' | 'SOLD' | 'BLOCKED'
+export type EventSeatLayoutStatus = EventSeatPermanentStatus | 'HELD' | 'HELD_BY_YOU'
 
 export type EventSeatLayoutSeat = {
   eventSeatId: string
@@ -42,6 +43,7 @@ export type EventSeatLayoutSeat = {
   seatNumber: number
   price: number
   permanentStatus: EventSeatPermanentStatus
+  status?: EventSeatLayoutStatus
   accessible: boolean
 }
 

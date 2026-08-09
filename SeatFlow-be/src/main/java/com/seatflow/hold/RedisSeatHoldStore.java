@@ -1,13 +1,17 @@
 package com.seatflow.hold;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -55,9 +59,11 @@ public class RedisSeatHoldStore implements SeatHoldStore {
 			""", Long.class);
 
 	private final StringRedisTemplate redisTemplate;
+	private final Clock clock;
 
-	public RedisSeatHoldStore(StringRedisTemplate redisTemplate) {
+	public RedisSeatHoldStore(StringRedisTemplate redisTemplate, Clock clock) {
 		this.redisTemplate = redisTemplate;
+		this.clock = clock;
 	}
 
 	@Override
@@ -88,7 +94,8 @@ public class RedisSeatHoldStore implements SeatHoldStore {
 
 	@Override
 	public boolean isHoldActive(SeatHoldRecord hold) {
-		return hold.eventSeatIds().stream()
+		return hold.expiresAt().isAfter(clock.instant())
+				&& hold.eventSeatIds().stream()
 				.allMatch(eventSeatId -> hold.holdId().toString()
 						.equals(redisTemplate.opsForValue().get(SeatHoldRedisKeys.seat(hold.eventId(), eventSeatId))));
 	}
@@ -101,6 +108,59 @@ public class RedisSeatHoldStore implements SeatHoldStore {
 		hold.eventSeatIds().forEach(eventSeatId -> keys.add(SeatHoldRedisKeys.seat(hold.eventId(), eventSeatId)));
 
 		redisTemplate.execute(RELEASE_HOLD_SCRIPT, keys, hold.holdId().toString());
+	}
+
+	@Override
+	public Map<UUID, UUID> findActiveSeatHoldOwners(UUID eventId, List<UUID> eventSeatIds) {
+		List<UUID> uniqueEventSeatIds = eventSeatIds.stream()
+				.distinct()
+				.toList();
+		if (uniqueEventSeatIds.isEmpty()) {
+			return Map.of();
+		}
+
+		List<String> seatKeys = uniqueEventSeatIds.stream()
+				.map(eventSeatId -> SeatHoldRedisKeys.seat(eventId, eventSeatId))
+				.toList();
+		List<String> holdIdValues = redisTemplate.opsForValue().multiGet(seatKeys);
+		if (holdIdValues == null) {
+			return Map.of();
+		}
+
+		Map<UUID, List<UUID>> eventSeatIdsByHoldId = new LinkedHashMap<>();
+		for (int index = 0; index < uniqueEventSeatIds.size(); index++) {
+			UUID holdId = parseUuid(holdIdValues.get(index));
+			if (holdId != null) {
+				eventSeatIdsByHoldId.computeIfAbsent(holdId, ignored -> new ArrayList<>())
+						.add(uniqueEventSeatIds.get(index));
+			}
+		}
+		if (eventSeatIdsByHoldId.isEmpty()) {
+			return Map.of();
+		}
+
+		List<UUID> holdIds = new ArrayList<>(eventSeatIdsByHoldId.keySet());
+		List<String> holdDataKeys = holdIds.stream()
+				.map(SeatHoldRedisKeys::data)
+				.toList();
+		List<String> holdPayloads = redisTemplate.opsForValue().multiGet(holdDataKeys);
+		if (holdPayloads == null) {
+			return Map.of();
+		}
+
+		Map<UUID, UUID> ownersByEventSeatId = new HashMap<>();
+		for (int index = 0; index < holdIds.size(); index++) {
+			UUID holdId = holdIds.get(index);
+			parsePayload(holdPayloads.get(index))
+					.filter(hold -> hold.holdId().equals(holdId))
+					.filter(hold -> hold.eventId().equals(eventId))
+					.filter(hold -> hold.expiresAt().isAfter(clock.instant()))
+					.ifPresent(hold -> addHeldSeats(
+							ownersByEventSeatId,
+							eventSeatIdsByHoldId.getOrDefault(hold.holdId(), List.of()),
+							hold));
+		}
+		return ownersByEventSeatId;
 	}
 
 	private static String payload(SeatHoldRecord hold) {
@@ -156,5 +216,29 @@ public class RedisSeatHoldStore implements SeatHoldStore {
 		return Arrays.stream(value.split(","))
 				.map(UUID::fromString)
 				.toList();
+	}
+
+	private static UUID parseUuid(String value) {
+		if (value == null || value.isBlank()) {
+			return null;
+		}
+		try {
+			return UUID.fromString(value);
+		}
+		catch (IllegalArgumentException ex) {
+			return null;
+		}
+	}
+
+	private static void addHeldSeats(
+			Map<UUID, UUID> ownersByEventSeatId,
+			List<UUID> eventSeatIds,
+			SeatHoldRecord hold) {
+		Set<UUID> immutableSeatIds = new HashSet<>(hold.eventSeatIds());
+		for (UUID eventSeatId : eventSeatIds) {
+			if (immutableSeatIds.contains(eventSeatId)) {
+				ownersByEventSeatId.put(eventSeatId, hold.userId());
+			}
+		}
 	}
 }

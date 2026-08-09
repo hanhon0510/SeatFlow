@@ -2,6 +2,8 @@ package com.seatflow.event;
 
 import java.util.UUID;
 
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,7 +42,21 @@ public class PublicEventController {
 	}
 
 	@GetMapping("/{eventId}/seats")
-	public EventSeatLayoutResponse seats(@PathVariable UUID eventId) {
-		return eventSeatLayoutService.getSeatLayout(eventId);
+	public EventSeatLayoutResponse seats(
+			@PathVariable UUID eventId,
+			@AuthenticationPrincipal Jwt jwt) {
+		return eventSeatLayoutService.getSeatLayout(eventId, userIdOrNull(jwt));
+	}
+
+	private static UUID userIdOrNull(Jwt jwt) {
+		if (jwt == null) {
+			return null;
+		}
+		try {
+			return UUID.fromString(jwt.getSubject());
+		}
+		catch (IllegalArgumentException ex) {
+			return null;
+		}
 	}
 }

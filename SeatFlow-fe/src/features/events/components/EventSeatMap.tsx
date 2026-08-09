@@ -4,7 +4,7 @@ import { Alert, Badge, Button, Card, Empty, Segmented, Spin, Statistic, Tag, Typ
 
 import { apiErrorMessage } from '../../../shared/api/apiError'
 import { getEventSeatLayout, publicEventQueryKeys } from '../api/eventsApi'
-import type { EventSeatLayout, EventSeatLayoutSeat, EventSeatPermanentStatus } from '../types'
+import type { EventSeatLayout, EventSeatLayoutSeat, EventSeatLayoutStatus } from '../types'
 
 const maxSelectionCount = 8
 
@@ -33,7 +33,7 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
   const activeSection = sections.find((section) => section.id === activeSectionId)
 
   const toggleSeat = (seat: EventSeatLayoutSeat) => {
-    if (seat.permanentStatus !== 'AVAILABLE') {
+    if (seatStatus(seat) !== 'AVAILABLE') {
       return
     }
 
@@ -163,11 +163,11 @@ function SeatButton({
   selected: boolean
   onToggle: () => void
 }) {
-  const selectable = seat.permanentStatus === 'AVAILABLE'
-  const state = selected ? 'SELECTED' : seat.permanentStatus
+  const selectable = seatStatus(seat) === 'AVAILABLE'
+  const state = selected ? 'SELECTED' : seatStatus(seat)
   const className = [
     'public-seat-button',
-    `state-${state.toLowerCase()}`,
+    `state-${statusClassName(state)}`,
     seat.accessible ? 'accessible' : '',
   ].filter(Boolean).join(' ')
 
@@ -189,6 +189,8 @@ function SeatLegend() {
     <div className="seat-legend" aria-label="Seat legend">
       <Badge color="#ffffff" text="Available" />
       <Badge color="#1f6feb" text="Selected" />
+      <Badge color="#d97706" text="Held" />
+      <Badge color="#0f766e" text="Held by you" />
       <Badge color="#b8c3d1" text="Sold" />
       <Badge color="#4b5563" text="Blocked" />
       <Badge color="#16a34a" text="Accessible" />
@@ -207,12 +209,23 @@ function seatsByEventSeatId(layout: EventSeatLayout | undefined) {
 }
 
 function seatAriaLabel(seat: EventSeatLayoutSeat, selected: boolean) {
-  const state = selected ? 'selected' : statusLabel(seat.permanentStatus).toLowerCase()
+  const state = selected ? 'selected' : statusLabel(seatStatus(seat)).toLowerCase()
   const accessibility = seat.accessible ? 'accessible' : 'standard'
   return `Seat ${seat.seatLabel}, ${state}, ${formatPrice(seat.price)}, ${accessibility}`
 }
 
-function statusLabel(status: EventSeatPermanentStatus) {
+function seatStatus(seat: EventSeatLayoutSeat) {
+  return seat.status ?? seat.permanentStatus
+}
+
+function statusClassName(status: EventSeatLayoutStatus | 'SELECTED') {
+  return status.toLowerCase().replace(/_/g, '-')
+}
+
+function statusLabel(status: EventSeatLayoutStatus) {
+  if (status === 'HELD_BY_YOU') {
+    return 'Held by you'
+  }
   return status.charAt(0) + status.slice(1).toLowerCase()
 }
 

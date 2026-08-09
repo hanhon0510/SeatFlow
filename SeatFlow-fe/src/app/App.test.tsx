@@ -435,6 +435,56 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /Seat A4, blocked/i })).toBeDisabled()
   })
 
+  it('renders held seats as unavailable', async () => {
+    const user = userEvent.setup()
+    const heldSeatLayout: EventSeatLayout = {
+      ...publicSeatLayout,
+      sections: publicSeatLayout.sections.map((section) => ({
+        ...section,
+        rows: section.rows.map((row) => ({
+          ...row,
+          seats: row.seats.map((seat) => {
+            if (seat.seatLabel === 'A1') {
+              return { ...seat, status: 'HELD' as const }
+            }
+            if (seat.seatLabel === 'A2') {
+              return { ...seat, status: 'HELD_BY_YOU' as const }
+            }
+            return seat
+          }),
+        })),
+      })),
+    }
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, heldSeatLayout)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Held')).toBeInTheDocument()
+    expect(screen.getByText('Held by you')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Seat A1, held/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Seat A2, held by you/i })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: /Seat A1, held/i }))
+
+    expect(screen.getByText('0 of 8 selected')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+  })
+
   it('selects and deselects available seats while calculating total price', async () => {
     const user = userEvent.setup()
     window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
