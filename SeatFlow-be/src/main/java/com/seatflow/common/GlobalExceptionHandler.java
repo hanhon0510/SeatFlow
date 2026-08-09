@@ -28,6 +28,8 @@ import com.seatflow.hold.InvalidSeatHoldRequestException;
 import com.seatflow.hold.SeatHoldConflictException;
 import com.seatflow.hold.SeatHoldNotFoundException;
 import com.seatflow.hold.SeatHoldStorageException;
+import com.seatflow.reservation.ReservationConflictException;
+import com.seatflow.reservation.ReservationNotFoundException;
 import com.seatflow.seating.DuplicateSeatLabelException;
 import com.seatflow.seating.InvalidSeatBatchException;
 import com.seatflow.seating.SeatNotFoundException;
@@ -165,6 +167,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(SeatHoldStorageException.class)
 	public ResponseEntity<ApiResponse<Void>> handleSeatHoldStorage(SeatHoldStorageException ex) {
 		return error("Seat hold storage unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+	}
+
+	@ExceptionHandler(ReservationNotFoundException.class)
+	public ResponseEntity<ApiResponse<Void>> handleReservationNotFound(ReservationNotFoundException ex) {
+		return error("Reservation not found", HttpStatus.NOT_FOUND);
+	}
+
+	@ExceptionHandler(ReservationConflictException.class)
+	public ResponseEntity<ApiResponse<Void>> handleReservationConflict(ReservationConflictException ex) {
+		return error("Reservation conflict", HttpStatus.CONFLICT);
 	}
 
 	@ExceptionHandler(VenueAlreadyArchivedException.class)

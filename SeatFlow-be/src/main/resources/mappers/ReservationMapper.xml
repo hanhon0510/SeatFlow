@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.reservation.ReservationMapper">
+    <resultMap id="ReservationRecordResultMap" type="com.seatflow.reservation.ReservationRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="user_id" javaType="java.util.UUID" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="hold_id" javaType="java.util.UUID" />
+            <arg column="status" javaType="com.seatflow.reservation.ReservationStatus" />
+            <arg column="expires_at" javaType="java.time.Instant" />
+            <arg column="total_amount" javaType="java.math.BigDecimal" />
+            <arg column="created_at" javaType="java.time.Instant" />
+            <arg column="updated_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ReservationSeatPriceResultMap" type="com.seatflow.reservation.ReservationSeatPrice">
+        <constructor>
+            <idArg column="event_seat_id" javaType="java.util.UUID" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="price" javaType="java.math.BigDecimal" />
+            <arg column="permanent_status" javaType="com.seatflow.event.EventSeatStatus" />
+        </constructor>
+    </resultMap>
+
+    <sql id="ReservationColumns">
+        id,
+        user_id,
+        event_id,
+        hold_id,
+        status,
+        expires_at,
+        total_amount,
+        created_at,
+        updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.seatflow.reservation.ReservationRecord">
+        INSERT INTO reservations (
+            id,
+            user_id,
+            event_id,
+            hold_id,
+            status,
+            expires_at,
+            total_amount,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            #{id},
+            #{userId},
+            #{eventId},
+            #{holdId},
+            #{status},
+            #{expiresAt},
+            #{totalAmount},
+            #{createdAt},
+            #{updatedAt}
+        )
+        ON CONFLICT (hold_id) DO NOTHING
+    </insert>
+
+    <select id="findByHoldId" resultMap="ReservationRecordResultMap">
+        SELECT
+            <include refid="ReservationColumns" />
+        FROM reservations
+        WHERE hold_id = #{holdId}
+    </select>
+
+    <select id="findByIdAndUser" resultMap="ReservationRecordResultMap">
+        SELECT
+            <include refid="ReservationColumns" />
+        FROM reservations
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </select>
+
+    <select id="findSeatPricesForEvent" resultMap="ReservationSeatPriceResultMap">
+        SELECT
+            id AS event_seat_id,
+            event_id,
+            price,
+            permanent_status
+        FROM event_seats
+        WHERE event_id = #{eventId}
+          AND id IN
+          <foreach collection="eventSeatIds" item="eventSeatId" open="(" separator="," close=")">
+              #{eventSeatId}
+          </foreach>
+    </select>
+
+    <update id="updateStatus">
+        UPDATE reservations
+        SET
+            status = #{newStatus},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND status = #{expectedStatus}
+    </update>
+</mapper>
