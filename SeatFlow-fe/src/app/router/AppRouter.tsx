@@ -12,6 +12,7 @@ import { HealthPage } from '../../features/health/pages/HealthPage'
 import { NotFoundPage } from '../../features/not-found/pages/NotFoundPage'
 import { EventCatalogPage } from '../../features/events/pages/EventCatalogPage'
 import { EventDetailPage } from '../../features/events/pages/EventDetailPage'
+import { CheckoutPage } from '../../features/holds/pages/CheckoutPage'
 import { ROUTES } from '../../shared/constants/routes'
 
 export function AppRouter() {
@@ -24,6 +25,7 @@ export function AppRouter() {
         <Route path={ROUTES.events} element={<EventCatalogPage />} />
         <Route path={ROUTES.eventDetailPattern} element={<EventDetailPage />} />
         <Route element={<ProtectedRoute />}>
+          <Route path={ROUTES.checkoutPattern} element={<CheckoutPage />} />
           <Route element={<AdminRoute />}>
             <Route path={ROUTES.admin} element={<VenueListPage />} />
             <Route path={ROUTES.adminEvents} element={<EventListPage />} />

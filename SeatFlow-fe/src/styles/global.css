@@ -284,6 +284,35 @@ body {
   align-items: center;
 }
 
+.checkout-page {
+  width: min(100%, 900px);
+  display: grid;
+  gap: 24px;
+}
+
+.checkout-card .ant-card-body {
+  display: grid;
+  gap: 24px;
+}
+
+.checkout-card-header {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.checkout-card-header h1.ant-typography {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.hold-seat-list {
+  display: flex;
+  min-height: 32px;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .admin-page {
   width: min(100%, 1180px);
   display: grid;

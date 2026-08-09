@@ -5,6 +5,8 @@ export const ROUTES = {
   events: '/events',
   eventDetailPattern: '/events/:eventId',
   eventDetail: (eventId: string) => `/events/${eventId}`,
+  checkoutPattern: '/checkout/:holdId',
+  checkout: (holdId: string) => `/checkout/${holdId}`,
   admin: '/admin',
   adminEvents: '/admin/events',
   adminEventNew: '/admin/events/new',

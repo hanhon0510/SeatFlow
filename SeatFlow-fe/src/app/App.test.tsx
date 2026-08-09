@@ -17,6 +17,7 @@ import type {
 } from '../features/admin/events/types'
 import type { EventSeatLayout, PublicEvent, PublicEventPage } from '../features/events/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
+import type { SeatHold } from '../features/holds/types'
 import { apiClient } from '../shared/api/httpClient'
 import { ROUTES } from '../shared/constants/routes'
 import App from './App'
@@ -157,6 +158,20 @@ const publicSeatLayout: EventSeatLayout = {
       ],
     },
   ],
+}
+
+function activeSeatHold(expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()): SeatHold {
+  return {
+    holdId: 'b7a60452-f6aa-471f-a60d-151721ce2f98',
+    eventId: publishedEvent.id,
+    eventSeatId: publicSeatLayout.sections[0].rows[0].seats[0].eventSeatId,
+    eventSeatIds: [
+      publicSeatLayout.sections[0].rows[0].seats[0].eventSeatId,
+      publicSeatLayout.sections[0].rows[0].seats[1].eventSeatId,
+    ],
+    userId: authUser.id,
+    expiresAt,
+  }
 }
 
 const layoutWithSection: SeatLayout = {
@@ -554,6 +569,255 @@ describe('App', () => {
     expect(screen.getByText('400,000')).toBeInTheDocument()
     expect(screen.getByText('You can select up to 8 seats.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Seat A9, available/i })).toHaveAttribute('aria-pressed', 'false')
+  }, 10000)
+
+  it('creates a hold from selected seats and prevents duplicate submission', async () => {
+    const user = userEvent.setup()
+    const hold = activeSeatHold()
+    const createHoldSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
+      if (endpoint(config) === `POST /events/${publishedEvent.id}/holds`) {
+        createHoldSpy(requestBody(config))
+        return response<SeatHold>(config, 201, hold)
+      }
+
+      if (endpoint(config) === `GET /holds/${hold.holdId}`) {
+        return response<SeatHold>(config, 200, hold)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: /Seat A1, available/i }))
+    await user.click(screen.getByRole('button', { name: /Seat A2, available/i }))
+    await user.dblClick(screen.getByRole('button', { name: 'Continue' }))
+
+    await waitFor(() =>
+      expect(createHoldSpy).toHaveBeenCalledWith({
+        eventSeatIds: hold.eventSeatIds,
+      }),
+    )
+    expect(createHoldSpy).toHaveBeenCalledOnce()
+    expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
+    expect(screen.getByText(`Hold ${hold.holdId}`)).toBeInTheDocument()
+    expect(screen.getByText('Hold expires in')).toBeInTheDocument()
+  }, 10000)
+
+  it('removes unavailable selections when hold creation conflicts', async () => {
+    const user = userEvent.setup()
+    let seatLayoutCalls = 0
+    const conflictedSeatLayout: EventSeatLayout = {
+      ...publicSeatLayout,
+      sections: publicSeatLayout.sections.map((section) => ({
+        ...section,
+        rows: section.rows.map((row) => ({
+          ...row,
+          seats: row.seats.map((seat) =>
+            seat.seatLabel === 'A1' ? { ...seat, status: 'HELD' as const } : seat,
+          ),
+        })),
+      })),
+    }
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        seatLayoutCalls += 1
+        return response<EventSeatLayout>(
+          config,
+          200,
+          seatLayoutCalls === 1 ? publicSeatLayout : conflictedSeatLayout,
+        )
+      }
+
+      if (endpoint(config) === `POST /events/${publishedEvent.id}/holds`) {
+        return rejectedResponse(config, 409, 'Seat hold conflict')
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: /Seat A1, available/i }))
+    await user.click(screen.getByRole('button', { name: /Seat A2, available/i }))
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByText('Some selected seats are no longer available. Review the updated seat map.')).toBeInTheDocument()
+    const summaryCard = screen.getByText('Selection summary').closest('.ant-card') as HTMLElement
+    expect(screen.getByText('1 of 8 selected')).toBeInTheDocument()
+    expect(within(summaryCard).queryByText('A1')).not.toBeInTheDocument()
+    expect(within(summaryCard).getByText('A2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Seat A1, held/i })).toBeDisabled()
+  }, 10000)
+
+  it('shows a distinct network error when hold creation cannot reach the server', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
+      if (endpoint(config) === `POST /events/${publishedEvent.id}/holds`) {
+        return Promise.reject(new AxiosError('Network Error', 'ERR_NETWORK', config))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: /Seat A1, available/i }))
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    const alerts = await screen.findAllByText('Network error. Check your connection and try again.')
+    expect(alerts.length).toBeGreaterThan(0)
+    expect(screen.getByText('1 of 8 selected')).toBeInTheDocument()
+  }, 10000)
+
+  it('restores a hold from checkout URL after refresh', async () => {
+    const hold = activeSeatHold()
+    const getHoldSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      if (endpoint(config) === `GET /holds/${hold.holdId}`) {
+        getHoldSpy()
+        return response<SeatHold>(config, 200, hold)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
+    expect(screen.getByText(`Hold ${hold.holdId}`)).toBeInTheDocument()
+    expect(screen.getByText('Hold expires in')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to payment' })).toBeEnabled()
+    expect(getHoldSpy).toHaveBeenCalledOnce()
+  })
+
+  it('disables checkout when the server hold is expired', async () => {
+    const hold = activeSeatHold(new Date(Date.now() - 1000).toISOString())
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      if (endpoint(config) === `GET /holds/${hold.holdId}`) {
+        return response<SeatHold>(config, 200, hold)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Hold expired')).toBeInTheDocument()
+    expect(screen.getByText('Checkout is disabled because the server hold has expired.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to payment' })).toBeDisabled()
+  })
+
+  it('releases a hold and returns to the seat map', async () => {
+    const user = userEvent.setup()
+    const hold = activeSeatHold()
+    const releaseSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      if (endpoint(config) === `GET /holds/${hold.holdId}`) {
+        return response<SeatHold>(config, 200, hold)
+      }
+
+      if (endpoint(config) === `DELETE /holds/${hold.holdId}`) {
+        releaseSpy()
+        return response(config, 204, undefined)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Release hold' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Release hold' }))
+
+    await waitFor(() => expect(releaseSpy).toHaveBeenCalledOnce())
+    expect(await screen.findByRole('heading', { name: publishedEvent.name })).toBeInTheDocument()
+    expect(await screen.findByText('Hold released')).toBeInTheDocument()
   }, 10000)
 
   it('validates required login fields', async () => {

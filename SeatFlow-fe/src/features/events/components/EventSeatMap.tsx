@@ -1,8 +1,13 @@
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Alert, Badge, Button, Card, Empty, Segmented, Spin, Statistic, Tag, Typography } from 'antd'
+import { useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { App as AntdApp, Alert, Badge, Button, Card, Empty, Segmented, Spin, Statistic, Tag, Typography } from 'antd'
+import { isAxiosError } from 'axios'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { apiErrorMessage } from '../../../shared/api/apiError'
+import { ROUTES } from '../../../shared/constants/routes'
+import { useAuth } from '../../auth/context/useAuth'
+import { createSeatHold } from '../../holds/api/holdsApi'
 import { getEventSeatLayout, publicEventQueryKeys } from '../api/eventsApi'
 import type { EventSeatLayout, EventSeatLayoutSeat, EventSeatLayoutStatus } from '../types'
 
@@ -16,9 +21,50 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
   const [selectedSectionId, setSelectedSectionId] = useState<string>()
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([])
   const [limitMessageVisible, setLimitMessageVisible] = useState(false)
+  const [holdError, setHoldError] = useState<string | null>(null)
+  const submittingRef = useRef(false)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { notification } = AntdApp.useApp()
+  const { isAuthenticated } = useAuth()
   const seatLayoutQuery = useQuery({
     queryKey: publicEventQueryKeys.seatLayout(eventId),
     queryFn: () => getEventSeatLayout(eventId),
+  })
+  const createHoldMutation = useMutation({
+    mutationFn: (eventSeatIds: string[]) => createSeatHold(eventId, eventSeatIds),
+    onSuccess: (hold) => {
+      notification.success({
+        title: 'Seats held',
+        description: 'Complete checkout before the hold expires.',
+      })
+      navigate(ROUTES.checkout(hold.holdId))
+    },
+    onError: async (error) => {
+      if (isAxiosError(error) && error.response?.status === 409) {
+        const refreshedLayout = await seatLayoutQuery.refetch()
+        const availableIds = availableEventSeatIds(refreshedLayout.data)
+        setSelectedSeatIds((current) => current.filter((seatId) => availableIds.has(seatId)))
+        setHoldError('Some selected seats are no longer available. Review the updated seat map.')
+        notification.warning({
+          title: 'Seat conflict',
+          description: 'Unavailable seats were removed from your selection.',
+        })
+        return
+      }
+
+      const message = isNetworkError(error)
+        ? 'Network error. Check your connection and try again.'
+        : apiErrorMessage(error, 'Unable to create hold. Try again.')
+      setHoldError(message)
+      notification.error({
+        title: isNetworkError(error) ? 'Network error' : 'Hold failed',
+        description: message,
+      })
+    },
+    onSettled: () => {
+      submittingRef.current = false
+    },
   })
 
   const seatsById = useMemo(() => seatsByEventSeatId(seatLayoutQuery.data), [seatLayoutQuery.data])
@@ -40,6 +86,7 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
     setSelectedSeatIds((current) => {
       if (current.includes(seat.eventSeatId)) {
         setLimitMessageVisible(false)
+        setHoldError(null)
         return current.filter((seatId) => seatId !== seat.eventSeatId)
       }
 
@@ -49,8 +96,24 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
       }
 
       setLimitMessageVisible(false)
+      setHoldError(null)
       return [...current, seat.eventSeatId]
     })
+  }
+
+  const handleContinue = () => {
+    if (submittingRef.current || selectedSeatIds.length === 0) {
+      return
+    }
+
+    if (!isAuthenticated) {
+      navigate(ROUTES.login, { state: { from: location } })
+      return
+    }
+
+    submittingRef.current = true
+    setHoldError(null)
+    createHoldMutation.mutate(selectedSeatIds)
   }
 
   if (seatLayoutQuery.isLoading) {
@@ -109,6 +172,15 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
           />
         ) : null}
 
+        {holdError ? (
+          <Alert
+            showIcon
+            className="seat-map-alert"
+            type="error"
+            title={holdError}
+          />
+        ) : null}
+
         {activeSection ? (
           <div className="public-seat-layout" aria-label={`${activeSection.name} seat map`}>
             {activeSection.rows.map((row) => (
@@ -146,7 +218,13 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
           )}
         </div>
         <Statistic title="Total" value={totalPrice} formatter={(value) => formatPrice(Number(value))} />
-        <Button block disabled={selectedSeats.length === 0} type="primary">
+        <Button
+          block
+          disabled={selectedSeats.length === 0 || createHoldMutation.isPending}
+          loading={createHoldMutation.isPending}
+          type="primary"
+          onClick={handleContinue}
+        >
           Continue
         </Button>
       </Card>
@@ -208,6 +286,20 @@ function seatsByEventSeatId(layout: EventSeatLayout | undefined) {
   return seats
 }
 
+function availableEventSeatIds(layout: EventSeatLayout | undefined) {
+  const seatIds = new Set<string>()
+  layout?.sections.forEach((section) => {
+    section.rows.forEach((row) => {
+      row.seats.forEach((seat) => {
+        if (seatStatus(seat) === 'AVAILABLE') {
+          seatIds.add(seat.eventSeatId)
+        }
+      })
+    })
+  })
+  return seatIds
+}
+
 function seatAriaLabel(seat: EventSeatLayoutSeat, selected: boolean) {
   const state = selected ? 'selected' : statusLabel(seatStatus(seat)).toLowerCase()
   const accessibility = seat.accessible ? 'accessible' : 'standard'
@@ -231,4 +323,8 @@ function statusLabel(status: EventSeatLayoutStatus) {
 
 function formatPrice(value: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)
+}
+
+function isNetworkError(error: unknown) {
+  return isAxiosError(error) && !error.response
 }
