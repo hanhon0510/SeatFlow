@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.payment.PaymentMapper">
+    <resultMap id="PaymentRecordResultMap" type="com.seatflow.payment.PaymentRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="order_id" javaType="java.util.UUID" />
+            <arg column="status" javaType="com.seatflow.payment.PaymentStatus" />
+            <arg column="amount" javaType="java.math.BigDecimal" />
+            <arg column="provider_reference" javaType="java.lang.String" />
+            <arg column="failure_reason" javaType="java.lang.String" />
+            <arg column="created_at" javaType="java.time.Instant" />
+            <arg column="updated_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <insert id="insertPending">
+        INSERT INTO payments (
+            id,
+            order_id,
+            status,
+            amount,
+            provider_reference,
+            failure_reason,
+            created_at,
+            updated_at
+        )
+        SELECT
+            #{id},
+            orders.id,
+            'PENDING',
+            orders.total_amount,
+            #{providerReference},
+            NULL,
+            #{now},
+            #{now}
+        FROM orders
+        WHERE orders.id = #{orderId}
+          AND orders.user_id = #{userId}
+          AND orders.status = 'PENDING'
+    </insert>
+
+    <select id="findById" resultMap="PaymentRecordResultMap">
+        SELECT
+            id,
+            order_id,
+            status,
+            amount,
+            provider_reference,
+            failure_reason,
+            created_at,
+            updated_at
+        FROM payments
+        WHERE id = #{id}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE payments
+        SET
+            status = #{newStatus},
+            failure_reason = #{failureReason},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND status = #{expectedStatus}
+    </update>
+
+    <select id="countReservationItems" resultType="long">
+        SELECT COUNT(*)
+        FROM orders
+        JOIN reservation_items reservation_item
+          ON reservation_item.reservation_id = orders.reservation_id
+        WHERE orders.id = #{orderId}
+    </select>
+
+    <update id="sellReservationSeats">
+        UPDATE event_seats event_seat
+        SET
+            permanent_status = 'SOLD',
+            version = event_seat.version + 1,
+            updated_at = #{updatedAt}
+        WHERE event_seat.id IN (
+            SELECT reservation_item.event_seat_id
+            FROM orders
+            JOIN reservation_items reservation_item
+              ON reservation_item.reservation_id = orders.reservation_id
+            WHERE orders.id = #{orderId}
+        )
+          AND event_seat.permanent_status = 'AVAILABLE'
+    </update>
+</mapper>

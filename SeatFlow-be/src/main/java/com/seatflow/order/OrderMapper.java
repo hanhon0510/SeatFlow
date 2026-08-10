@@ -31,4 +31,11 @@ public interface OrderMapper {
 			@Param("userId") UUID userId,
 			@Param("limit") int limit,
 			@Param("offset") long offset);
+
+	int updateStatus(
+			@Param("id") UUID id,
+			@Param("userId") UUID userId,
+			@Param("expectedStatus") OrderStatus expectedStatus,
+			@Param("newStatus") OrderStatus newStatus,
+			@Param("updatedAt") Instant updatedAt);
 }

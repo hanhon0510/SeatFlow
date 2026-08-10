@@ -31,6 +31,8 @@ import com.seatflow.hold.SeatHoldStorageException;
 import com.seatflow.order.InvalidOrderPaginationException;
 import com.seatflow.order.OrderConflictException;
 import com.seatflow.order.OrderNotFoundException;
+import com.seatflow.payment.InvalidPaymentTokenException;
+import com.seatflow.payment.PaymentConflictException;
 import com.seatflow.reservation.ReservationConflictException;
 import com.seatflow.reservation.ReservationNotFoundException;
 import com.seatflow.seating.DuplicateSeatLabelException;
@@ -195,6 +197,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(InvalidOrderPaginationException.class)
 	public ResponseEntity<ApiResponse<Void>> handleInvalidOrderPagination(InvalidOrderPaginationException ex) {
 		return error("Invalid pagination", HttpStatus.BAD_REQUEST);
+	}
+
+	@ExceptionHandler(InvalidPaymentTokenException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidPaymentToken(InvalidPaymentTokenException ex) {
+		return error("Invalid payment token", HttpStatus.BAD_REQUEST);
+	}
+
+	@ExceptionHandler(PaymentConflictException.class)
+	public ResponseEntity<ApiResponse<Void>> handlePaymentConflict(PaymentConflictException ex) {
+		return error("Payment conflict", HttpStatus.CONFLICT);
 	}
 
 	@ExceptionHandler(VenueAlreadyArchivedException.class)

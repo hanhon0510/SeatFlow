@@ -90,4 +90,14 @@
         LIMIT #{limit}
         OFFSET #{offset}
     </select>
+
+    <update id="updateStatus">
+        UPDATE orders
+        SET
+            status = #{newStatus},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = #{expectedStatus}
+    </update>
 </mapper>
