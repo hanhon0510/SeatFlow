@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.order.OrderMapper">
+    <resultMap id="OrderRecordResultMap" type="com.seatflow.order.OrderRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="reservation_id" javaType="java.util.UUID" />
+            <arg column="user_id" javaType="java.util.UUID" />
+            <arg column="status" javaType="com.seatflow.order.OrderStatus" />
+            <arg column="total_amount" javaType="java.math.BigDecimal" />
+            <arg column="currency" javaType="java.lang.String" />
+            <arg column="created_at" javaType="java.time.Instant" />
+            <arg column="updated_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <sql id="OrderColumns">
+        id,
+        reservation_id,
+        user_id,
+        status,
+        total_amount,
+        currency,
+        created_at,
+        updated_at
+    </sql>
+
+    <insert id="insertPending">
+        INSERT INTO orders (
+            id,
+            reservation_id,
+            user_id,
+            status,
+            total_amount,
+            currency,
+            created_at,
+            updated_at
+        )
+        SELECT
+            #{id},
+            reservation.id,
+            reservation.user_id,
+            'PENDING',
+            SUM(reservation_item.price),
+            #{currency},
+            #{now},
+            #{now}
+        FROM reservations reservation
+        JOIN reservation_items reservation_item
+          ON reservation_item.reservation_id = reservation.id
+        WHERE reservation.id = #{reservationId}
+          AND reservation.user_id = #{userId}
+          AND reservation.status = 'PENDING_PAYMENT'
+          AND reservation.expires_at &gt; #{now}
+        GROUP BY reservation.id, reservation.user_id
+        ON CONFLICT (reservation_id) WHERE status IN ('PENDING', 'PAID') DO NOTHING
+    </insert>
+
+    <select id="findActiveByReservationAndUser" resultMap="OrderRecordResultMap">
+        SELECT
+            <include refid="OrderColumns" />
+        FROM orders
+        WHERE reservation_id = #{reservationId}
+          AND user_id = #{userId}
+          AND status IN ('PENDING', 'PAID')
+    </select>
+
+    <select id="findByIdAndUser" resultMap="OrderRecordResultMap">
+        SELECT
+            <include refid="OrderColumns" />
+        FROM orders
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </select>
+
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM orders
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="findPageByUser" resultMap="OrderRecordResultMap">
+        SELECT
+            <include refid="OrderColumns" />
+        FROM orders
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit}
+        OFFSET #{offset}
+    </select>
+</mapper>

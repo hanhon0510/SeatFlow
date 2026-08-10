@@ -414,6 +414,7 @@ class ReservationIntegrationTests extends RedisTestContainerSupport {
 			connection.serverCommands().flushDb();
 			return null;
 		});
+		jdbcTemplate.update("DELETE FROM orders");
 		jdbcTemplate.update("DELETE FROM reservation_items");
 		jdbcTemplate.update("DELETE FROM reservations");
 		jdbcTemplate.update("DELETE FROM refresh_tokens");

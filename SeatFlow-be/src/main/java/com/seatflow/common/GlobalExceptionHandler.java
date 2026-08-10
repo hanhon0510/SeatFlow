@@ -28,6 +28,9 @@ import com.seatflow.hold.InvalidSeatHoldRequestException;
 import com.seatflow.hold.SeatHoldConflictException;
 import com.seatflow.hold.SeatHoldNotFoundException;
 import com.seatflow.hold.SeatHoldStorageException;
+import com.seatflow.order.InvalidOrderPaginationException;
+import com.seatflow.order.OrderConflictException;
+import com.seatflow.order.OrderNotFoundException;
 import com.seatflow.reservation.ReservationConflictException;
 import com.seatflow.reservation.ReservationNotFoundException;
 import com.seatflow.seating.DuplicateSeatLabelException;
@@ -177,6 +180,21 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(ReservationConflictException.class)
 	public ResponseEntity<ApiResponse<Void>> handleReservationConflict(ReservationConflictException ex) {
 		return error("Reservation conflict", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(OrderNotFoundException.class)
+	public ResponseEntity<ApiResponse<Void>> handleOrderNotFound(OrderNotFoundException ex) {
+		return error("Order not found", HttpStatus.NOT_FOUND);
+	}
+
+	@ExceptionHandler(OrderConflictException.class)
+	public ResponseEntity<ApiResponse<Void>> handleOrderConflict(OrderConflictException ex) {
+		return error("Order conflict", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(InvalidOrderPaginationException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidOrderPagination(InvalidOrderPaginationException ex) {
+		return error("Invalid pagination", HttpStatus.BAD_REQUEST);
 	}
 
 	@ExceptionHandler(VenueAlreadyArchivedException.class)
