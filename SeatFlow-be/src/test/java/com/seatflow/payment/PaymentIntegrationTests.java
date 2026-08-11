@@ -10,6 +10,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +40,9 @@ import com.seatflow.event.EventSeatRecord;
 import com.seatflow.event.EventSeatStatus;
 import com.seatflow.event.EventSectionMapper;
 import com.seatflow.event.EventSectionRecord;
+import com.seatflow.idempotency.IdempotencyMapper;
+import com.seatflow.idempotency.IdempotencyOperation;
+import com.seatflow.idempotency.IdempotencyRecord;
 import com.seatflow.order.OrderCreateRequest;
 import com.seatflow.order.OrderMapper;
 import com.seatflow.order.OrderResponse;
@@ -79,6 +87,12 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 
 	@Autowired
 	private PaymentMapper paymentMapper;
+
+	@Autowired
+	private PaymentIdempotencyService paymentIdempotencyService;
+
+	@Autowired
+	private IdempotencyMapper idempotencyMapper;
 
 	@Autowired
 	private OrderMapper orderMapper;
@@ -189,6 +203,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 
 		mockMvc.perform(post("/api/v1/orders/{orderId}/payments", fixture.order().id())
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser))
+						.header("Idempotency-Key", "foreign-order-attempt")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(paymentRequest("tok_success")))
 				.andExpect(status().isNotFound())
@@ -217,11 +232,142 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				fixture.order().id())).isEqualTo(1);
 	}
 
+	@Test
+	void sequentialDuplicateReturnsStoredResponse() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-retry@example.com",
+				List.of(new BigDecimal("125000.00")));
+		String idempotencyKey = "sequential-payment-attempt";
+
+		JsonNode firstResponse = responseBody(createPayment(fixture, "tok_success", idempotencyKey)
+				.andExpect(status().isCreated())
+				.andReturn());
+		JsonNode secondResponse = responseBody(createPayment(fixture, "tok_success", idempotencyKey)
+				.andExpect(status().isCreated())
+				.andReturn());
+
+		assertThat(secondResponse).isEqualTo(firstResponse);
+		assertThat(countRows("payments")).isEqualTo(1);
+		assertThat(countRows("idempotency_records")).isEqualTo(1);
+		IdempotencyRecord record = idempotencyMapper.findByScope(
+				fixture.user().id(),
+				IdempotencyOperation.CREATE_PAYMENT,
+				idempotencyKey);
+		assertThat(record.responseStatus()).isEqualTo(201);
+		assertThat(record.requestHash()).hasSize(64).doesNotContain("tok_success");
+		assertThat(record.responseBody()).doesNotContain("tok_success");
+	}
+
+	@Test
+	void concurrentDuplicateExecutesPaymentOnce() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-concurrent-retry@example.com",
+				List.of(new BigDecimal("125000.00")));
+		String idempotencyKey = "concurrent-payment-attempt";
+		PaymentCreateRequest request = new PaymentCreateRequest("tok_success");
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+
+		try {
+			Future<IdempotentPaymentResult> first = executor.submit(() -> {
+				ready.countDown();
+				start.await();
+				return paymentIdempotencyService.createPayment(
+						fixture.order().id(),
+						fixture.user().id(),
+						idempotencyKey,
+						request);
+			});
+			Future<IdempotentPaymentResult> second = executor.submit(() -> {
+				ready.countDown();
+				start.await();
+				return paymentIdempotencyService.createPayment(
+						fixture.order().id(),
+						fixture.user().id(),
+						idempotencyKey,
+						request);
+			});
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+
+			IdempotentPaymentResult firstResult = first.get(10, TimeUnit.SECONDS);
+			IdempotentPaymentResult secondResult = second.get(10, TimeUnit.SECONDS);
+			assertThat(secondResult).isEqualTo(firstResult);
+			assertThat(countRows("payments")).isEqualTo(1);
+			assertThat(countRows("idempotency_records")).isEqualTo(1);
+		}
+		finally {
+			start.countDown();
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	void differentBodyWithSameKeyIsRejected() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-key-conflict@example.com",
+				List.of(new BigDecimal("125000.00")));
+		String idempotencyKey = "conflicting-payment-attempt";
+
+		createPayment(fixture, "tok_declined", idempotencyKey)
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.status").value("DECLINED"));
+		createPayment(fixture, "tok_error", idempotencyKey)
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Idempotency key conflict"));
+
+		assertThat(countRows("payments")).isEqualTo(1);
+		assertThat(countRows("idempotency_records")).isEqualTo(1);
+	}
+
+	@Test
+	void sameKeyIsScopedPerUser() throws Exception {
+		PaymentFixture firstUser = insertFixture(
+				"payment-scope-first@example.com",
+				List.of(new BigDecimal("125000.00")));
+		PaymentFixture secondUser = insertFixture(
+				"payment-scope-second@example.com",
+				List.of(new BigDecimal("85000.00")));
+		String idempotencyKey = "shared-payment-attempt";
+
+		createPayment(firstUser, "tok_success", idempotencyKey).andExpect(status().isCreated());
+		createPayment(secondUser, "tok_success", idempotencyKey).andExpect(status().isCreated());
+
+		assertThat(countRows("payments")).isEqualTo(2);
+		assertThat(countRows("idempotency_records")).isEqualTo(2);
+	}
+
+	@Test
+	void missingIdempotencyKeyIsRejectedWithoutCreatingRecords() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-missing-key@example.com",
+				List.of(new BigDecimal("125000.00")));
+
+		mockMvc.perform(post("/api/v1/orders/{orderId}/payments", fixture.order().id())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(fixture.user()))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(paymentRequest("tok_success")))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Idempotency-Key header is required"));
+
+		assertThat(countRows("payments")).isZero();
+		assertThat(countRows("idempotency_records")).isZero();
+	}
+
 	private org.springframework.test.web.servlet.ResultActions createPayment(
 			PaymentFixture fixture,
 			String token) throws Exception {
+		return createPayment(fixture, token, UUID.randomUUID().toString());
+	}
+
+	private org.springframework.test.web.servlet.ResultActions createPayment(
+			PaymentFixture fixture,
+			String token,
+			String idempotencyKey) throws Exception {
 		return mockMvc.perform(post("/api/v1/orders/{orderId}/payments", fixture.order().id())
 				.header(HttpHeaders.AUTHORIZATION, bearerToken(fixture.user()))
+				.header("Idempotency-Key", idempotencyKey)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(paymentRequest(token)));
 	}
@@ -323,6 +469,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	private void cleanDatabase() {
+		jdbcTemplate.update("DELETE FROM idempotency_records");
 		jdbcTemplate.update("DELETE FROM payments");
 		jdbcTemplate.update("DELETE FROM orders");
 		jdbcTemplate.update("DELETE FROM reservation_items");

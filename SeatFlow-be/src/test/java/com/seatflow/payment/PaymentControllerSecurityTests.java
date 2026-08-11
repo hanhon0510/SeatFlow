@@ -53,6 +53,7 @@ class PaymentControllerSecurityTests {
 	private static final UUID USER_ID = UUID.fromString("91557b43-1a8f-4450-aaca-353371b40f42");
 	private static final UUID ORDER_ID = UUID.fromString("dc79974b-adc6-42cf-b751-e71811f1812d");
 	private static final UUID PAYMENT_ID = UUID.fromString("47724f4b-d36b-4fad-8fa5-78175767f8a5");
+	private static final String IDEMPOTENCY_KEY = "payment-attempt-1";
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -61,15 +62,20 @@ class PaymentControllerSecurityTests {
 	private JwtTokenService jwtTokenService;
 
 	@MockitoBean
-	private PaymentService paymentService;
+	private PaymentIdempotencyService paymentIdempotencyService;
 
 	@Test
 	void authenticatedUserCanCreatePaymentAndTokenIsRedacted(CapturedOutput output) throws Exception {
-		when(paymentService.createPayment(eq(ORDER_ID), eq(USER_ID), any(PaymentCreateRequest.class)))
-				.thenReturn(paymentResponse());
+		when(paymentIdempotencyService.createPayment(
+				eq(ORDER_ID),
+				eq(USER_ID),
+				eq(IDEMPOTENCY_KEY),
+				any(PaymentCreateRequest.class)))
+				.thenReturn(new IdempotentPaymentResult(201, paymentResponse()));
 
 		mockMvc.perform(post("/api/v1/orders/{orderId}/payments", ORDER_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken())
+						.header("Idempotency-Key", IDEMPOTENCY_KEY)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("tok_success")))
 				.andExpect(status().isCreated())
@@ -94,15 +100,21 @@ class PaymentControllerSecurityTests {
 	void blankAndUnknownTokensReturnBadRequest() throws Exception {
 		mockMvc.perform(post("/api/v1/orders/{orderId}/payments", ORDER_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken())
+						.header("Idempotency-Key", IDEMPOTENCY_KEY)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("")))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value("Invalid request"));
 
-		when(paymentService.createPayment(eq(ORDER_ID), eq(USER_ID), any(PaymentCreateRequest.class)))
+		when(paymentIdempotencyService.createPayment(
+				eq(ORDER_ID),
+				eq(USER_ID),
+				eq(IDEMPOTENCY_KEY),
+				any(PaymentCreateRequest.class)))
 				.thenThrow(new InvalidPaymentTokenException());
 		mockMvc.perform(post("/api/v1/orders/{orderId}/payments", ORDER_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken())
+						.header("Idempotency-Key", IDEMPOTENCY_KEY)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("unknown")))
 				.andExpect(status().isBadRequest())
@@ -111,12 +123,17 @@ class PaymentControllerSecurityTests {
 
 	@Test
 	void wrongOwnerAndPaidOrderUseSafeErrors() throws Exception {
-		when(paymentService.createPayment(eq(ORDER_ID), eq(USER_ID), any(PaymentCreateRequest.class)))
+		when(paymentIdempotencyService.createPayment(
+				eq(ORDER_ID),
+				eq(USER_ID),
+				eq(IDEMPOTENCY_KEY),
+				any(PaymentCreateRequest.class)))
 				.thenThrow(new OrderNotFoundException())
 				.thenThrow(new PaymentConflictException());
 
 		mockMvc.perform(post("/api/v1/orders/{orderId}/payments", ORDER_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken())
+						.header("Idempotency-Key", IDEMPOTENCY_KEY)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("tok_success")))
 				.andExpect(status().isNotFound())
@@ -124,10 +141,28 @@ class PaymentControllerSecurityTests {
 
 		mockMvc.perform(post("/api/v1/orders/{orderId}/payments", ORDER_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken())
+						.header("Idempotency-Key", IDEMPOTENCY_KEY)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("tok_success")))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.message").value("Payment conflict"));
+	}
+
+	@Test
+	void missingIdempotencyKeyReturnsBadRequest() throws Exception {
+		when(paymentIdempotencyService.createPayment(
+				eq(ORDER_ID),
+				eq(USER_ID),
+				eq(null),
+				any(PaymentCreateRequest.class)))
+				.thenThrow(new com.seatflow.idempotency.InvalidIdempotencyKeyException());
+
+		mockMvc.perform(post("/api/v1/orders/{orderId}/payments", ORDER_ID)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestBody("tok_success")))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("Idempotency-Key header is required"));
 	}
 
 	private String bearerToken() {

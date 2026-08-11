@@ -28,6 +28,9 @@ import com.seatflow.hold.InvalidSeatHoldRequestException;
 import com.seatflow.hold.SeatHoldConflictException;
 import com.seatflow.hold.SeatHoldNotFoundException;
 import com.seatflow.hold.SeatHoldStorageException;
+import com.seatflow.idempotency.IdempotencyConflictException;
+import com.seatflow.idempotency.IdempotencyStorageException;
+import com.seatflow.idempotency.InvalidIdempotencyKeyException;
 import com.seatflow.order.InvalidOrderPaginationException;
 import com.seatflow.order.OrderConflictException;
 import com.seatflow.order.OrderNotFoundException;
@@ -207,6 +210,21 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(PaymentConflictException.class)
 	public ResponseEntity<ApiResponse<Void>> handlePaymentConflict(PaymentConflictException ex) {
 		return error("Payment conflict", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(InvalidIdempotencyKeyException.class)
+	public ResponseEntity<ApiResponse<Void>> handleInvalidIdempotencyKey(InvalidIdempotencyKeyException ex) {
+		return error("Idempotency-Key header is required", HttpStatus.BAD_REQUEST);
+	}
+
+	@ExceptionHandler(IdempotencyConflictException.class)
+	public ResponseEntity<ApiResponse<Void>> handleIdempotencyConflict(IdempotencyConflictException ex) {
+		return error("Idempotency key conflict", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(IdempotencyStorageException.class)
+	public ResponseEntity<ApiResponse<Void>> handleIdempotencyStorage(IdempotencyStorageException ex) {
+		return error("Idempotency storage failed", HttpStatus.INTERNAL_SERVER_ERROR);
 	}
 
 	@ExceptionHandler(VenueAlreadyArchivedException.class)

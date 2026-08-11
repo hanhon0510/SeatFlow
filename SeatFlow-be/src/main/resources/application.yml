@@ -61,3 +61,5 @@ seatflow:
   holds:
     ttl: ${SEATFLOW_HOLD_TTL:5m}
     max-seats: ${SEATFLOW_HOLD_MAX_SEATS:8}
+  idempotency:
+    ttl: ${SEATFLOW_IDEMPOTENCY_TTL:24h}
