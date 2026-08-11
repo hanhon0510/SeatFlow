@@ -25,9 +25,4 @@ public interface PaymentMapper {
 			@Param("failureReason") String failureReason,
 			@Param("updatedAt") Instant updatedAt);
 
-	long countReservationItems(@Param("orderId") UUID orderId);
-
-	int sellReservationSeats(
-			@Param("orderId") UUID orderId,
-			@Param("updatedAt") Instant updatedAt);
 }

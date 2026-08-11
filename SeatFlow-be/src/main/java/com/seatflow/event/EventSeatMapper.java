@@ -19,6 +19,10 @@ public interface EventSeatMapper {
 
 	List<EventSeatRecord> findByEventId(@Param("eventId") UUID eventId);
 
+	List<EventSeatRecord> lockByIds(@Param("eventSeatIds") List<UUID> eventSeatIds);
+
+	int markSold(@Param("id") UUID id);
+
 	List<EventSeatLayoutRow> findPublishedLayoutByEventId(@Param("eventId") UUID eventId);
 
 	EventSeatHoldCandidate findHoldCandidate(

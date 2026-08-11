@@ -133,6 +133,28 @@
             event_seat.id ASC
     </select>
 
+    <select id="lockByIds" resultMap="EventSeatRecordResultMap">
+        SELECT
+            <include refid="EventSeatColumns" />
+        FROM event_seats event_seat
+        WHERE event_seat.id IN
+        <foreach collection="eventSeatIds" item="eventSeatId" open="(" separator="," close=")">
+            #{eventSeatId}
+        </foreach>
+        ORDER BY event_seat.id
+        FOR UPDATE
+    </select>
+
+    <update id="markSold">
+        UPDATE event_seats
+        SET
+            permanent_status = 'SOLD',
+            version = version + 1,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND permanent_status = 'AVAILABLE'
+    </update>
+
     <select id="findPublishedLayoutByEventId" resultMap="EventSeatLayoutRowResultMap">
         SELECT
             venue_section.id AS section_id,

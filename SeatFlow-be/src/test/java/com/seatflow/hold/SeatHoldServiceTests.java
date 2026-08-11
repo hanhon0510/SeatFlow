@@ -540,6 +540,16 @@ class SeatHoldServiceTests {
 		}
 
 		@Override
+		public List<EventSeatRecord> lockByIds(List<UUID> eventSeatIds) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public int markSold(UUID id) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public List<EventSeatLayoutRow> findPublishedLayoutByEventId(UUID eventId) {
 			throw new UnsupportedOperationException();
 		}

@@ -1,6 +1,11 @@
 package com.seatflow.payment;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -27,6 +32,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -43,6 +49,8 @@ import com.seatflow.event.EventSectionRecord;
 import com.seatflow.idempotency.IdempotencyMapper;
 import com.seatflow.idempotency.IdempotencyOperation;
 import com.seatflow.idempotency.IdempotencyRecord;
+import com.seatflow.hold.SeatHoldRecord;
+import com.seatflow.hold.SeatHoldStore;
 import com.seatflow.order.OrderCreateRequest;
 import com.seatflow.order.OrderMapper;
 import com.seatflow.order.OrderResponse;
@@ -124,9 +132,13 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 	@Autowired
 	private EventSeatMapper eventSeatMapper;
 
+	@MockitoBean
+	private SeatHoldStore seatHoldStore;
+
 	@BeforeEach
 	void setUp() {
 		cleanDatabase();
+		when(seatHoldStore.isHoldActive(any(SeatHoldRecord.class))).thenReturn(true);
 	}
 
 	@AfterEach
@@ -161,6 +173,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 					assertThat(seat.version()).isEqualTo(1);
 				});
 		assertThat(countRows("payments")).isEqualTo(1);
+		verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 	}
 
 	@ParameterizedTest
@@ -192,6 +205,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 					assertThat(seat.permanentStatus()).isEqualTo(EventSeatStatus.AVAILABLE);
 					assertThat(seat.version()).isZero();
 				});
+		verify(seatHoldStore, never()).releaseHold(any(SeatHoldRecord.class));
 	}
 
 	@Test
@@ -230,6 +244,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				"SELECT COUNT(*) FROM payments WHERE order_id = ? AND status = 'SUCCEEDED'",
 				Integer.class,
 				fixture.order().id())).isEqualTo(1);
+		verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 	}
 
 	@Test
@@ -256,6 +271,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(record.responseStatus()).isEqualTo(201);
 		assertThat(record.requestHash()).hasSize(64).doesNotContain("tok_success");
 		assertThat(record.responseBody()).doesNotContain("tok_success");
+		verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 	}
 
 	@Test
@@ -296,11 +312,159 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 			assertThat(secondResult).isEqualTo(firstResult);
 			assertThat(countRows("payments")).isEqualTo(1);
 			assertThat(countRows("idempotency_records")).isEqualTo(1);
+			verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 		}
 		finally {
 			start.countDown();
 			executor.shutdownNow();
 		}
+	}
+
+	@Test
+	void competingBuyersLockSeatsInTheSameOrderAndOnlyOnePurchaseCommits() throws Exception {
+		EventInventory inventory = insertEventInventory(2);
+		PaymentFixture firstBuyer = insertFixture(
+				inventory,
+				"payment-race-first@example.com",
+				List.of(new BigDecimal("125000.00"), new BigDecimal("85000.00")));
+		PaymentFixture secondBuyer = insertFixture(
+				new EventInventory(inventory.event(), inventory.eventSeats().reversed()),
+				"payment-race-second@example.com",
+				List.of(new BigDecimal("85000.00"), new BigDecimal("125000.00")));
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+
+		try {
+			Future<PurchaseAttempt> first = executor.submit(() -> purchaseWhenReleased(
+					firstBuyer,
+					"race-first",
+					ready,
+					start));
+			Future<PurchaseAttempt> second = executor.submit(() -> purchaseWhenReleased(
+					secondBuyer,
+					"race-second",
+					ready,
+					start));
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+
+			List<PurchaseAttempt> attempts = List.of(
+					first.get(10, TimeUnit.SECONDS),
+					second.get(10, TimeUnit.SECONDS));
+			List<PurchaseAttempt> successful = attempts.stream()
+					.filter(attempt -> attempt.result() != null)
+					.toList();
+			List<PurchaseAttempt> failed = attempts.stream()
+					.filter(attempt -> attempt.failure() != null)
+					.toList();
+
+			assertThat(successful).hasSize(1);
+			assertThat(failed).singleElement()
+					.extracting(PurchaseAttempt::failure)
+					.isInstanceOf(PaymentConflictException.class);
+			PaymentFixture winner = successful.getFirst().fixture();
+			PaymentFixture loser = winner.order().id().equals(firstBuyer.order().id())
+					? secondBuyer
+					: firstBuyer;
+
+			assertThat(countRows("payments")).isEqualTo(1);
+			assertThat(countRows("idempotency_records")).isEqualTo(1);
+			assertThat(eventSeatMapper.findByEventId(inventory.event().id()))
+					.allSatisfy(seat -> assertThat(seat.permanentStatus()).isEqualTo(EventSeatStatus.SOLD));
+			assertThat(orderMapper.findByIdAndUser(winner.order().id(), winner.user().id()).status())
+					.isEqualTo(OrderStatus.PAID);
+			assertThat(reservationMapper.findByIdAndUser(
+					winner.reservation().id(), winner.user().id()).status())
+					.isEqualTo(ReservationStatus.CONFIRMED);
+			assertThat(orderMapper.findByIdAndUser(loser.order().id(), loser.user().id()).status())
+					.isEqualTo(OrderStatus.PENDING);
+			assertThat(reservationMapper.findByIdAndUser(
+					loser.reservation().id(), loser.user().id()).status())
+					.isEqualTo(ReservationStatus.PENDING_PAYMENT);
+			verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
+		}
+		finally {
+			start.countDown();
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	void failedSeatUpdateRollsBackTheEntireMultiSeatPurchase() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-multi-seat-rollback@example.com",
+				List.of(new BigDecimal("125000.00"), new BigDecimal("85000.00")));
+		UUID secondLockedSeatId = fixture.inventory().eventSeats().stream()
+				.map(EventSeatRecord::id)
+				.sorted((left, right) -> left.toString().compareTo(right.toString()))
+				.toList()
+				.getLast();
+		jdbcTemplate.execute("""
+				CREATE OR REPLACE FUNCTION seatflow_test_skip_event_seat_sale()
+				RETURNS trigger AS $$
+				BEGIN
+				    IF OLD.id = '%s'::uuid AND NEW.permanent_status = 'SOLD' THEN
+				        RETURN NULL;
+				    END IF;
+				    RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql
+				""".formatted(secondLockedSeatId));
+		jdbcTemplate.execute("""
+				CREATE TRIGGER seatflow_test_skip_event_seat_sale_trigger
+				BEFORE UPDATE ON event_seats
+				FOR EACH ROW EXECUTE FUNCTION seatflow_test_skip_event_seat_sale()
+				""");
+
+		try {
+			createPayment(fixture, "tok_success")
+					.andExpect(status().isConflict())
+					.andExpect(jsonPath("$.message").value("Payment conflict"));
+		}
+		finally {
+			jdbcTemplate.execute("DROP TRIGGER IF EXISTS seatflow_test_skip_event_seat_sale_trigger ON event_seats");
+			jdbcTemplate.execute("DROP FUNCTION IF EXISTS seatflow_test_skip_event_seat_sale()");
+		}
+
+		assertThat(eventSeatMapper.findByEventId(fixture.inventory().event().id()))
+				.allSatisfy(seat -> {
+					assertThat(seat.permanentStatus()).isEqualTo(EventSeatStatus.AVAILABLE);
+					assertThat(seat.version()).isZero();
+				});
+		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
+				.isEqualTo(OrderStatus.PENDING);
+		assertThat(reservationMapper.findByIdAndUser(fixture.reservation().id(), fixture.user().id()).status())
+				.isEqualTo(ReservationStatus.PENDING_PAYMENT);
+		assertThat(countRows("payments")).isZero();
+		assertThat(countRows("idempotency_records")).isZero();
+		verify(seatHoldStore, never()).releaseHold(any(SeatHoldRecord.class));
+	}
+
+	@Test
+	void redisReleaseFailureDoesNotUndoCommittedPurchase() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-redis-release-failure@example.com",
+				List.of(new BigDecimal("125000.00")));
+		doThrow(new IllegalStateException("Redis unavailable"))
+				.when(seatHoldStore)
+				.releaseHold(any(SeatHoldRecord.class));
+
+		createPayment(fixture, "tok_success")
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.status").value("SUCCEEDED"));
+
+		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
+				.isEqualTo(OrderStatus.PAID);
+		assertThat(reservationMapper.findByIdAndUser(fixture.reservation().id(), fixture.user().id()).status())
+				.isEqualTo(ReservationStatus.CONFIRMED);
+		assertThat(eventSeatMapper.findByEventId(fixture.inventory().event().id()))
+				.singleElement()
+				.extracting(EventSeatRecord::permanentStatus)
+				.isEqualTo(EventSeatStatus.SOLD);
+		assertThat(countRows("payments")).isEqualTo(1);
+		assertThat(countRows("idempotency_records")).isEqualTo(1);
+		verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 	}
 
 	@Test
@@ -372,8 +536,35 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				.content(paymentRequest(token)));
 	}
 
+	private PurchaseAttempt purchaseWhenReleased(
+			PaymentFixture fixture,
+			String idempotencyKey,
+			CountDownLatch ready,
+			CountDownLatch start) throws InterruptedException {
+		ready.countDown();
+		start.await();
+		try {
+			IdempotentPaymentResult result = paymentIdempotencyService.createPayment(
+					fixture.order().id(),
+					fixture.user().id(),
+					idempotencyKey,
+					new PaymentCreateRequest("tok_success"));
+			return new PurchaseAttempt(fixture, result, null);
+		}
+		catch (RuntimeException ex) {
+			return new PurchaseAttempt(fixture, null, ex);
+		}
+	}
+
 	private PaymentFixture insertFixture(String email, List<BigDecimal> prices) {
 		EventInventory inventory = insertEventInventory(prices.size());
+		return insertFixture(inventory, email, prices);
+	}
+
+	private PaymentFixture insertFixture(
+			EventInventory inventory,
+			String email,
+			List<BigDecimal> prices) {
 		UserRecord user = insertUser(email);
 		ReservationRecord reservation = insertReservation(inventory, user, prices);
 		OrderResponse order = orderService.createOrder(user.id(), new OrderCreateRequest(reservation.id()));
@@ -496,5 +687,11 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 			UserRecord user,
 			ReservationRecord reservation,
 			OrderResponse order) {
+	}
+
+	private record PurchaseAttempt(
+			PaymentFixture fixture,
+			IdempotentPaymentResult result,
+			RuntimeException failure) {
 	}
 }
