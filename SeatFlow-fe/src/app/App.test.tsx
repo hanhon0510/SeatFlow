@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError } from 'axios'
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, type Mock } from 'vitest'
 
 import type {
   SeatCreateRequest,
@@ -17,10 +17,19 @@ import type {
 } from '../features/admin/events/types'
 import type { EventSeatLayout, PublicEvent, PublicEventPage } from '../features/events/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
+import type {
+  OrderResponse,
+  PaymentResponse,
+  PaymentStatus,
+  ReservationResponse,
+} from '../features/checkout/types'
 import type { SeatHold } from '../features/holds/types'
+import type { Ticket } from '../features/tickets/types'
 import { apiClient } from '../shared/api/httpClient'
 import { ROUTES } from '../shared/constants/routes'
 import App from './App'
+
+type PaymentSpy = Mock<(config: InternalAxiosRequestConfig) => void>
 
 const authUser: AuthUser = {
   id: '77e450c5-a8ee-4880-a74c-c0c6d523d44c',
@@ -174,6 +183,90 @@ function activeSeatHold(expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOS
   }
 }
 
+function reservationResponse(hold: SeatHold): ReservationResponse {
+  return {
+    id: '411f1828-139c-49ec-bf40-a66f40685388',
+    userId: authUser.id,
+    eventId: hold.eventId,
+    holdId: hold.holdId,
+    status: 'PENDING_PAYMENT',
+    expiresAt: hold.expiresAt,
+    totalAmount: 125000,
+    items: hold.eventSeatIds.map((eventSeatId, index) => ({
+      id: `reservation-item-${index + 1}`,
+      eventSeatId,
+      price: index === 0 ? 50000 : 75000,
+      createdAt: '2026-08-14T00:00:00Z',
+    })),
+    createdAt: '2026-08-14T00:00:00Z',
+    updatedAt: '2026-08-14T00:00:00Z',
+  }
+}
+
+function orderResponse(reservation: ReservationResponse, status: OrderResponse['status'] = 'PENDING'): OrderResponse {
+  return {
+    id: 'ccde3f27-e8fb-4af5-b58e-2301c782fe87',
+    reservationId: reservation.id,
+    userId: authUser.id,
+    status,
+    totalAmount: 125000,
+    currency: 'VND',
+    createdAt: '2026-08-14T00:00:00Z',
+    updatedAt: '2026-08-14T00:00:00Z',
+  }
+}
+
+function paymentResponse(order: OrderResponse, status: PaymentStatus): PaymentResponse {
+  return {
+    id: '33b3c7c1-7f49-479d-95b5-1db9dc1d2210',
+    orderId: order.id,
+    status,
+    amount: order.totalAmount,
+    providerReference: `sim_${status.toLowerCase()}`,
+    failureReason: status === 'DECLINED'
+      ? 'Payment declined'
+      : status === 'TIMED_OUT'
+        ? 'Payment timed out'
+        : null,
+    createdAt: '2026-08-14T00:00:00Z',
+    updatedAt: '2026-08-14T00:00:00Z',
+  }
+}
+
+function ticketForOrder(order: OrderResponse, eventSeatId = activeSeatHold().eventSeatIds[0]): Ticket {
+  return {
+    id: 'f2287e38-c265-4841-b20b-57d2d7ba1b9d',
+    orderId: order.id,
+    eventSeatId,
+    ticketCode: 'ticket_code_abcdefghijklmnopqrstuvwxyz123456',
+    status: 'ACTIVE',
+    issuedAt: '2026-08-14T00:00:00Z',
+    usedAt: null,
+    createdAt: '2026-08-14T00:00:00Z',
+    event: {
+      id: publishedEvent.id,
+      name: publishedEvent.name,
+      startTime: publishedEvent.startTime,
+      venueId: venue.id,
+      venueName: venue.name,
+      venueAddress: venue.address,
+      venueCity: venue.city,
+      venueCountry: venue.country,
+      venueTimezone: venue.timezone,
+    },
+    seat: {
+      id: '645efc9c-34d5-4b3e-87c4-8712c694d79a',
+      sectionName: 'Orchestra',
+      rowLabel: 'A',
+      seatNumber: 1,
+      seatLabel: 'A1',
+      accessible: true,
+      price: 50000,
+    },
+    qrData: 'seatflow:ticket:f2287e38-c265-4841-b20b-57d2d7ba1b9d:ticket_code_abcdefghijklmnopqrstuvwxyz123456',
+  }
+}
+
 const layoutWithSection: SeatLayout = {
   venueId: venue.id,
   sections: [
@@ -320,6 +413,65 @@ async function fillDate(user: ReturnType<typeof userEvent.setup>, label: string,
   await user.type(input, value)
   fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
   fireEvent.blur(input)
+}
+
+function installCheckoutMock({
+  hold = activeSeatHold(),
+  status = 'SUCCEEDED',
+  paymentSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>(),
+  tickets,
+}: {
+  hold?: SeatHold
+  status?: PaymentStatus
+  paymentSpy?: PaymentSpy
+  tickets?: Ticket[]
+} = {}) {
+  const reservation = reservationResponse(hold)
+  const order = orderResponse(reservation, status === 'SUCCEEDED' ? 'PAID' : 'FAILED')
+  const issuedTickets = tickets ?? (status === 'SUCCEEDED' ? [ticketForOrder(order)] : [])
+
+  installApiMock((config) => {
+    if (endpoint(config) === 'POST /auth/refresh') {
+      return response<LoginResponse>(config, 200, loginResponse)
+    }
+
+    if (endpoint(config) === 'GET /users/me') {
+      return response<AuthUser>(config, 200, authUser)
+    }
+
+    if (endpoint(config) === `GET /holds/${hold.holdId}`) {
+      return response<SeatHold>(config, 200, hold)
+    }
+
+    if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+      return response<PublicEvent>(config, 200, publishedEvent)
+    }
+
+    if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+      return response<EventSeatLayout>(config, 200, publicSeatLayout)
+    }
+
+    if (endpoint(config) === 'POST /reservations') {
+      return response<ReservationResponse>(config, 201, reservation)
+    }
+
+    if (endpoint(config) === 'POST /orders') {
+      return response<OrderResponse>(config, 201, order)
+    }
+
+    if (endpoint(config) === `POST /orders/${order.id}/payments`) {
+      paymentSpy(config)
+      return response<PaymentResponse>(config, 201, paymentResponse(order, status))
+    }
+
+    if (endpoint(config) === 'GET /users/me/tickets') {
+      return response<Ticket[]>(config, 200, issuedTickets)
+    }
+
+    return rejectedResponse(config, 500, 'Unexpected request')
+  })
+
+  return { hold, reservation, order, tickets: issuedTickets, paymentSpy }
 }
 
 describe('App', () => {
@@ -602,6 +754,14 @@ describe('App', () => {
         return response<SeatHold>(config, 200, hold)
       }
 
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
       return rejectedResponse(config, 500, 'Unexpected request')
     })
 
@@ -620,6 +780,7 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
     expect(screen.getByText(`Hold ${hold.holdId}`)).toBeInTheDocument()
     expect(screen.getByText('Hold expires in')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pay now' })).toBeEnabled()
   }, 10000)
 
   it('removes unavailable selections when hold creation conflicts', async () => {
@@ -736,6 +897,14 @@ describe('App', () => {
         return response<SeatHold>(config, 200, hold)
       }
 
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
       return rejectedResponse(config, 500, 'Unexpected request')
     })
 
@@ -744,7 +913,7 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
     expect(screen.getByText(`Hold ${hold.holdId}`)).toBeInTheDocument()
     expect(screen.getByText('Hold expires in')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue to payment' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Pay now' })).toBeEnabled()
     expect(getHoldSpy).toHaveBeenCalledOnce()
   })
 
@@ -764,14 +933,22 @@ describe('App', () => {
         return response<SeatHold>(config, 200, hold)
       }
 
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
       return rejectedResponse(config, 500, 'Unexpected request')
     })
 
     render(<App />)
 
     expect(await screen.findByText('Hold expired')).toBeInTheDocument()
-    expect(screen.getByText('Checkout is disabled because the server hold has expired.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue to payment' })).toBeDisabled()
+    expect(screen.getByText('Payment is disabled because the server hold has expired.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pay now' })).toBeDisabled()
   })
 
   it('releases a hold and returns to the seat map', async () => {
@@ -790,6 +967,14 @@ describe('App', () => {
 
       if (endpoint(config) === `GET /holds/${hold.holdId}`) {
         return response<SeatHold>(config, 200, hold)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, publishedEvent)
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
       }
 
       if (endpoint(config) === `DELETE /holds/${hold.holdId}`) {
@@ -818,6 +1003,135 @@ describe('App', () => {
     await waitFor(() => expect(releaseSpy).toHaveBeenCalledOnce())
     expect(await screen.findByRole('heading', { name: publishedEvent.name })).toBeInTheDocument()
     expect(await screen.findByText('Hold released')).toBeInTheDocument()
+  }, 10000)
+
+  it('completes checkout successfully and shows issued tickets', async () => {
+    const user = userEvent.setup()
+    const paymentSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    const { hold, order } = installCheckoutMock({ paymentSpy })
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
+    expect(await screen.findByText('Reservation summary')).toBeInTheDocument()
+    expect(screen.getByText('Payment simulator')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Pay now' }))
+
+    expect(await screen.findByText('Payment succeeded')).toBeInTheDocument()
+    expect(await screen.findByText('Your tickets have been issued.')).toBeInTheDocument()
+    expect(await screen.findByText(publishedEvent.name)).toBeInTheDocument()
+    expect(screen.getByText('Orchestra A1')).toBeInTheDocument()
+    expect(paymentSpy).toHaveBeenCalledOnce()
+    const paymentConfig = paymentSpy.mock.calls[0][0] as InternalAxiosRequestConfig
+    expect(requestBody(paymentConfig)).toEqual({ token: 'tok_success' })
+    expect(paymentConfig.headers.get?.('Idempotency-Key')).toBeTruthy()
+    expect(order.id).toBeTruthy()
+  }, 10000)
+
+  it('shows a declined payment without issuing tickets', async () => {
+    const user = userEvent.setup()
+    const paymentSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    const { hold } = installCheckoutMock({ status: 'DECLINED', paymentSpy })
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
+    await user.click(screen.getByText('Decline card'))
+    await user.click(screen.getByRole('button', { name: 'Pay now' }))
+
+    expect(await screen.findByText(/declined the payment/i)).toBeInTheDocument()
+    expect(screen.getAllByText('Payment declined').length).toBeGreaterThan(0)
+    expect(screen.getByText('No tickets were issued for this payment attempt.')).toBeInTheDocument()
+    expect(paymentSpy).toHaveBeenCalledOnce()
+    expect(requestBody(paymentSpy.mock.calls[0][0] as InternalAxiosRequestConfig)).toEqual({
+      token: 'tok_declined',
+    })
+  }, 10000)
+
+  it('shows a timed-out payment clearly without issuing tickets', async () => {
+    const user = userEvent.setup()
+    const paymentSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    const { hold } = installCheckoutMock({ status: 'TIMED_OUT', paymentSpy })
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
+    await user.click(screen.getByText('Provider timeout'))
+    await user.click(screen.getByRole('button', { name: 'Pay now' }))
+
+    expect(await screen.findByText(/did not respond in time/i)).toBeInTheDocument()
+    expect(screen.getAllByText('Payment timed out').length).toBeGreaterThan(0)
+    expect(screen.getByText('No tickets were issued for this payment attempt.')).toBeInTheDocument()
+    expect(paymentSpy).toHaveBeenCalledOnce()
+    expect(requestBody(paymentSpy.mock.calls[0][0] as InternalAxiosRequestConfig)).toEqual({
+      token: 'tok_timeout',
+    })
+  }, 10000)
+
+  it('submits one payment for duplicate clicks and restores the result after refresh', async () => {
+    const user = userEvent.setup()
+    const paymentSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    const { hold } = installCheckoutMock({ paymentSpy })
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Checkout' })).toBeInTheDocument()
+    await user.dblClick(screen.getByRole('button', { name: 'Pay now' }))
+
+    expect((await screen.findAllByText('Payment succeeded')).length).toBeGreaterThan(0)
+    expect(paymentSpy).toHaveBeenCalledOnce()
+
+    const resultPath = window.location.pathname
+    cleanup()
+    window.history.pushState({}, '', resultPath)
+    render(<App />)
+
+    expect((await screen.findAllByText('Payment succeeded')).length).toBeGreaterThan(0)
+    expect(screen.getByText('Refreshing this page will not repeat the purchase.')).toBeInTheDocument()
+    expect(paymentSpy).toHaveBeenCalledOnce()
+  }, 10000)
+
+  it('displays the ticket list and ticket detail QR data', async () => {
+    const user = userEvent.setup()
+    const hold = activeSeatHold()
+    const reservation = reservationResponse(hold)
+    const order = orderResponse(reservation, 'PAID')
+    const ticket = ticketForOrder(order)
+    window.history.pushState({}, '', ROUTES.tickets)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      if (endpoint(config) === 'GET /users/me/tickets') {
+        return response<Ticket[]>(config, 200, [ticket])
+      }
+
+      if (endpoint(config) === `GET /tickets/${ticket.id}`) {
+        return response<Ticket>(config, 200, ticket)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Tickets' })).toBeInTheDocument()
+    expect(await screen.findByText(publishedEvent.name)).toBeInTheDocument()
+    expect(screen.getByText('Orchestra A1')).toBeInTheDocument()
+    await user.click(screen.getByRole('link', { name: publishedEvent.name }))
+
+    expect(await screen.findByText(ticket.ticketCode)).toBeInTheDocument()
+    expect(screen.getByText(ticket.qrData)).toBeInTheDocument()
+    expect(screen.getByText(/row A, seat A1/)).toBeInTheDocument()
   }, 10000)
 
   it('validates required login fields', async () => {

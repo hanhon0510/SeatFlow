@@ -8,6 +8,7 @@ import { apiClient, clearAccessToken } from '../shared/api/httpClient'
 
 beforeEach(() => {
   clearAccessToken()
+  window.sessionStorage.clear()
   apiClient.defaults.adapter = async (config) =>
     Promise.reject(
       new AxiosError('Invalid refresh token', undefined, config, {}, {
@@ -28,6 +29,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  window.sessionStorage.clear()
   window.history.pushState({}, '', '/')
 })
 
