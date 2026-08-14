@@ -40,6 +40,7 @@ import com.seatflow.reservation.ReservationItemRecord;
 import com.seatflow.reservation.ReservationMapper;
 import com.seatflow.reservation.ReservationRecord;
 import com.seatflow.reservation.ReservationStatus;
+import com.seatflow.ticket.TicketService;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTests {
@@ -73,6 +74,9 @@ class PaymentServiceTests {
 	private EventSeatMapper eventSeatMapper;
 
 	@Mock
+	private TicketService ticketService;
+
+	@Mock
 	private SeatHoldStore seatHoldStore;
 
 	@Mock
@@ -88,6 +92,7 @@ class PaymentServiceTests {
 				reservationMapper,
 				reservationItemMapper,
 				eventSeatMapper,
+				ticketService,
 				seatHoldStore,
 				eventPublisher,
 				Clock.fixed(NOW, ZoneOffset.UTC));
@@ -114,6 +119,7 @@ class PaymentServiceTests {
 		verify(orderMapper).updateStatus(ORDER_ID, USER_ID, OrderStatus.PENDING, OrderStatus.PAID, NOW);
 		verify(eventSeatMapper).markSold(EVENT_SEAT_ID_1);
 		verify(eventSeatMapper).markSold(EVENT_SEAT_ID_2);
+		verify(ticketService).issueTickets(ORDER_ID, List.of(EVENT_SEAT_ID_1, EVENT_SEAT_ID_2), NOW);
 
 		ArgumentCaptor<SeatHoldReleaseRequested> eventCaptor =
 				ArgumentCaptor.forClass(SeatHoldReleaseRequested.class);
@@ -145,6 +151,7 @@ class PaymentServiceTests {
 		assertThat(response.failureReason()).isEqualTo(expectedFailureReason);
 		verify(orderMapper).updateStatus(ORDER_ID, USER_ID, OrderStatus.PENDING, OrderStatus.FAILED, NOW);
 		verify(eventSeatMapper, never()).markSold(any());
+		verify(ticketService, never()).issueTickets(any(), any(), any());
 		verify(eventPublisher, never()).publishEvent(any());
 	}
 
@@ -169,6 +176,7 @@ class PaymentServiceTests {
 				.isInstanceOf(PaymentConflictException.class);
 
 		verify(paymentMapper, never()).updateStatus(any(), any(), any(), any(), any());
+		verify(ticketService, never()).issueTickets(any(), any(), any());
 		verify(eventPublisher, never()).publishEvent(any());
 	}
 

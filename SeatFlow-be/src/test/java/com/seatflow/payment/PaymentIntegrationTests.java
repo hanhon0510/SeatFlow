@@ -173,6 +173,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 					assertThat(seat.version()).isEqualTo(1);
 				});
 		assertThat(countRows("payments")).isEqualTo(1);
+		assertThat(countRows("tickets")).isEqualTo(2);
 		verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 	}
 
@@ -240,6 +241,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				.andExpect(jsonPath("$.message").value("Payment conflict"));
 
 		assertThat(countRows("payments")).isEqualTo(1);
+		assertThat(countRows("tickets")).isEqualTo(1);
 		assertThat(jdbcTemplate.queryForObject(
 				"SELECT COUNT(*) FROM payments WHERE order_id = ? AND status = 'SUCCEEDED'",
 				Integer.class,
@@ -263,6 +265,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 
 		assertThat(secondResponse).isEqualTo(firstResponse);
 		assertThat(countRows("payments")).isEqualTo(1);
+		assertThat(countRows("tickets")).isEqualTo(1);
 		assertThat(countRows("idempotency_records")).isEqualTo(1);
 		IdempotencyRecord record = idempotencyMapper.findByScope(
 				fixture.user().id(),
@@ -311,6 +314,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 			IdempotentPaymentResult secondResult = second.get(10, TimeUnit.SECONDS);
 			assertThat(secondResult).isEqualTo(firstResult);
 			assertThat(countRows("payments")).isEqualTo(1);
+			assertThat(countRows("tickets")).isEqualTo(1);
 			assertThat(countRows("idempotency_records")).isEqualTo(1);
 			verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 		}
@@ -369,6 +373,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 					: firstBuyer;
 
 			assertThat(countRows("payments")).isEqualTo(1);
+			assertThat(countRows("tickets")).isEqualTo(2);
 			assertThat(countRows("idempotency_records")).isEqualTo(1);
 			assertThat(eventSeatMapper.findByEventId(inventory.event().id()))
 					.allSatisfy(seat -> assertThat(seat.permanentStatus()).isEqualTo(EventSeatStatus.SOLD));
@@ -437,6 +442,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(reservationMapper.findByIdAndUser(fixture.reservation().id(), fixture.user().id()).status())
 				.isEqualTo(ReservationStatus.PENDING_PAYMENT);
 		assertThat(countRows("payments")).isZero();
+		assertThat(countRows("tickets")).isZero();
 		assertThat(countRows("idempotency_records")).isZero();
 		verify(seatHoldStore, never()).releaseHold(any(SeatHoldRecord.class));
 	}
@@ -463,6 +469,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				.extracting(EventSeatRecord::permanentStatus)
 				.isEqualTo(EventSeatStatus.SOLD);
 		assertThat(countRows("payments")).isEqualTo(1);
+		assertThat(countRows("tickets")).isEqualTo(1);
 		assertThat(countRows("idempotency_records")).isEqualTo(1);
 		verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 	}
@@ -661,6 +668,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 
 	private void cleanDatabase() {
 		jdbcTemplate.update("DELETE FROM idempotency_records");
+		jdbcTemplate.update("DELETE FROM tickets");
 		jdbcTemplate.update("DELETE FROM payments");
 		jdbcTemplate.update("DELETE FROM orders");
 		jdbcTemplate.update("DELETE FROM reservation_items");

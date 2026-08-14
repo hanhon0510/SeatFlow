@@ -25,6 +25,7 @@ import com.seatflow.reservation.ReservationItemRecord;
 import com.seatflow.reservation.ReservationMapper;
 import com.seatflow.reservation.ReservationRecord;
 import com.seatflow.reservation.ReservationStatus;
+import com.seatflow.ticket.TicketService;
 
 @Service
 public class PaymentService {
@@ -34,6 +35,7 @@ public class PaymentService {
 	private final ReservationMapper reservationMapper;
 	private final ReservationItemMapper reservationItemMapper;
 	private final EventSeatMapper eventSeatMapper;
+	private final TicketService ticketService;
 	private final SeatHoldStore seatHoldStore;
 	private final ApplicationEventPublisher eventPublisher;
 	private final Clock clock;
@@ -44,6 +46,7 @@ public class PaymentService {
 			ReservationMapper reservationMapper,
 			ReservationItemMapper reservationItemMapper,
 			EventSeatMapper eventSeatMapper,
+			TicketService ticketService,
 			SeatHoldStore seatHoldStore,
 			ApplicationEventPublisher eventPublisher,
 			Clock clock) {
@@ -52,6 +55,7 @@ public class PaymentService {
 		this.reservationMapper = reservationMapper;
 		this.reservationItemMapper = reservationItemMapper;
 		this.eventSeatMapper = eventSeatMapper;
+		this.ticketService = ticketService;
 		this.seatHoldStore = seatHoldStore;
 		this.eventPublisher = eventPublisher;
 		this.clock = clock;
@@ -98,7 +102,7 @@ public class PaymentService {
 		}
 
 		if (outcome.successful()) {
-			completeSuccessfulPayment(reservation, lockedSeats, now);
+			completeSuccessfulPayment(order, reservation, lockedSeats, now);
 		}
 		else if (reservationMapper.updateStatus(
 					reservation.id(),
@@ -128,6 +132,7 @@ public class PaymentService {
 	}
 
 	private void completeSuccessfulPayment(
+			OrderRecord order,
 			ReservationRecord reservation,
 			List<EventSeatRecord> lockedSeats,
 			Instant now) {
@@ -144,6 +149,11 @@ public class PaymentService {
 				throw new PaymentConflictException();
 			}
 		}
+
+		ticketService.issueTickets(
+				order.id(),
+				lockedSeats.stream().map(EventSeatRecord::id).toList(),
+				now);
 	}
 
 	private boolean isHoldActive(SeatHoldRecord hold) {
