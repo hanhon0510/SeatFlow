@@ -8,6 +8,7 @@ import {
   LoginOutlined,
   LogoutOutlined,
   MenuOutlined,
+  QrcodeOutlined,
   UserAddOutlined,
 } from '@ant-design/icons'
 import { Button, Drawer, Layout, Menu, Space, Typography } from 'antd'
@@ -30,7 +31,9 @@ const publicNavItems = [
   { key: ROUTES.events, label: 'Events', icon: <CalendarOutlined /> },
 ] satisfies NavItem[]
 
-const authenticatedNavItems = [] satisfies NavItem[]
+const authenticatedNavItems = [
+  { key: ROUTES.tickets, label: 'Tickets', icon: <QrcodeOutlined /> },
+] satisfies NavItem[]
 
 const adminNavItems = [
   { key: ROUTES.admin, label: 'Admin', icon: <LockOutlined /> },

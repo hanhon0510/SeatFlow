@@ -13,6 +13,9 @@ import { NotFoundPage } from '../../features/not-found/pages/NotFoundPage'
 import { EventCatalogPage } from '../../features/events/pages/EventCatalogPage'
 import { EventDetailPage } from '../../features/events/pages/EventDetailPage'
 import { CheckoutPage } from '../../features/holds/pages/CheckoutPage'
+import { PaymentResultPage } from '../../features/checkout/pages/PaymentResultPage'
+import { TicketDetailPage } from '../../features/tickets/pages/TicketDetailPage'
+import { TicketListPage } from '../../features/tickets/pages/TicketListPage'
 import { ROUTES } from '../../shared/constants/routes'
 
 export function AppRouter() {
@@ -26,6 +29,9 @@ export function AppRouter() {
         <Route path={ROUTES.eventDetailPattern} element={<EventDetailPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path={ROUTES.checkoutPattern} element={<CheckoutPage />} />
+          <Route path={ROUTES.paymentResultPattern} element={<PaymentResultPage />} />
+          <Route path={ROUTES.tickets} element={<TicketListPage />} />
+          <Route path={ROUTES.ticketDetailPattern} element={<TicketDetailPage />} />
           <Route element={<AdminRoute />}>
             <Route path={ROUTES.admin} element={<VenueListPage />} />
             <Route path={ROUTES.adminEvents} element={<EventListPage />} />
