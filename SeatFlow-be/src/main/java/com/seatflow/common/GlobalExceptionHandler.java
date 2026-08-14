@@ -42,6 +42,8 @@ import com.seatflow.seating.DuplicateSeatLabelException;
 import com.seatflow.seating.InvalidSeatBatchException;
 import com.seatflow.seating.SeatNotFoundException;
 import com.seatflow.seating.SectionNotFoundException;
+import com.seatflow.ticket.TicketIssuanceException;
+import com.seatflow.ticket.TicketNotFoundException;
 import com.seatflow.venue.ArchivedVenueCannotHostEventsException;
 import com.seatflow.venue.InvalidVenuePaginationException;
 import com.seatflow.venue.InvalidVenueTimezoneException;
@@ -210,6 +212,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(PaymentConflictException.class)
 	public ResponseEntity<ApiResponse<Void>> handlePaymentConflict(PaymentConflictException ex) {
 		return error("Payment conflict", HttpStatus.CONFLICT);
+	}
+
+	@ExceptionHandler(TicketNotFoundException.class)
+	public ResponseEntity<ApiResponse<Void>> handleTicketNotFound(TicketNotFoundException ex) {
+		return error("Ticket not found", HttpStatus.NOT_FOUND);
+	}
+
+	@ExceptionHandler(TicketIssuanceException.class)
+	public ResponseEntity<ApiResponse<Void>> handleTicketIssuance(TicketIssuanceException ex) {
+		return error("Ticket issuance failed", HttpStatus.CONFLICT);
 	}
 
 	@ExceptionHandler(InvalidIdempotencyKeyException.class)

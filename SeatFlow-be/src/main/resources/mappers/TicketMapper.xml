@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.ticket.TicketMapper">
+    <resultMap id="TicketRecordResultMap" type="com.seatflow.ticket.TicketRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="order_id" javaType="java.util.UUID" />
+            <arg column="event_seat_id" javaType="java.util.UUID" />
+            <arg column="ticket_code" javaType="java.lang.String" />
+            <arg column="status" javaType="com.seatflow.ticket.TicketStatus" />
+            <arg column="issued_at" javaType="java.time.Instant" />
+            <arg column="used_at" javaType="java.time.Instant" />
+            <arg column="created_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="TicketDetailRecordResultMap" type="com.seatflow.ticket.TicketDetailRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="order_id" javaType="java.util.UUID" />
+            <arg column="event_seat_id" javaType="java.util.UUID" />
+            <arg column="ticket_code" javaType="java.lang.String" />
+            <arg column="status" javaType="com.seatflow.ticket.TicketStatus" />
+            <arg column="issued_at" javaType="java.time.Instant" />
+            <arg column="used_at" javaType="java.time.Instant" />
+            <arg column="created_at" javaType="java.time.Instant" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="event_name" javaType="java.lang.String" />
+            <arg column="event_start_time" javaType="java.time.Instant" />
+            <arg column="venue_id" javaType="java.util.UUID" />
+            <arg column="venue_name" javaType="java.lang.String" />
+            <arg column="venue_address" javaType="java.lang.String" />
+            <arg column="venue_city" javaType="java.lang.String" />
+            <arg column="venue_country" javaType="java.lang.String" />
+            <arg column="venue_timezone" javaType="java.lang.String" />
+            <arg column="seat_id" javaType="java.util.UUID" />
+            <arg column="section_name" javaType="java.lang.String" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="seat_number" javaType="_int" />
+            <arg column="seat_label" javaType="java.lang.String" />
+            <arg column="accessible" javaType="_boolean" />
+            <arg column="price" javaType="java.math.BigDecimal" />
+        </constructor>
+    </resultMap>
+
+    <sql id="TicketColumns">
+        id,
+        order_id,
+        event_seat_id,
+        ticket_code,
+        status,
+        issued_at,
+        used_at,
+        created_at
+    </sql>
+
+    <sql id="TicketDetailColumns">
+        ticket.id,
+        ticket.order_id,
+        ticket.event_seat_id,
+        ticket.ticket_code,
+        ticket.status,
+        ticket.issued_at,
+        ticket.used_at,
+        ticket.created_at,
+        event.id AS event_id,
+        event.name AS event_name,
+        event.start_time AS event_start_time,
+        venue.id AS venue_id,
+        venue.name AS venue_name,
+        venue.address AS venue_address,
+        venue.city AS venue_city,
+        venue.country AS venue_country,
+        venue.timezone AS venue_timezone,
+        seat.id AS seat_id,
+        venue_section.name AS section_name,
+        seat.row_label,
+        seat.seat_number,
+        seat.seat_label,
+        seat.accessible,
+        event_seat.price
+    </sql>
+
+    <insert id="insert">
+        INSERT INTO tickets (
+            id,
+            order_id,
+            event_seat_id,
+            ticket_code,
+            status,
+            issued_at,
+            used_at,
+            created_at
+        )
+        SELECT
+            #{id},
+            purchase_order.id,
+            reservation_item.event_seat_id,
+            #{ticketCode},
+            'ACTIVE',
+            #{issuedAt},
+            NULL,
+            #{createdAt}
+        FROM orders purchase_order
+        JOIN reservation_items reservation_item
+          ON reservation_item.reservation_id = purchase_order.reservation_id
+        WHERE purchase_order.id = #{orderId}
+          AND purchase_order.status = 'PAID'
+          AND reservation_item.event_seat_id = #{eventSeatId}
+        ON CONFLICT DO NOTHING
+    </insert>
+
+    <select id="findByOrderAndEventSeat" resultMap="TicketRecordResultMap">
+        SELECT
+            <include refid="TicketColumns" />
+        FROM tickets
+        WHERE order_id = #{orderId}
+          AND event_seat_id = #{eventSeatId}
+    </select>
+
+    <select id="findDetailByIdAndUser" resultMap="TicketDetailRecordResultMap">
+        SELECT
+            <include refid="TicketDetailColumns" />
+        FROM tickets ticket
+        JOIN orders purchase_order ON purchase_order.id = ticket.order_id
+        JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
+        JOIN events event ON event.id = event_seat.event_id
+        JOIN venues venue ON venue.id = event.venue_id
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        JOIN venue_sections venue_section ON venue_section.id = seat.section_id
+        WHERE ticket.id = #{id}
+          AND purchase_order.user_id = #{userId}
+    </select>
+
+    <select id="findDetailsByUser" resultMap="TicketDetailRecordResultMap">
+        SELECT
+            <include refid="TicketDetailColumns" />
+        FROM tickets ticket
+        JOIN orders purchase_order ON purchase_order.id = ticket.order_id
+        JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
+        JOIN events event ON event.id = event_seat.event_id
+        JOIN venues venue ON venue.id = event.venue_id
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        JOIN venue_sections venue_section ON venue_section.id = seat.section_id
+        WHERE purchase_order.user_id = #{userId}
+        ORDER BY
+            event.start_time ASC,
+            venue_section.display_order ASC,
+            venue_section.name ASC,
+            seat.row_label ASC,
+            seat.seat_number ASC,
+            seat.seat_label ASC,
+            ticket.id ASC
+    </select>
+</mapper>
