@@ -23,6 +23,32 @@ spring:
       timeout: ${REDIS_TIMEOUT:2s}
       connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      client-id: ${KAFKA_PRODUCER_CLIENT_ID:seatflow-backend}
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+        delivery.timeout.ms: ${KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS:30000}
+        request.timeout.ms: ${KAFKA_PRODUCER_REQUEST_TIMEOUT_MS:10000}
+        max.block.ms: ${KAFKA_PRODUCER_MAX_BLOCK_MS:5000}
+    consumer:
+      group-id: ${SEATFLOW_KAFKA_GROUP_ORDER_EVENTS:seatflow.order-events.consumer.v1}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.value.default.type: com.seatflow.kafka.EventEnvelope
+        spring.json.trusted.packages: com.seatflow,java.util,java.time
+        spring.json.use.type.headers: false
+    listener:
+      ack-mode: record
+
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -63,3 +89,12 @@ seatflow:
     max-seats: ${SEATFLOW_HOLD_MAX_SEATS:8}
   idempotency:
     ttl: ${SEATFLOW_IDEMPOTENCY_TTL:24h}
+  kafka:
+    enabled: ${SEATFLOW_KAFKA_ENABLED:false}
+    topics:
+      order-events: ${SEATFLOW_KAFKA_TOPIC_ORDER_EVENTS:seatflow.order-events.v1}
+      notification-events: ${SEATFLOW_KAFKA_TOPIC_NOTIFICATION_EVENTS:seatflow.notification-events.v1}
+      dead-letter: ${SEATFLOW_KAFKA_TOPIC_DEAD_LETTER:seatflow.dead-letter.v1}
+    consumer-groups:
+      order-events: ${SEATFLOW_KAFKA_GROUP_ORDER_EVENTS:seatflow.order-events.consumer.v1}
+      notification-events: ${SEATFLOW_KAFKA_GROUP_NOTIFICATION_EVENTS:seatflow.notification-events.consumer.v1}

@@ -14,7 +14,7 @@ SeatFlow is a full-stack seat reservation and booking platform scaffolded with t
 .
 |-- SeatFlow-be/       Spring Boot 3.5 backend, Java 21, MyBatis, Flyway
 |-- SeatFlow-fe/       React 19, TypeScript, Vite, Ant Design
-|-- docker-compose.yml PostgreSQL
+|-- docker-compose.yml PostgreSQL, Redis, Kafka
 |-- docs/              Project notes and generated documentation
 `-- README.md
 ```
@@ -30,7 +30,7 @@ SeatFlow is a full-stack seat reservation and booking platform scaffolded with t
 ### Start Infrastructure
 
 ```sh
-docker compose up -d postgres
+docker compose up -d postgres redis kafka
 ```
 
 Local service ports:
@@ -40,6 +40,8 @@ Local service ports:
 | Backend    | `http://localhost:8080` |
 | Frontend   | `http://localhost:5173` |
 | PostgreSQL | `localhost:5432`        |
+| Redis      | `localhost:6379`        |
+| Kafka      | `localhost:9092`        |
 
 ### Configure Environment
 
@@ -55,14 +57,14 @@ Windows:
 
 ```sh
 cd SeatFlow-be
-.\mvnw.cmd spring-boot:run
+.\mvnw.cmd -Dspring-boot.run.profiles=local spring-boot:run
 ```
 
 macOS/Linux:
 
 ```sh
 cd SeatFlow-be
-./mvnw spring-boot:run
+./mvnw -Dspring-boot.run.profiles=local spring-boot:run
 ```
 
 ### Run Frontend
@@ -85,6 +87,8 @@ Key variables (see `.env.example`):
 - `POSTGRES_USER` — PostgreSQL user
 - `POSTGRES_PASSWORD` — PostgreSQL password, stored only in local `.env`
 - `POSTGRES_PORT` — local PostgreSQL port
+- `KAFKA_PORT` — local Kafka port
+- `KAFKA_BOOTSTRAP_SERVERS` — Kafka bootstrap servers for the backend
 - `PORT` — backend HTTP port
 - `SEATFLOW_JWT_SECRET` — JWT signing secret, at least 32 bytes
 - `SEATFLOW_JWT_ISSUER` — JWT issuer
@@ -93,6 +97,12 @@ Key variables (see `.env.example`):
 - `SEATFLOW_REFRESH_TOKEN_EXPIRES_IN_SECONDS` — refresh token lifetime
 - `SEATFLOW_REFRESH_TOKEN_COOKIE_SECURE` — whether refresh cookies require HTTPS
 - `SEATFLOW_REFRESH_TOKEN_SAME_SITE` — refresh cookie SameSite policy
+- `SEATFLOW_KAFKA_ENABLED` — enables backend Kafka infrastructure, default `false` except local profile
+- `SEATFLOW_KAFKA_TOPIC_ORDER_EVENTS` — order event topic name
+- `SEATFLOW_KAFKA_TOPIC_NOTIFICATION_EVENTS` — notification event topic name
+- `SEATFLOW_KAFKA_TOPIC_DEAD_LETTER` — dead-letter topic name
+- `SEATFLOW_KAFKA_GROUP_ORDER_EVENTS` — order event consumer group
+- `SEATFLOW_KAFKA_GROUP_NOTIFICATION_EVENTS` — notification event consumer group
 - `SEATFLOW_LOCAL_ADMIN_ENABLED` — opt-in local profile admin seeding, default `false`
 - `SEATFLOW_LOCAL_ADMIN_EMAIL` — local admin seed email
 - `SEATFLOW_LOCAL_ADMIN_PASSWORD` — local admin seed password, at least 12 characters

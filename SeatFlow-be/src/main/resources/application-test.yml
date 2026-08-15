@@ -16,3 +16,7 @@ spring:
 
   flyway:
     enabled: true
+
+seatflow:
+  kafka:
+    enabled: false

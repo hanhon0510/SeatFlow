@@ -16,6 +16,8 @@ spring:
     enabled: true
 
 seatflow:
+  kafka:
+    enabled: ${SEATFLOW_KAFKA_ENABLED:true}
   local-admin:
     enabled: ${SEATFLOW_LOCAL_ADMIN_ENABLED:false}
     email: ${SEATFLOW_LOCAL_ADMIN_EMAIL:}
