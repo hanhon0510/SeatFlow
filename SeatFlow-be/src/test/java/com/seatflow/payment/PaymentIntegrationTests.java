@@ -174,6 +174,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				});
 		assertThat(countRows("payments")).isEqualTo(1);
 		assertThat(countRows("tickets")).isEqualTo(2);
+		assertOrderPaidOutboxEvent(fixture, paymentId, 2);
 		verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 	}
 
@@ -206,6 +207,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 					assertThat(seat.permanentStatus()).isEqualTo(EventSeatStatus.AVAILABLE);
 					assertThat(seat.version()).isZero();
 				});
+		assertThat(countRows("outbox_events")).isZero();
 		verify(seatHoldStore, never()).releaseHold(any(SeatHoldRecord.class));
 	}
 
@@ -225,6 +227,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				.andExpect(jsonPath("$.message").value("Order not found"));
 
 		assertThat(countRows("payments")).isZero();
+		assertThat(countRows("outbox_events")).isZero();
 		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
 				.isEqualTo(OrderStatus.PENDING);
 	}
@@ -242,6 +245,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 
 		assertThat(countRows("payments")).isEqualTo(1);
 		assertThat(countRows("tickets")).isEqualTo(1);
+		assertThat(countRows("outbox_events")).isEqualTo(1);
 		assertThat(jdbcTemplate.queryForObject(
 				"SELECT COUNT(*) FROM payments WHERE order_id = ? AND status = 'SUCCEEDED'",
 				Integer.class,
@@ -267,6 +271,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(countRows("payments")).isEqualTo(1);
 		assertThat(countRows("tickets")).isEqualTo(1);
 		assertThat(countRows("idempotency_records")).isEqualTo(1);
+		assertThat(countRows("outbox_events")).isEqualTo(1);
 		IdempotencyRecord record = idempotencyMapper.findByScope(
 				fixture.user().id(),
 				IdempotencyOperation.CREATE_PAYMENT,
@@ -316,6 +321,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 			assertThat(countRows("payments")).isEqualTo(1);
 			assertThat(countRows("tickets")).isEqualTo(1);
 			assertThat(countRows("idempotency_records")).isEqualTo(1);
+			assertThat(countRows("outbox_events")).isEqualTo(1);
 			verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 		}
 		finally {
@@ -375,6 +381,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 			assertThat(countRows("payments")).isEqualTo(1);
 			assertThat(countRows("tickets")).isEqualTo(2);
 			assertThat(countRows("idempotency_records")).isEqualTo(1);
+			assertThat(countRows("outbox_events")).isEqualTo(1);
 			assertThat(eventSeatMapper.findByEventId(inventory.event().id()))
 					.allSatisfy(seat -> assertThat(seat.permanentStatus()).isEqualTo(EventSeatStatus.SOLD));
 			assertThat(orderMapper.findByIdAndUser(winner.order().id(), winner.user().id()).status())
@@ -444,6 +451,53 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(countRows("payments")).isZero();
 		assertThat(countRows("tickets")).isZero();
 		assertThat(countRows("idempotency_records")).isZero();
+		assertThat(countRows("outbox_events")).isZero();
+		verify(seatHoldStore, never()).releaseHold(any(SeatHoldRecord.class));
+	}
+
+	@Test
+	void outboxInsertFailureRollsBackThePurchaseTransaction() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-outbox-rollback@example.com",
+				List.of(new BigDecimal("125000.00")));
+		jdbcTemplate.execute("""
+				CREATE OR REPLACE FUNCTION seatflow_test_reject_outbox_insert()
+				RETURNS trigger AS $$
+				BEGIN
+				    RAISE EXCEPTION 'outbox unavailable';
+				END;
+				$$ LANGUAGE plpgsql
+				""");
+		jdbcTemplate.execute("""
+				CREATE TRIGGER seatflow_test_reject_outbox_insert_trigger
+				BEFORE INSERT ON outbox_events
+				FOR EACH ROW EXECUTE FUNCTION seatflow_test_reject_outbox_insert()
+				""");
+
+		try {
+			createPayment(fixture, "tok_success")
+					.andExpect(status().isInternalServerError())
+					.andExpect(jsonPath("$.message").value("Unexpected error"));
+		}
+		finally {
+			jdbcTemplate.execute("DROP TRIGGER IF EXISTS seatflow_test_reject_outbox_insert_trigger ON outbox_events");
+			jdbcTemplate.execute("DROP FUNCTION IF EXISTS seatflow_test_reject_outbox_insert()");
+		}
+
+		assertThat(eventSeatMapper.findByEventId(fixture.inventory().event().id()))
+				.singleElement()
+				.satisfies(seat -> {
+					assertThat(seat.permanentStatus()).isEqualTo(EventSeatStatus.AVAILABLE);
+					assertThat(seat.version()).isZero();
+				});
+		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
+				.isEqualTo(OrderStatus.PENDING);
+		assertThat(reservationMapper.findByIdAndUser(fixture.reservation().id(), fixture.user().id()).status())
+				.isEqualTo(ReservationStatus.PENDING_PAYMENT);
+		assertThat(countRows("payments")).isZero();
+		assertThat(countRows("tickets")).isZero();
+		assertThat(countRows("idempotency_records")).isZero();
+		assertThat(countRows("outbox_events")).isZero();
 		verify(seatHoldStore, never()).releaseHold(any(SeatHoldRecord.class));
 	}
 
@@ -471,6 +525,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(countRows("payments")).isEqualTo(1);
 		assertThat(countRows("tickets")).isEqualTo(1);
 		assertThat(countRows("idempotency_records")).isEqualTo(1);
+		assertThat(countRows("outbox_events")).isEqualTo(1);
 		verify(seatHoldStore).releaseHold(any(SeatHoldRecord.class));
 	}
 
@@ -490,6 +545,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 
 		assertThat(countRows("payments")).isEqualTo(1);
 		assertThat(countRows("idempotency_records")).isEqualTo(1);
+		assertThat(countRows("outbox_events")).isZero();
 	}
 
 	@Test
@@ -507,6 +563,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 
 		assertThat(countRows("payments")).isEqualTo(2);
 		assertThat(countRows("idempotency_records")).isEqualTo(2);
+		assertThat(countRows("outbox_events")).isEqualTo(2);
 	}
 
 	@Test
@@ -524,6 +581,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 
 		assertThat(countRows("payments")).isZero();
 		assertThat(countRows("idempotency_records")).isZero();
+		assertThat(countRows("outbox_events")).isZero();
 	}
 
 	private org.springframework.test.web.servlet.ResultActions createPayment(
@@ -666,9 +724,48 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class);
 	}
 
+	private void assertOrderPaidOutboxEvent(PaymentFixture fixture, UUID paymentId, int seatCount) throws Exception {
+		JsonNode event = objectMapper.readTree(jdbcTemplate.queryForObject(
+				"""
+				SELECT jsonb_build_object(
+				    'aggregateType', aggregate_type,
+				    'aggregateId', aggregate_id,
+				    'eventType', event_type,
+				    'eventVersion', event_version,
+				    'payload', payload,
+				    'correlationId', correlation_id,
+				    'status', status,
+				    'attemptCount', attempt_count,
+				    'publishedAt', published_at,
+				    'nextAttemptAt', next_attempt_at
+				)::text
+				FROM outbox_events
+				WHERE aggregate_id = ?
+				""",
+				String.class,
+				fixture.order().id()));
+
+		assertThat(event.get("aggregateType").asText()).isEqualTo("Order");
+		assertThat(event.get("aggregateId").asText()).isEqualTo(fixture.order().id().toString());
+		assertThat(event.get("eventType").asText()).isEqualTo("OrderPaid");
+		assertThat(event.get("eventVersion").asInt()).isEqualTo(1);
+		assertThat(event.get("correlationId").asText()).isEqualTo(paymentId.toString());
+		assertThat(event.get("status").asText()).isEqualTo("PENDING");
+		assertThat(event.get("attemptCount").asInt()).isZero();
+		assertThat(event.get("publishedAt").isNull()).isTrue();
+		assertThat(event.get("nextAttemptAt").isNull()).isFalse();
+		assertThat(event.get("payload").get("orderId").asText()).isEqualTo(fixture.order().id().toString());
+		assertThat(event.get("payload").get("reservationId").asText())
+				.isEqualTo(fixture.reservation().id().toString());
+		assertThat(event.get("payload").get("userId").asText()).isEqualTo(fixture.user().id().toString());
+		assertThat(event.get("payload").get("paymentId").asText()).isEqualTo(paymentId.toString());
+		assertThat(event.get("payload").get("eventSeatIds").size()).isEqualTo(seatCount);
+	}
+
 	private void cleanDatabase() {
 		jdbcTemplate.update("DELETE FROM idempotency_records");
 		jdbcTemplate.update("DELETE FROM tickets");
+		jdbcTemplate.update("DELETE FROM outbox_events");
 		jdbcTemplate.update("DELETE FROM payments");
 		jdbcTemplate.update("DELETE FROM orders");
 		jdbcTemplate.update("DELETE FROM reservation_items");

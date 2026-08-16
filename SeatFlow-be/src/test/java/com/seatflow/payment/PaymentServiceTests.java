@@ -35,6 +35,8 @@ import com.seatflow.order.OrderMapper;
 import com.seatflow.order.OrderNotFoundException;
 import com.seatflow.order.OrderRecord;
 import com.seatflow.order.OrderStatus;
+import com.seatflow.outbox.OutboxService;
+import com.seatflow.outbox.OutboxStorageException;
 import com.seatflow.reservation.ReservationItemMapper;
 import com.seatflow.reservation.ReservationItemRecord;
 import com.seatflow.reservation.ReservationMapper;
@@ -80,6 +82,9 @@ class PaymentServiceTests {
 	private SeatHoldStore seatHoldStore;
 
 	@Mock
+	private OutboxService outboxService;
+
+	@Mock
 	private ApplicationEventPublisher eventPublisher;
 
 	private PaymentService paymentService;
@@ -94,6 +99,7 @@ class PaymentServiceTests {
 				eventSeatMapper,
 				ticketService,
 				seatHoldStore,
+				outboxService,
 				eventPublisher,
 				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
@@ -120,6 +126,11 @@ class PaymentServiceTests {
 		verify(eventSeatMapper).markSold(EVENT_SEAT_ID_1);
 		verify(eventSeatMapper).markSold(EVENT_SEAT_ID_2);
 		verify(ticketService).issueTickets(ORDER_ID, List.of(EVENT_SEAT_ID_1, EVENT_SEAT_ID_2), NOW);
+		verify(outboxService).recordOrderPaid(
+				order(OrderStatus.PENDING),
+				payment(PaymentStatus.SUCCEEDED, null),
+				List.of(eventSeat(EVENT_SEAT_ID_1, SEAT_ID_1), eventSeat(EVENT_SEAT_ID_2, SEAT_ID_2)),
+				NOW);
 
 		ArgumentCaptor<SeatHoldReleaseRequested> eventCaptor =
 				ArgumentCaptor.forClass(SeatHoldReleaseRequested.class);
@@ -152,6 +163,7 @@ class PaymentServiceTests {
 		verify(orderMapper).updateStatus(ORDER_ID, USER_ID, OrderStatus.PENDING, OrderStatus.FAILED, NOW);
 		verify(eventSeatMapper, never()).markSold(any());
 		verify(ticketService, never()).issueTickets(any(), any(), any());
+		verify(outboxService, never()).recordOrderPaid(any(), any(), any(), any());
 		verify(eventPublisher, never()).publishEvent(any());
 	}
 
@@ -177,6 +189,29 @@ class PaymentServiceTests {
 
 		verify(paymentMapper, never()).updateStatus(any(), any(), any(), any(), any());
 		verify(ticketService, never()).issueTickets(any(), any(), any());
+		verify(outboxService, never()).recordOrderPaid(any(), any(), any(), any());
+		verify(eventPublisher, never()).publishEvent(any());
+	}
+
+	@Test
+	void outboxFailureAbortsBeforeHoldReleaseIsPublished() {
+		stubPendingPayment(PaymentStatus.SUCCEEDED, null);
+		when(reservationMapper.updateStatus(
+				RESERVATION_ID,
+				ReservationStatus.PENDING_PAYMENT,
+				ReservationStatus.CONFIRMED,
+				NOW)).thenReturn(1);
+		when(eventSeatMapper.markSold(any())).thenReturn(1);
+		when(outboxService.recordOrderPaid(any(), any(), any(), eq(NOW)))
+				.thenThrow(new OutboxStorageException(new IllegalStateException("outbox unavailable")));
+
+		assertThatThrownBy(() -> paymentService.createPayment(
+				ORDER_ID,
+				USER_ID,
+				new PaymentCreateRequest("tok_success")))
+				.isInstanceOf(OutboxStorageException.class);
+
+		verify(ticketService).issueTickets(ORDER_ID, List.of(EVENT_SEAT_ID_1, EVENT_SEAT_ID_2), NOW);
 		verify(eventPublisher, never()).publishEvent(any());
 	}
 

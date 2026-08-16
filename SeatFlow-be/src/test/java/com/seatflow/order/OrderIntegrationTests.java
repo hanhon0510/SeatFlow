@@ -386,6 +386,7 @@ class OrderIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	private void cleanDatabase() {
+		jdbcTemplate.update("DELETE FROM outbox_events");
 		jdbcTemplate.update("DELETE FROM payments");
 		jdbcTemplate.update("DELETE FROM orders");
 		jdbcTemplate.update("DELETE FROM reservation_items");

@@ -369,6 +369,7 @@ class TicketIntegrationTests extends PostgresTestContainerSupport {
 	private void cleanDatabase() {
 		jdbcTemplate.update("DELETE FROM idempotency_records");
 		jdbcTemplate.update("DELETE FROM tickets");
+		jdbcTemplate.update("DELETE FROM outbox_events");
 		jdbcTemplate.update("DELETE FROM payments");
 		jdbcTemplate.update("DELETE FROM orders");
 		jdbcTemplate.update("DELETE FROM reservation_items");
