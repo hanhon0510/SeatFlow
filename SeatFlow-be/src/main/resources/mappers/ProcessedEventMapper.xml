@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.consumer.ProcessedEventMapper">
+    <resultMap id="ProcessedEventRecordResultMap" type="com.seatflow.consumer.ProcessedEventRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="consumer_name" javaType="java.lang.String" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="processed_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO processed_events (
+            id,
+            consumer_name,
+            event_id,
+            processed_at
+        )
+        VALUES (
+            #{id},
+            #{consumerName},
+            #{eventId},
+            #{processedAt}
+        )
+        ON CONFLICT (consumer_name, event_id) DO NOTHING
+    </insert>
+
+    <select id="findByConsumerAndEvent" resultMap="ProcessedEventRecordResultMap">
+        SELECT
+            id,
+            consumer_name,
+            event_id,
+            processed_at
+        FROM processed_events
+        WHERE consumer_name = #{consumerName}
+          AND event_id = #{eventId}
+    </select>
+</mapper>
