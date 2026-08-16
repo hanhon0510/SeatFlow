@@ -103,6 +103,11 @@ Key variables (see `.env.example`):
 - `SEATFLOW_KAFKA_TOPIC_DEAD_LETTER` — dead-letter topic name
 - `SEATFLOW_KAFKA_GROUP_ORDER_EVENTS` — order event consumer group
 - `SEATFLOW_KAFKA_GROUP_NOTIFICATION_EVENTS` — notification event consumer group
+- `SEATFLOW_OUTBOX_PUBLISHER_ENABLED` — enables scheduled outbox publishing, default `false` except local profile
+- `SEATFLOW_OUTBOX_PUBLISHER_BATCH_SIZE` — number of pending outbox records locked per publish loop
+- `SEATFLOW_OUTBOX_PUBLISHER_RETRY_DELAY` — delay before retrying a failed outbox publish
+- `SEATFLOW_OUTBOX_PUBLISHER_TIMEOUT` — timeout while waiting for Kafka send acknowledgement
+- `SEATFLOW_OUTBOX_PUBLISHER_FIXED_DELAY_MS` — scheduler delay between outbox publish loops
 - `SEATFLOW_LOCAL_ADMIN_ENABLED` — opt-in local profile admin seeding, default `false`
 - `SEATFLOW_LOCAL_ADMIN_EMAIL` — local admin seed email
 - `SEATFLOW_LOCAL_ADMIN_PASSWORD` — local admin seed password, at least 12 characters
@@ -111,6 +116,14 @@ Local admin seeding runs only with the Spring `local` profile and only when
 `SEATFLOW_LOCAL_ADMIN_ENABLED=true`. It creates the admin if the email does not
 exist, leaves an existing admin unchanged, and refuses to promote an existing
 non-admin account automatically.
+
+### Kafka And Outbox
+
+Paid purchases insert an `OrderPaid` row into `outbox_events` in the same
+database transaction as the order, payment, ticket, and seat updates. The
+scheduled publisher locks pending rows with `FOR UPDATE SKIP LOCKED`, publishes
+to Kafka, marks successes as published, and keeps failed sends pending with a
+future retry time.
 
 Health endpoints:
 

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.outbox.OutboxMapper">
+    <resultMap id="OutboxEventRecordResultMap" type="com.seatflow.outbox.OutboxEventRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="aggregate_type" javaType="java.lang.String" />
+            <arg column="aggregate_id" javaType="java.util.UUID" />
+            <arg column="event_type" javaType="java.lang.String" />
+            <arg column="event_version" javaType="int" />
+            <arg column="payload" javaType="java.lang.String" />
+            <arg column="correlation_id" javaType="java.util.UUID" />
+            <arg column="status" javaType="com.seatflow.outbox.OutboxEventStatus" />
+            <arg column="attempt_count" javaType="int" />
+            <arg column="created_at" javaType="java.time.Instant" />
+            <arg column="published_at" javaType="java.time.Instant" />
+            <arg column="next_attempt_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <sql id="OutboxEventColumns">
+        id,
+        aggregate_type,
+        aggregate_id,
+        event_type,
+        event_version,
+        payload::text AS payload,
+        correlation_id,
+        status,
+        attempt_count,
+        created_at,
+        published_at,
+        next_attempt_at
+    </sql>
+
+    <insert id="insert">
+        INSERT INTO outbox_events (
+            id,
+            aggregate_type,
+            aggregate_id,
+            event_type,
+            event_version,
+            payload,
+            correlation_id,
+            status,
+            attempt_count,
+            created_at,
+            published_at,
+            next_attempt_at
+        )
+        VALUES (
+            #{id},
+            #{aggregateType},
+            #{aggregateId},
+            #{eventType},
+            #{eventVersion},
+            CAST(#{payload} AS jsonb),
+            #{correlationId},
+            #{status},
+            #{attemptCount},
+            #{createdAt},
+            #{publishedAt},
+            #{nextAttemptAt}
+        )
+    </insert>
+
+    <select id="lockPending" resultMap="OutboxEventRecordResultMap">
+        SELECT
+            <include refid="OutboxEventColumns" />
+        FROM outbox_events
+        WHERE status = 'PENDING'
+          AND next_attempt_at &lt;= NOW()
+        ORDER BY created_at
+        FOR UPDATE SKIP LOCKED
+        LIMIT #{batchSize}
+    </select>
+
+    <update id="markPublished">
+        UPDATE outbox_events
+        SET
+            status = 'PUBLISHED',
+            published_at = #{publishedAt}
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+
+    <update id="scheduleRetry">
+        UPDATE outbox_events
+        SET
+            attempt_count = attempt_count + 1,
+            next_attempt_at = #{nextAttemptAt}
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+
+    <select id="findById" resultMap="OutboxEventRecordResultMap">
+        SELECT
+            <include refid="OutboxEventColumns" />
+        FROM outbox_events
+        WHERE id = #{id}
+    </select>
+</mapper>

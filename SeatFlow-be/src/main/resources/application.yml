@@ -98,3 +98,10 @@ seatflow:
     consumer-groups:
       order-events: ${SEATFLOW_KAFKA_GROUP_ORDER_EVENTS:seatflow.order-events.consumer.v1}
       notification-events: ${SEATFLOW_KAFKA_GROUP_NOTIFICATION_EVENTS:seatflow.notification-events.consumer.v1}
+  outbox:
+    publisher:
+      enabled: ${SEATFLOW_OUTBOX_PUBLISHER_ENABLED:false}
+      batch-size: ${SEATFLOW_OUTBOX_PUBLISHER_BATCH_SIZE:50}
+      retry-delay: ${SEATFLOW_OUTBOX_PUBLISHER_RETRY_DELAY:30s}
+      publish-timeout: ${SEATFLOW_OUTBOX_PUBLISHER_TIMEOUT:10s}
+      fixed-delay-ms: ${SEATFLOW_OUTBOX_PUBLISHER_FIXED_DELAY_MS:5000}

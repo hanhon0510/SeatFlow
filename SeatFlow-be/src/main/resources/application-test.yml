@@ -20,3 +20,6 @@ spring:
 seatflow:
   kafka:
     enabled: false
+  outbox:
+    publisher:
+      enabled: false

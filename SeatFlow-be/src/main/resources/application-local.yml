@@ -18,6 +18,9 @@ spring:
 seatflow:
   kafka:
     enabled: ${SEATFLOW_KAFKA_ENABLED:true}
+  outbox:
+    publisher:
+      enabled: ${SEATFLOW_OUTBOX_PUBLISHER_ENABLED:true}
   local-admin:
     enabled: ${SEATFLOW_LOCAL_ADMIN_ENABLED:false}
     email: ${SEATFLOW_LOCAL_ADMIN_EMAIL:}
