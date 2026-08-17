@@ -98,6 +98,9 @@ seatflow:
     consumer-groups:
       order-events: ${SEATFLOW_KAFKA_GROUP_ORDER_EVENTS:seatflow.order-events.consumer.v1}
       notification-events: ${SEATFLOW_KAFKA_GROUP_NOTIFICATION_EVENTS:seatflow.notification-events.consumer.v1}
+    retry:
+      max-attempts: ${SEATFLOW_KAFKA_RETRY_MAX_ATTEMPTS:3}
+      backoff: ${SEATFLOW_KAFKA_RETRY_BACKOFF:1s}
   outbox:
     publisher:
       enabled: ${SEATFLOW_OUTBOX_PUBLISHER_ENABLED:false}

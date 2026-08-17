@@ -103,6 +103,8 @@ Key variables (see `.env.example`):
 - `SEATFLOW_KAFKA_TOPIC_DEAD_LETTER` — dead-letter topic name
 - `SEATFLOW_KAFKA_GROUP_ORDER_EVENTS` — order event consumer group
 - `SEATFLOW_KAFKA_GROUP_NOTIFICATION_EVENTS` — notification event consumer group
+- `SEATFLOW_KAFKA_RETRY_MAX_ATTEMPTS` — max consumer delivery attempts before dead-lettering
+- `SEATFLOW_KAFKA_RETRY_BACKOFF` — delay between consumer retry attempts
 - `SEATFLOW_OUTBOX_PUBLISHER_ENABLED` — enables scheduled outbox publishing, default `false` except local profile
 - `SEATFLOW_OUTBOX_PUBLISHER_BATCH_SIZE` — number of pending outbox records locked per publish loop
 - `SEATFLOW_OUTBOX_PUBLISHER_RETRY_DELAY` — delay before retrying a failed outbox publish
@@ -124,6 +126,11 @@ database transaction as the order, payment, ticket, and seat updates. The
 scheduled publisher locks pending rows with `FOR UPDATE SKIP LOCKED`, publishes
 to Kafka, marks successes as published, and keeps failed sends pending with a
 future retry time.
+
+Kafka consumers retry transient failures with the configured backoff. Permanent
+validation errors and exhausted transient failures are published to the
+dead-letter topic with safe metadata headers for original event id, topic,
+partition, correlation id, and error category; stack traces are kept in logs.
 
 Health endpoints:
 

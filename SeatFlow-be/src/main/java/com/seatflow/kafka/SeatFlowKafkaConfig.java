@@ -13,6 +13,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
+import org.springframework.kafka.listener.DeadLetterPublishingRecoverer.HeaderNames.HeadersToAdd;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.serializer.DeserializationException;
 import org.springframework.util.backoff.FixedBackOff;
@@ -50,7 +51,10 @@ public class SeatFlowKafkaConfig {
 					int partition = record.partition() < 0 ? 0 : record.partition();
 					return new TopicPartition(properties.topics().deadLetter(), partition);
 				});
-		DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(0L, 0L));
+		recoverer.setHeadersFunction(KafkaDeadLetterMetadata::headers);
+		recoverer.excludeHeader(HeadersToAdd.EXCEPTION, HeadersToAdd.EX_CAUSE, HeadersToAdd.EX_MSG,
+				HeadersToAdd.EX_STACKTRACE);
+		DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, retryBackOff(properties.retry()));
 		errorHandler.addNotRetryableExceptions(DeserializationException.class, IllegalArgumentException.class);
 		return errorHandler;
 	}
@@ -73,5 +77,9 @@ public class SeatFlowKafkaConfig {
 				.partitions(1)
 				.replicas(1)
 				.build();
+	}
+
+	static FixedBackOff retryBackOff(SeatFlowKafkaProperties.Retry retry) {
+		return new FixedBackOff(retry.backoff().toMillis(), Math.max(0, retry.maxAttempts() - 1L));
 	}
 }

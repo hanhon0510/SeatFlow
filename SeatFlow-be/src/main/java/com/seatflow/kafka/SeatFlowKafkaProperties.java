@@ -1,16 +1,24 @@
 package com.seatflow.kafka;
 
+import java.time.Duration;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "seatflow.kafka")
 public record SeatFlowKafkaProperties(
 		boolean enabled,
 		TopicNames topics,
-		ConsumerGroups consumerGroups) {
+		ConsumerGroups consumerGroups,
+		Retry retry) {
+
+	public SeatFlowKafkaProperties(boolean enabled, TopicNames topics, ConsumerGroups consumerGroups) {
+		this(enabled, topics, consumerGroups, null);
+	}
 
 	public SeatFlowKafkaProperties {
 		topics = topics == null ? TopicNames.defaults() : topics.withDefaults();
 		consumerGroups = consumerGroups == null ? ConsumerGroups.defaults() : consumerGroups.withDefaults();
+		retry = retry == null ? Retry.defaults() : retry.withDefaults();
 	}
 
 	public record TopicNames(
@@ -49,6 +57,22 @@ public record SeatFlowKafkaProperties(
 			return new ConsumerGroups(
 					hasText(orderEvents) ? orderEvents : defaults.orderEvents,
 					hasText(notificationEvents) ? notificationEvents : defaults.notificationEvents);
+		}
+	}
+
+	public record Retry(
+			int maxAttempts,
+			Duration backoff) {
+
+		public static Retry defaults() {
+			return new Retry(3, Duration.ofSeconds(1));
+		}
+
+		private Retry withDefaults() {
+			Retry defaults = defaults();
+			return new Retry(
+					maxAttempts > 0 ? maxAttempts : defaults.maxAttempts,
+					backoff != null && !backoff.isNegative() ? backoff : defaults.backoff);
 		}
 	}
 
