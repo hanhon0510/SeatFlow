@@ -15,12 +15,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.seatflow.hold.SeatHoldRecord;
 import com.seatflow.hold.SeatHoldStore;
+import com.seatflow.seatupdates.SeatStateNotifier;
 
 @ExtendWith(MockitoExtension.class)
 class SeatHoldReleaseListenerTests {
 
 	@Mock
 	private SeatHoldStore seatHoldStore;
+
+	@Mock
+	private SeatStateNotifier seatStateNotifier;
 
 	@InjectMocks
 	private SeatHoldReleaseListener listener;
@@ -32,6 +36,7 @@ class SeatHoldReleaseListenerTests {
 		listener.release(event);
 
 		verify(seatHoldStore).releaseHold(event.hold());
+		verify(seatStateNotifier).seatsSold(event.hold().eventId(), event.hold().eventSeatIds());
 	}
 
 	@Test
@@ -43,6 +48,19 @@ class SeatHoldReleaseListenerTests {
 
 		assertThatCode(() -> listener.release(event)).doesNotThrowAnyException();
 		verify(seatHoldStore).releaseHold(event.hold());
+		verify(seatStateNotifier).seatsSold(event.hold().eventId(), event.hold().eventSeatIds());
+	}
+
+	@Test
+	void websocketFailureDoesNotEscapeTheAfterCommitListener() {
+		SeatHoldReleaseRequested event = releaseEvent();
+		doThrow(new IllegalStateException("WebSocket unavailable"))
+				.when(seatStateNotifier)
+				.seatsSold(event.hold().eventId(), event.hold().eventSeatIds());
+
+		assertThatCode(() -> listener.release(event)).doesNotThrowAnyException();
+		verify(seatHoldStore).releaseHold(event.hold());
+		verify(seatStateNotifier).seatsSold(event.hold().eventId(), event.hold().eventSeatIds());
 	}
 
 	private static SeatHoldReleaseRequested releaseEvent() {

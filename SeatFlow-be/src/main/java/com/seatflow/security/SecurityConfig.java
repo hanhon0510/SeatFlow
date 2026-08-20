@@ -59,7 +59,9 @@ public class SecurityConfig {
 								"/api/v1/health/database",
 								"/api/v1/health/redis",
 								"/actuator/health",
-								"/actuator/info").permitAll()
+								"/actuator/info",
+								"/ws",
+								"/ws/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/events", "/api/v1/events/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/events/*/holds").hasAnyRole("USER", "ADMIN")
 						.requestMatchers(HttpMethod.GET, "/api/v1/holds/*").hasAnyRole("USER", "ADMIN")

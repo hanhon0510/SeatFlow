@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { App as AntdApp, Alert, Badge, Button, Card, Empty, Segmented, Spin, Statistic, Tag, Typography } from 'antd'
 import { isAxiosError } from 'axios'
@@ -9,6 +9,7 @@ import { ROUTES } from '../../../shared/constants/routes'
 import { useAuth } from '../../auth/context/useAuth'
 import { createSeatHold } from '../../holds/api/holdsApi'
 import { getEventSeatLayout, publicEventQueryKeys } from '../api/eventsApi'
+import { useEventSeatUpdates } from '../hooks/useEventSeatUpdates'
 import type { EventSeatLayout, EventSeatLayoutSeat, EventSeatLayoutStatus } from '../types'
 
 const maxSelectionCount = 8
@@ -30,6 +31,16 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
   const seatLayoutQuery = useQuery({
     queryKey: publicEventQueryKeys.seatLayout(eventId),
     queryFn: () => getEventSeatLayout(eventId),
+  })
+  const handleSelectionInvalidated = useCallback(() => {
+    setHoldError('Some selected seats are no longer available. Review the updated seat map.')
+  }, [])
+  useEventSeatUpdates({
+    eventId,
+    selectedSeatIds,
+    setSelectedSeatIds,
+    notification,
+    onSelectionInvalidated: handleSelectionInvalidated,
   })
   const createHoldMutation = useMutation({
     mutationFn: (eventSeatIds: string[]) => createSeatHold(eventId, eventSeatIds),

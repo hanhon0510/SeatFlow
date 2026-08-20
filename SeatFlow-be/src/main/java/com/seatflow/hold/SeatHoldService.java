@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
@@ -17,24 +19,30 @@ import com.seatflow.event.EventSeatHoldCandidate;
 import com.seatflow.event.EventSeatMapper;
 import com.seatflow.event.EventSeatStatus;
 import com.seatflow.event.EventStatus;
+import com.seatflow.seatupdates.SeatStateNotifier;
 
 @Service
 public class SeatHoldService {
+
+	private static final Logger log = LoggerFactory.getLogger(SeatHoldService.class);
 
 	private final EventSeatMapper eventSeatMapper;
 	private final SeatHoldStore seatHoldStore;
 	private final SeatHoldProperties properties;
 	private final Clock clock;
+	private final SeatStateNotifier seatStateNotifier;
 
 	public SeatHoldService(
 			EventSeatMapper eventSeatMapper,
 			SeatHoldStore seatHoldStore,
 			SeatHoldProperties properties,
-			Clock clock) {
+			Clock clock,
+			SeatStateNotifier seatStateNotifier) {
 		this.eventSeatMapper = eventSeatMapper;
 		this.seatHoldStore = seatHoldStore;
 		this.properties = properties;
 		this.clock = clock;
+		this.seatStateNotifier = seatStateNotifier;
 	}
 
 	public SeatHoldResponse createHold(UUID eventId, UUID userId, SeatHoldRequest request) {
@@ -62,6 +70,7 @@ public class SeatHoldService {
 		if (!createHold(hold, ttl)) {
 			throw new SeatHoldConflictException();
 		}
+		notifySeatsHeld(hold);
 
 		return new SeatHoldResponse(
 				holdId,
@@ -92,6 +101,25 @@ public class SeatHoldService {
 		}
 		catch (RuntimeException ex) {
 			throw new SeatHoldStorageException(ex);
+		}
+		notifySeatsReleased(hold);
+	}
+
+	private void notifySeatsHeld(SeatHoldRecord hold) {
+		try {
+			seatStateNotifier.seatsHeld(hold.eventId(), hold.eventSeatIds());
+		}
+		catch (RuntimeException ex) {
+			log.warn("Failed to broadcast held seats for event {}", hold.eventId(), ex);
+		}
+	}
+
+	private void notifySeatsReleased(SeatHoldRecord hold) {
+		try {
+			seatStateNotifier.seatsReleased(hold.eventId(), hold.eventSeatIds());
+		}
+		catch (RuntimeException ex) {
+			log.warn("Failed to broadcast released seats for event {}", hold.eventId(), ex);
 		}
 	}
 

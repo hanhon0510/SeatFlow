@@ -1,6 +1,7 @@
 package com.seatflow.hold;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
@@ -27,6 +28,8 @@ import com.seatflow.event.EventSeatMapper;
 import com.seatflow.event.EventSeatRecord;
 import com.seatflow.event.EventSeatStatus;
 import com.seatflow.event.EventStatus;
+import com.seatflow.seatupdates.SeatStateChangeType;
+import com.seatflow.seatupdates.SeatStateNotifier;
 
 class SeatHoldServiceTests {
 
@@ -83,6 +86,48 @@ class SeatHoldServiceTests {
 				.containsExactly(EVENT_SEAT_ID, EVENT_SEAT_ID_2);
 		assertThat(store.dataHolds.get(response.holdId()).seatIds())
 				.containsExactly(SEAT_ID, SEAT_ID_2);
+	}
+
+	@Test
+	void holdCreationBroadcastsHeldSeatsForEvent() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		RecordingSeatStateNotifier notifier = new RecordingSeatStateNotifier();
+		SeatHoldService service = service(List.of(
+				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)),
+				store,
+				clock,
+				notifier);
+
+		service.createHold(
+				EVENT_ID,
+				USER_ID,
+				new SeatHoldRequest(null, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2)));
+
+		assertThat(notifier.updates)
+				.containsExactly(new SeatStateUpdate(
+						SeatStateChangeType.SEATS_HELD,
+						EVENT_ID,
+						List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2)));
+	}
+
+	@Test
+	void holdCreationSucceedsWhenBroadcastFails() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		RecordingSeatStateNotifier notifier = new RecordingSeatStateNotifier();
+		notifier.failHeld = true;
+		SeatHoldService service = service(
+				candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				store,
+				clock,
+				notifier);
+
+		assertThatCode(() -> service.createHold(EVENT_ID, USER_ID, new SeatHoldRequest(EVENT_SEAT_ID)))
+				.doesNotThrowAnyException();
+
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isTrue();
 	}
 
 	@Test
@@ -407,6 +452,51 @@ class SeatHoldServiceTests {
 	}
 
 	@Test
+	void releaseBroadcastsReleasedSeatsForEvent() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		RecordingSeatStateNotifier notifier = new RecordingSeatStateNotifier();
+		SeatHoldService service = service(List.of(
+				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)),
+				store,
+				clock,
+				notifier);
+		SeatHoldResponse created = service.createHold(
+				EVENT_ID,
+				USER_ID,
+				new SeatHoldRequest(null, List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2)));
+		notifier.updates.clear();
+
+		service.releaseHold(created.holdId(), USER_ID);
+
+		assertThat(notifier.updates)
+				.containsExactly(new SeatStateUpdate(
+						SeatStateChangeType.SEATS_RELEASED,
+						EVENT_ID,
+						List.of(EVENT_SEAT_ID, EVENT_SEAT_ID_2)));
+	}
+
+	@Test
+	void releaseSucceedsWhenBroadcastFails() {
+		MutableClock clock = new MutableClock(NOW);
+		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
+		RecordingSeatStateNotifier notifier = new RecordingSeatStateNotifier();
+		SeatHoldService service = service(
+				candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				store,
+				clock,
+				notifier);
+		SeatHoldResponse created = service.createHold(EVENT_ID, USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
+		notifier.failReleased = true;
+
+		assertThatCode(() -> service.releaseHold(created.holdId(), USER_ID))
+				.doesNotThrowAnyException();
+
+		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isFalse();
+	}
+
+	@Test
 	void wrongUserCannotReleaseHold() {
 		MutableClock clock = new MutableClock(NOW);
 		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
@@ -441,6 +531,19 @@ class SeatHoldServiceTests {
 	}
 
 	private static SeatHoldService service(
+			EventSeatHoldCandidate candidate,
+			FakeSeatHoldStore store,
+			Clock clock,
+			SeatStateNotifier seatStateNotifier) {
+		return service(
+				candidate == null ? List.of() : List.of(candidate),
+				store,
+				clock,
+				8,
+				seatStateNotifier);
+	}
+
+	private static SeatHoldService service(
 			List<EventSeatHoldCandidate> candidates,
 			FakeSeatHoldStore store,
 			Clock clock) {
@@ -451,12 +554,30 @@ class SeatHoldServiceTests {
 			List<EventSeatHoldCandidate> candidates,
 			FakeSeatHoldStore store,
 			Clock clock,
+			SeatStateNotifier seatStateNotifier) {
+		return service(candidates, store, clock, 8, seatStateNotifier);
+	}
+
+	private static SeatHoldService service(
+			List<EventSeatHoldCandidate> candidates,
+			FakeSeatHoldStore store,
+			Clock clock,
 			int maxSeats) {
+		return service(candidates, store, clock, maxSeats, new RecordingSeatStateNotifier());
+	}
+
+	private static SeatHoldService service(
+			List<EventSeatHoldCandidate> candidates,
+			FakeSeatHoldStore store,
+			Clock clock,
+			int maxSeats,
+			SeatStateNotifier seatStateNotifier) {
 		return new SeatHoldService(
 				new StubEventSeatMapper(candidates),
 				store,
 				new SeatHoldProperties(TTL, maxSeats),
-				clock);
+				clock,
+				seatStateNotifier);
 	}
 
 	private static EventSeatHoldCandidate candidate(EventStatus eventStatus, EventSeatStatus permanentStatus) {
@@ -675,6 +796,45 @@ class SeatHoldServiceTests {
 		}
 
 		private record SeatEntry(UUID holdId, Instant expiresAt) {
+		}
+	}
+
+	private static final class RecordingSeatStateNotifier implements SeatStateNotifier {
+
+		private final List<SeatStateUpdate> updates = new java.util.ArrayList<>();
+		private boolean failHeld;
+		private boolean failReleased;
+		private boolean failSold;
+
+		@Override
+		public void seatsHeld(UUID eventId, List<UUID> eventSeatIds) {
+			if (failHeld) {
+				throw new IllegalStateException("WebSocket unavailable");
+			}
+			updates.add(new SeatStateUpdate(SeatStateChangeType.SEATS_HELD, eventId, eventSeatIds));
+		}
+
+		@Override
+		public void seatsReleased(UUID eventId, List<UUID> eventSeatIds) {
+			if (failReleased) {
+				throw new IllegalStateException("WebSocket unavailable");
+			}
+			updates.add(new SeatStateUpdate(SeatStateChangeType.SEATS_RELEASED, eventId, eventSeatIds));
+		}
+
+		@Override
+		public void seatsSold(UUID eventId, List<UUID> eventSeatIds) {
+			if (failSold) {
+				throw new IllegalStateException("WebSocket unavailable");
+			}
+			updates.add(new SeatStateUpdate(SeatStateChangeType.SEATS_SOLD, eventId, eventSeatIds));
+		}
+	}
+
+	private record SeatStateUpdate(SeatStateChangeType type, UUID eventId, List<UUID> eventSeatIds) {
+
+		private SeatStateUpdate {
+			eventSeatIds = List.copyOf(eventSeatIds);
 		}
 	}
 
