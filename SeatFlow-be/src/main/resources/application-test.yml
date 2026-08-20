@@ -18,6 +18,8 @@ spring:
     enabled: true
 
 seatflow:
+  rate-limit:
+    enabled: false
   kafka:
     enabled: false
   outbox:

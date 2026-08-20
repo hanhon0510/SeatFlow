@@ -26,6 +26,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.seatflow.order.OrderNotFoundException;
+import com.seatflow.ratelimit.RateLimitService;
 import com.seatflow.security.JwtConfig;
 import com.seatflow.security.JwtTokenService;
 import com.seatflow.security.SecurityConfig;
@@ -63,6 +64,9 @@ class PaymentControllerSecurityTests {
 
 	@MockitoBean
 	private PaymentIdempotencyService paymentIdempotencyService;
+
+	@MockitoBean
+	private RateLimitService rateLimitService;
 
 	@Test
 	void authenticatedUserCanCreatePaymentAndTokenIsRedacted(CapturedOutput output) throws Exception {

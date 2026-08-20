@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.seatflow.security.JwtConfig;
 import com.seatflow.security.JwtTokenService;
 import com.seatflow.security.SecurityConfig;
+import com.seatflow.ratelimit.RateLimitService;
 import com.seatflow.support.JwtTestSupport;
 import com.seatflow.user.UserRecord;
 import com.seatflow.user.UserRole;
@@ -64,6 +65,9 @@ class SeatHoldControllerSecurityTests {
 
 	@MockitoBean
 	private SeatHoldService seatHoldService;
+
+	@MockitoBean
+	private RateLimitService rateLimitService;
 
 	@Test
 	void authenticatedUserCanHoldSeat() throws Exception {

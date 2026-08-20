@@ -1,5 +1,8 @@
 package com.seatflow.common;
 
+import java.time.Duration;
+import java.time.Instant;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -36,6 +39,10 @@ import com.seatflow.order.OrderConflictException;
 import com.seatflow.order.OrderNotFoundException;
 import com.seatflow.payment.InvalidPaymentTokenException;
 import com.seatflow.payment.PaymentConflictException;
+import com.seatflow.ratelimit.RateLimitExceededException;
+import com.seatflow.ratelimit.RateLimitExceededResponse;
+import com.seatflow.ratelimit.RateLimitResult;
+import com.seatflow.ratelimit.RateLimitStorageException;
 import com.seatflow.reservation.ReservationConflictException;
 import com.seatflow.reservation.ReservationNotFoundException;
 import com.seatflow.seating.DuplicateSeatLabelException;
@@ -239,6 +246,30 @@ public class GlobalExceptionHandler {
 		return error("Idempotency storage failed", HttpStatus.INTERNAL_SERVER_ERROR);
 	}
 
+	@ExceptionHandler(RateLimitExceededException.class)
+	public ResponseEntity<ApiResponse<RateLimitExceededResponse>> handleRateLimitExceeded(
+			RateLimitExceededException ex) {
+		RateLimitResult result = ex.result();
+		long retryAfterSeconds = secondsCeiling(result.retryAfter());
+		long resetAfterSeconds = secondsCeiling(result.resetAfter());
+		RateLimitExceededResponse data = new RateLimitExceededResponse(
+				result.limit(),
+				result.remaining(),
+				retryAfterSeconds,
+				resetAfterSeconds);
+		return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+				.header("Retry-After", Long.toString(retryAfterSeconds))
+				.header("X-RateLimit-Limit", Integer.toString(result.limit()))
+				.header("X-RateLimit-Remaining", Integer.toString(result.remaining()))
+				.header("X-RateLimit-Reset-After", Long.toString(resetAfterSeconds))
+				.body(new ApiResponse<>(false, "Rate limit exceeded", data, Instant.now()));
+	}
+
+	@ExceptionHandler(RateLimitStorageException.class)
+	public ResponseEntity<ApiResponse<Void>> handleRateLimitStorage(RateLimitStorageException ex) {
+		return error("Rate limit storage unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+	}
+
 	@ExceptionHandler(VenueAlreadyArchivedException.class)
 	public ResponseEntity<ApiResponse<Void>> handleVenueAlreadyArchived(VenueAlreadyArchivedException ex) {
 		return error("Venue is already archived", HttpStatus.CONFLICT);
@@ -282,5 +313,10 @@ public class GlobalExceptionHandler {
 
 	private ResponseEntity<ApiResponse<Void>> error(String message, HttpStatus status) {
 		return ResponseEntity.status(status).body(ApiResponse.error(message));
+	}
+
+	private static long secondsCeiling(Duration duration) {
+		long millis = Math.max(duration.toMillis(), 0);
+		return Math.max(1, (millis + 999) / 1000);
 	}
 }

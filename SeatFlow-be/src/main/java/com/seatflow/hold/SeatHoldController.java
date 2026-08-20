@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.seatflow.auth.AuthenticationFailedException;
+import com.seatflow.ratelimit.RateLimitService;
 
 import jakarta.validation.Valid;
 
@@ -21,9 +22,11 @@ import jakarta.validation.Valid;
 public class SeatHoldController {
 
 	private final SeatHoldService seatHoldService;
+	private final RateLimitService rateLimitService;
 
-	public SeatHoldController(SeatHoldService seatHoldService) {
+	public SeatHoldController(SeatHoldService seatHoldService, RateLimitService rateLimitService) {
 		this.seatHoldService = seatHoldService;
+		this.rateLimitService = rateLimitService;
 	}
 
 	@PostMapping
@@ -32,7 +35,9 @@ public class SeatHoldController {
 			@PathVariable UUID eventId,
 			@Valid @RequestBody SeatHoldRequest request,
 			@AuthenticationPrincipal Jwt jwt) {
-		return seatHoldService.createHold(eventId, userId(jwt), request);
+		UUID userId = userId(jwt);
+		rateLimitService.checkHold(userId);
+		return seatHoldService.createHold(eventId, userId, request);
 	}
 
 	private static UUID userId(Jwt jwt) {

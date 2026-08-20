@@ -15,14 +15,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
 
 import javax.crypto.SecretKey;
 
-import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -39,6 +40,9 @@ import com.seatflow.security.JwtConfig;
 import com.seatflow.security.JwtProperties;
 import com.seatflow.security.JwtTokenService;
 import com.seatflow.security.SecurityConfig;
+import com.seatflow.ratelimit.RateLimitExceededException;
+import com.seatflow.ratelimit.RateLimitResult;
+import com.seatflow.ratelimit.RateLimitService;
 import com.seatflow.support.JwtTestSupport;
 import com.seatflow.user.CurrentUserService;
 import com.seatflow.user.UserController;
@@ -93,6 +97,9 @@ class AuthWebSecurityTests {
 	private RegistrationService registrationService;
 
 	@MockitoBean
+	private RateLimitService rateLimitService;
+
+	@MockitoBean
 	private UserMapper userMapper;
 
 	@MockitoBean
@@ -128,6 +135,31 @@ class AuthWebSecurityTests {
 				.andExpect(jsonPath("$.email").value(user.email()))
 				.andExpect(jsonPath("$.role").value("USER"))
 				.andExpect(jsonPath("$.status").value("ACTIVE"));
+	}
+
+	@Test
+	void rateLimitedLoginReturnsRetryInformation() throws Exception {
+		org.mockito.Mockito.doThrow(new RateLimitExceededException(new RateLimitResult(
+				false,
+				2,
+				0,
+				Duration.ofSeconds(30),
+				Duration.ofSeconds(30))))
+				.when(rateLimitService)
+				.checkLogin(any(jakarta.servlet.http.HttpServletRequest.class), eq("User@Example.COM"));
+
+		mockMvc.perform(post("/api/v1/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(loginJson("User@Example.COM", PASSWORD)))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(header().string("Retry-After", "30"))
+				.andExpect(header().string("X-RateLimit-Limit", "2"))
+				.andExpect(header().string("X-RateLimit-Remaining", "0"))
+				.andExpect(jsonPath("$.success").value(false))
+				.andExpect(jsonPath("$.message").value("Rate limit exceeded"))
+				.andExpect(jsonPath("$.data.limit").value(2))
+				.andExpect(jsonPath("$.data.remaining").value(0))
+				.andExpect(jsonPath("$.data.retryAfterSeconds").value(30));
 	}
 
 	@Test

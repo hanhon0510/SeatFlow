@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.seatflow.auth.AuthenticationFailedException;
+import com.seatflow.ratelimit.RateLimitService;
 
 import jakarta.validation.Valid;
 
@@ -21,9 +22,11 @@ import jakarta.validation.Valid;
 public class PaymentController {
 
 	private final PaymentIdempotencyService paymentIdempotencyService;
+	private final RateLimitService rateLimitService;
 
-	public PaymentController(PaymentIdempotencyService paymentIdempotencyService) {
+	public PaymentController(PaymentIdempotencyService paymentIdempotencyService, RateLimitService rateLimitService) {
 		this.paymentIdempotencyService = paymentIdempotencyService;
+		this.rateLimitService = rateLimitService;
 	}
 
 	@PostMapping
@@ -32,9 +35,11 @@ public class PaymentController {
 			@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
 			@Valid @RequestBody PaymentCreateRequest request,
 			@AuthenticationPrincipal Jwt jwt) {
+		UUID userId = userId(jwt);
+		rateLimitService.checkPayment(userId, orderId);
 		IdempotentPaymentResult result = paymentIdempotencyService.createPayment(
 				orderId,
-				userId(jwt),
+				userId,
 				idempotencyKey,
 				request);
 		return ResponseEntity.status(result.responseStatus()).body(result.responseBody());

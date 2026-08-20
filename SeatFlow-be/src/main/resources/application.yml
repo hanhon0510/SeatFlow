@@ -87,6 +87,21 @@ seatflow:
   holds:
     ttl: ${SEATFLOW_HOLD_TTL:5m}
     max-seats: ${SEATFLOW_HOLD_MAX_SEATS:8}
+  rate-limit:
+    enabled: ${SEATFLOW_RATE_LIMIT_ENABLED:true}
+    trust-proxy-headers: ${SEATFLOW_RATE_LIMIT_TRUST_PROXY_HEADERS:false}
+    login:
+      limit: ${SEATFLOW_RATE_LIMIT_LOGIN_LIMIT:5}
+      window: ${SEATFLOW_RATE_LIMIT_LOGIN_WINDOW:1m}
+    register:
+      limit: ${SEATFLOW_RATE_LIMIT_REGISTER_LIMIT:3}
+      window: ${SEATFLOW_RATE_LIMIT_REGISTER_WINDOW:10m}
+    holds:
+      limit: ${SEATFLOW_RATE_LIMIT_HOLDS_LIMIT:20}
+      window: ${SEATFLOW_RATE_LIMIT_HOLDS_WINDOW:1m}
+    payments:
+      limit: ${SEATFLOW_RATE_LIMIT_PAYMENTS_LIMIT:10}
+      window: ${SEATFLOW_RATE_LIMIT_PAYMENTS_WINDOW:1m}
   idempotency:
     ttl: ${SEATFLOW_IDEMPOTENCY_TTL:24h}
   kafka:

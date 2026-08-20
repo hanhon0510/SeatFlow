@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 import com.seatflow.common.GlobalExceptionHandler;
+import com.seatflow.ratelimit.RateLimitService;
 
 class AuthControllerValidationTests {
 
@@ -65,7 +66,8 @@ class AuthControllerValidationTests {
 						registrationService,
 						mock(LoginService.class),
 						mock(RefreshTokenService.class),
-						mock(RefreshTokenCookieService.class)))
+						mock(RefreshTokenCookieService.class),
+						mock(RateLimitService.class)))
 				.setControllerAdvice(new GlobalExceptionHandler())
 				.setValidator(validator)
 				.build();
