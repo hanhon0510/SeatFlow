@@ -1,8 +1,29 @@
 import { isAxiosError } from 'axios'
 
 type BackendErrorPayload = {
+  title?: string
+  code?: string
+  detail?: string
+  correlationId?: string
   message?: string
   errors?: unknown
+}
+
+const CODE_MESSAGES: Record<string, string> = {
+  VALIDATION_FAILED: 'Please check the highlighted fields.',
+  UNAUTHORIZED: 'Please sign in to continue.',
+  AUTHENTICATION_FAILED: 'Invalid email or password.',
+  INVALID_REFRESH_TOKEN: 'Your session expired. Please sign in again.',
+  FORBIDDEN: 'You do not have permission to perform this action.',
+  USER_ALREADY_EXISTS: 'An account with that email already exists.',
+  SEAT_ALREADY_HELD: 'One or more selected seats are no longer available.',
+  SEAT_HOLD_NOT_FOUND: 'This seat hold is no longer available.',
+  RESERVATION_CONFLICT: 'The reservation cannot be completed.',
+  ORDER_CONFLICT: 'The order cannot be completed.',
+  PAYMENT_CONFLICT: 'The payment cannot be completed.',
+  INVALID_PAYMENT_TOKEN: 'Choose a valid payment option.',
+  RATE_LIMIT_EXCEEDED: 'Too many attempts. Please wait and try again.',
+  TICKET_NOT_FOUND: 'Ticket not found.',
 }
 
 export function apiErrorMessage(error: unknown, fallback: string) {
@@ -12,12 +33,30 @@ export function apiErrorMessage(error: unknown, fallback: string) {
 
   const payload = error.response?.data
   const details = validationDetails(payload?.errors)
+  const codedMessage = payload?.code ? CODE_MESSAGES[payload.code] : undefined
+  const baseMessage = codedMessage ?? payload?.detail ?? payload?.title ?? payload?.message
 
-  if (payload?.message && details.length > 0) {
-    return `${payload.message}: ${details.join(', ')}`
+  if (baseMessage && details.length > 0) {
+    return `${baseMessage}: ${details.join(', ')}`
   }
 
-  return payload?.message ?? details[0] ?? fallback
+  return baseMessage ?? details[0] ?? fallback
+}
+
+export function apiErrorCode(error: unknown) {
+  if (!isAxiosError<BackendErrorPayload>(error)) {
+    return null
+  }
+
+  return error.response?.data?.code ?? null
+}
+
+export function apiErrorCorrelationId(error: unknown) {
+  if (!isAxiosError<BackendErrorPayload>(error)) {
+    return null
+  }
+
+  return error.response?.data?.correlationId ?? null
 }
 
 function validationDetails(errors: unknown) {
@@ -33,7 +72,7 @@ function validationDetails(errors: unknown) {
         }
 
         if (isMessageShape(error)) {
-          return error.message
+          return fieldMessage(error)
         }
 
         return null
@@ -67,4 +106,12 @@ function isMessageShape(value: unknown): value is { message: string } {
     'message' in value &&
     typeof value.message === 'string'
   )
+}
+
+function fieldMessage(error: { message: string; field?: unknown }) {
+  if (typeof error.field === 'string' && error.field.length > 0) {
+    return `${error.field}: ${error.message}`
+  }
+
+  return error.message
 }

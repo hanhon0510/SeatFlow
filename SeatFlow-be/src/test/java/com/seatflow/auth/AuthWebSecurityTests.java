@@ -155,11 +155,11 @@ class AuthWebSecurityTests {
 				.andExpect(header().string("Retry-After", "30"))
 				.andExpect(header().string("X-RateLimit-Limit", "2"))
 				.andExpect(header().string("X-RateLimit-Remaining", "0"))
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Rate limit exceeded"))
-				.andExpect(jsonPath("$.data.limit").value(2))
-				.andExpect(jsonPath("$.data.remaining").value(0))
-				.andExpect(jsonPath("$.data.retryAfterSeconds").value(30));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Rate limit exceeded"))
+				.andExpect(jsonPath("$.status").value(429))
+				.andExpect(jsonPath("$.code").value("RATE_LIMIT_EXCEEDED"))
+				.andExpect(jsonPath("$.detail").value("Too many requests were made in this rate limit window."));
 	}
 
 	@Test
@@ -205,7 +205,7 @@ class AuthWebSecurityTests {
 		mockMvc.perform(post("/api/v1/auth/refresh")
 						.cookie(new Cookie(REFRESH_COOKIE_NAME, rawToken)))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Invalid refresh token"));
+				.andExpect(jsonPath("$.title").value("Invalid refresh token"));
 
 		verify(refreshTokenMapper).revokeAllUserTokens(eq(user.id()), any(Instant.class));
 	}
@@ -222,7 +222,7 @@ class AuthWebSecurityTests {
 		mockMvc.perform(post("/api/v1/auth/refresh")
 						.cookie(new Cookie(REFRESH_COOKIE_NAME, rawToken)))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Invalid refresh token"));
+				.andExpect(jsonPath("$.title").value("Invalid refresh token"));
 	}
 
 	@Test
@@ -250,7 +250,7 @@ class AuthWebSecurityTests {
 		mockMvc.perform(get("/api/v1/users/me")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test
@@ -260,7 +260,7 @@ class AuthWebSecurityTests {
 		mockMvc.perform(get("/api/v1/users/me")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	private UserRecord user() {

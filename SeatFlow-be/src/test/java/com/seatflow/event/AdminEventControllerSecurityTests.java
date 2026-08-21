@@ -168,8 +168,8 @@ class AdminEventControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(eventJson(venueId, "Opening Night", EVENT_START, EVENT_START, SALES_END)))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid event timing"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid event timing"));
 	}
 
 	@Test
@@ -182,8 +182,8 @@ class AdminEventControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(eventJson(venueId, "Opening Night", EVENT_START, SALES_START, SALES_END)))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Archived venue cannot host new events"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Archived venue cannot host new events"));
 	}
 
 	@Test
@@ -204,8 +204,8 @@ class AdminEventControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(eventJson(newVenueId, "Published Event", EVENT_START, SALES_START, SALES_END)))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Event state conflict"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Event state conflict"));
 	}
 
 	@Test
@@ -270,8 +270,8 @@ class AdminEventControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(eventSectionsJson(invalidSectionId, "125000.00", true)))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid event section"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid event section"));
 	}
 
 	@Test
@@ -284,8 +284,8 @@ class AdminEventControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(eventSectionsJson(sectionId, "-1.00", true)))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid request"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid request"));
 	}
 
 	@Test
@@ -304,8 +304,8 @@ class AdminEventControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(eventSectionsJson(sectionId, "125000.00", true)))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Event state conflict"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Event state conflict"));
 	}
 
 	@Test
@@ -368,8 +368,8 @@ class AdminEventControllerSecurityTests {
 		mockMvc.perform(post("/api/v1/admin/events/{eventId}/publish", eventId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Event section pricing is incomplete"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Event section pricing is incomplete"));
 	}
 
 	@Test
@@ -386,8 +386,8 @@ class AdminEventControllerSecurityTests {
 		mockMvc.perform(post("/api/v1/admin/events/{eventId}/publish", eventId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Event has no seats"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Event has no seats"));
 	}
 
 	@Test
@@ -400,7 +400,7 @@ class AdminEventControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(eventJson(venueId, "Opening Night", EVENT_START, SALES_START, SALES_END)))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 
 		mockMvc.perform(get("/api/v1/admin/events")
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
@@ -433,7 +433,7 @@ class AdminEventControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(eventJson(UUID.randomUUID(), "Opening Night", EVENT_START, SALES_START, SALES_END)))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	private String bearerToken(UserRole role) {

@@ -99,8 +99,8 @@ class SeatHoldControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody(EVENT_SEAT_ID)))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test
@@ -110,8 +110,8 @@ class SeatHoldControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{}"))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid request"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid request"));
 	}
 
 	@Test
@@ -124,8 +124,8 @@ class SeatHoldControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody(EVENT_SEAT_ID)))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Seat hold conflict"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Seat hold conflict"));
 	}
 
 	@Test
@@ -159,11 +159,11 @@ class SeatHoldControllerSecurityTests {
 	void unauthenticatedUserCannotRetrieveOrReleaseHold() throws Exception {
 		mockMvc.perform(get("/api/v1/holds/{holdId}", HOLD_ID))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 
 		mockMvc.perform(delete("/api/v1/holds/{holdId}", HOLD_ID))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test
@@ -174,8 +174,8 @@ class SeatHoldControllerSecurityTests {
 		mockMvc.perform(get("/api/v1/holds/{holdId}", HOLD_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 	}
 
 	@Test
@@ -186,8 +186,8 @@ class SeatHoldControllerSecurityTests {
 		mockMvc.perform(delete("/api/v1/holds/{holdId}", HOLD_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 	}
 
 	@Test
@@ -198,8 +198,8 @@ class SeatHoldControllerSecurityTests {
 		mockMvc.perform(get("/api/v1/holds/{holdId}", HOLD_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Seat hold not found"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Seat hold not found"));
 	}
 
 	private String bearerToken(UserRole role) {

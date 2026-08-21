@@ -86,11 +86,11 @@ class TicketControllerSecurityTests {
 	void unauthenticatedUserReceivesUnauthorized() throws Exception {
 		mockMvc.perform(get("/api/v1/users/me/tickets"))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 
 		mockMvc.perform(get("/api/v1/tickets/{ticketId}", TICKET_ID))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test
@@ -100,7 +100,7 @@ class TicketControllerSecurityTests {
 		mockMvc.perform(get("/api/v1/tickets/{ticketId}", TICKET_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken()))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Ticket not found"));
+				.andExpect(jsonPath("$.title").value("Ticket not found"));
 	}
 
 	private String bearerToken() {

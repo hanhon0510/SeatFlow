@@ -209,7 +209,7 @@ class TicketIntegrationTests extends PostgresTestContainerSupport {
 		mockMvc.perform(get("/api/v1/tickets/{ticketId}", ticketId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser)))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Ticket not found"));
+				.andExpect(jsonPath("$.title").value("Ticket not found"));
 
 		mockMvc.perform(get("/api/v1/users/me/tickets")
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser)))

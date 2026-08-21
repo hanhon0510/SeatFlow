@@ -224,7 +224,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(paymentRequest("tok_success")))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Order not found"));
+				.andExpect(jsonPath("$.title").value("Order not found"));
 
 		assertThat(countRows("payments")).isZero();
 		assertThat(countRows("outbox_events")).isZero();
@@ -241,7 +241,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		createPayment(fixture, "tok_success").andExpect(status().isCreated());
 		createPayment(fixture, "tok_success")
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Payment conflict"));
+				.andExpect(jsonPath("$.title").value("Payment conflict"));
 
 		assertThat(countRows("payments")).isEqualTo(1);
 		assertThat(countRows("tickets")).isEqualTo(1);
@@ -432,7 +432,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		try {
 			createPayment(fixture, "tok_success")
 					.andExpect(status().isConflict())
-					.andExpect(jsonPath("$.message").value("Payment conflict"));
+					.andExpect(jsonPath("$.title").value("Payment conflict"));
 		}
 		finally {
 			jdbcTemplate.execute("DROP TRIGGER IF EXISTS seatflow_test_skip_event_seat_sale_trigger ON event_seats");
@@ -477,7 +477,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		try {
 			createPayment(fixture, "tok_success")
 					.andExpect(status().isInternalServerError())
-					.andExpect(jsonPath("$.message").value("Unexpected error"));
+					.andExpect(jsonPath("$.title").value("Unexpected error"));
 		}
 		finally {
 			jdbcTemplate.execute("DROP TRIGGER IF EXISTS seatflow_test_reject_outbox_insert_trigger ON outbox_events");
@@ -541,7 +541,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				.andExpect(jsonPath("$.status").value("DECLINED"));
 		createPayment(fixture, "tok_error", idempotencyKey)
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Idempotency key conflict"));
+				.andExpect(jsonPath("$.title").value("Idempotency key conflict"));
 
 		assertThat(countRows("payments")).isEqualTo(1);
 		assertThat(countRows("idempotency_records")).isEqualTo(1);
@@ -577,7 +577,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(paymentRequest("tok_success")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("Idempotency-Key header is required"));
+				.andExpect(jsonPath("$.title").value("Idempotency-Key header is required"));
 
 		assertThat(countRows("payments")).isZero();
 		assertThat(countRows("idempotency_records")).isZero();

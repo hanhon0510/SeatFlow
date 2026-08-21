@@ -80,8 +80,8 @@ class AuthRegistrationIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(registerJson(email, "AnotherStrong123!")))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("User already exists"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("User already exists"));
 	}
 
 	@Test
@@ -107,7 +107,7 @@ class AuthRegistrationIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(registerJson(uniqueEmail("weak"), "weak")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty());
 	}
 
 	@Test
@@ -116,7 +116,7 @@ class AuthRegistrationIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(registerJson("not-an-email", "StrongPassword123!")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty());
 	}
 
 	@Test
@@ -128,7 +128,7 @@ class AuthRegistrationIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(registerJson(email, "StrongPassword123!")))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("User already exists"));
+				.andExpect(jsonPath("$.title").value("User already exists"));
 	}
 
 	private static String uniqueEmail(String label) {

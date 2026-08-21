@@ -67,8 +67,8 @@ class UserControllerSecurityTests {
 	void missingJwtIsRejected() throws Exception {
 		mockMvc.perform(get("/api/v1/users/me"))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test
@@ -78,7 +78,7 @@ class UserControllerSecurityTests {
 		mockMvc.perform(get("/api/v1/users/me")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer expired-token"))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test
@@ -88,7 +88,7 @@ class UserControllerSecurityTests {
 		mockMvc.perform(get("/api/v1/users/me")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer invalid-token"))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 }

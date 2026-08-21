@@ -112,14 +112,14 @@ class OrderControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{}"))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("Invalid request"));
+				.andExpect(jsonPath("$.title").value("Invalid request"));
 
 		when(orderService.listUserOrders(USER_ID, -1, 20))
 				.thenThrow(new InvalidOrderPaginationException());
 		mockMvc.perform(get("/api/v1/users/me/orders?page=-1")
 						.header(HttpHeaders.AUTHORIZATION, bearerToken()))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("Invalid pagination"));
+				.andExpect(jsonPath("$.title").value("Invalid pagination"));
 	}
 
 	@Test
@@ -133,14 +133,14 @@ class OrderControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody()))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Reservation not found"));
+				.andExpect(jsonPath("$.title").value("Reservation not found"));
 
 		mockMvc.perform(post("/api/v1/orders")
 						.header(HttpHeaders.AUTHORIZATION, bearerToken())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody()))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Order conflict"));
+				.andExpect(jsonPath("$.title").value("Order conflict"));
 	}
 
 	@Test
@@ -150,7 +150,7 @@ class OrderControllerSecurityTests {
 		mockMvc.perform(get("/api/v1/orders/{orderId}", ORDER_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken()))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Order not found"));
+				.andExpect(jsonPath("$.title").value("Order not found"));
 	}
 
 	private String bearerToken() {

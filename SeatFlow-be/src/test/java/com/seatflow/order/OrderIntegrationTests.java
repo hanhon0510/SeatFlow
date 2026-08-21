@@ -171,13 +171,13 @@ class OrderIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(orderRequest(reservation.id())))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Reservation not found"));
+				.andExpect(jsonPath("$.title").value("Reservation not found"));
 
 		UUID orderId = UUID.fromString(responseBody(createOrder(reservation.id(), owner)).get("id").asText());
 		mockMvc.perform(get("/api/v1/orders/{orderId}", orderId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser)))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Order not found"));
+				.andExpect(jsonPath("$.title").value("Order not found"));
 		mockMvc.perform(get("/api/v1/users/me/orders")
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser)))
 				.andExpect(status().isOk())
@@ -201,7 +201,7 @@ class OrderIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(orderRequest(expired.id())))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Order conflict"));
+				.andExpect(jsonPath("$.title").value("Order conflict"));
 
 		ReservationRecord confirmed = insertReservation(
 				inventory,

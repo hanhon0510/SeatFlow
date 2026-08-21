@@ -90,11 +90,11 @@ class ReservationControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody()))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 
 		mockMvc.perform(get("/api/v1/reservations/{reservationId}", RESERVATION_ID))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test
@@ -104,7 +104,7 @@ class ReservationControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{}"))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("Invalid request"));
+				.andExpect(jsonPath("$.title").value("Invalid request"));
 	}
 
 	@Test
@@ -117,7 +117,7 @@ class ReservationControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody()))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 	}
 
 	@Test
@@ -128,7 +128,7 @@ class ReservationControllerSecurityTests {
 		mockMvc.perform(get("/api/v1/reservations/{reservationId}", RESERVATION_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken()))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Reservation not found"));
+				.andExpect(jsonPath("$.title").value("Reservation not found"));
 	}
 
 	private String bearerToken() {

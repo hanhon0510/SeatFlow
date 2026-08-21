@@ -168,7 +168,7 @@ class ReservationIntegrationTests extends RedisTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(reservationRequest(hold.holdId())))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 
 		assertThat(countRows("reservations")).isZero();
 		assertThat(countRows("reservation_items")).isZero();
@@ -185,7 +185,7 @@ class ReservationIntegrationTests extends RedisTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(reservationRequest(hold.holdId())))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Seat hold not found"));
+				.andExpect(jsonPath("$.title").value("Seat hold not found"));
 
 		assertThat(countRows("reservations")).isZero();
 		assertThat(countRows("reservation_items")).isZero();

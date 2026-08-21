@@ -1,5 +1,7 @@
 package com.seatflow.auth;
 
+import static org.hamcrest.Matchers.hasItem;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,8 +28,12 @@ class AuthControllerValidationTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(registerJson("user@example.com", "weak")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid request"));
+				.andExpect(header().exists("X-Correlation-ID"))
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid request"))
+				.andExpect(jsonPath("$.status").value(400))
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[*].field").value(hasItem("password")));
 	}
 
 	@Test
@@ -38,8 +44,12 @@ class AuthControllerValidationTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(registerJson("not-an-email", "StrongPassword123!")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid request"));
+				.andExpect(header().exists("X-Correlation-ID"))
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid request"))
+				.andExpect(jsonPath("$.status").value(400))
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+				.andExpect(jsonPath("$.errors[*].field").value(hasItem("email")));
 	}
 
 	@Test
@@ -53,8 +63,10 @@ class AuthControllerValidationTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(registerJson("user@example.com", "StrongPassword123!")))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("User already exists"));
+				.andExpect(header().exists("X-Correlation-ID"))
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("User already exists"))
+				.andExpect(jsonPath("$.code").value("USER_ALREADY_EXISTS"));
 	}
 
 	private static MockMvc mockMvc(RegistrationService registrationService) {

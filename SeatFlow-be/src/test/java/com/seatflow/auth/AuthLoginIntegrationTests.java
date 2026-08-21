@@ -88,8 +88,8 @@ class AuthLoginIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(loginJson(user.email(), "WrongPassword123!")))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid email or password"))
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid email or password"))
 				.andExpect(content().string(not(containsString("WrongPassword123!"))));
 	}
 
@@ -99,8 +99,8 @@ class AuthLoginIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(loginJson(uniqueEmail("unknown"), PASSWORD)))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid email or password"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid email or password"));
 	}
 
 	@Test
@@ -112,7 +112,7 @@ class AuthLoginIntegrationTests extends PostgresTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(loginJson(user.email(), PASSWORD)))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Invalid email or password"));
+				.andExpect(jsonPath("$.title").value("Invalid email or password"));
 	}
 
 	private UserRecord insertUser(String email, String rawPassword) {

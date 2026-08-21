@@ -148,8 +148,8 @@ class AdminVenueControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(venueJson("Main Hall", "Mars/Phobos")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid timezone"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid timezone"));
 	}
 
 	@Test
@@ -158,7 +158,7 @@ class AdminVenueControllerSecurityTests {
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN))
 						.param("size", String.valueOf(VenueService.MAX_PAGE_SIZE + 1)))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("Invalid pagination"));
+				.andExpect(jsonPath("$.title").value("Invalid pagination"));
 	}
 
 	@Test
@@ -170,7 +170,7 @@ class AdminVenueControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(venueJson("Main Hall", "UTC")))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 
 		mockMvc.perform(put("/api/v1/admin/venues/{venueId}", venueId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER))
@@ -189,7 +189,7 @@ class AdminVenueControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(venueJson("Main Hall", "UTC")))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test

@@ -117,8 +117,8 @@ class PublicEventControllerSecurityTests {
 	void invalidCatalogQueryReturnsBadRequest() throws Exception {
 		mockMvc.perform(get("/api/v1/events").param("sort", "unsupported"))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Invalid event catalog query"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Invalid event catalog query"));
 	}
 
 	@Test
@@ -185,8 +185,8 @@ class PublicEventControllerSecurityTests {
 
 		mockMvc.perform(get("/api/v1/events/{eventId}/seats", eventId))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Event not found"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Event not found"));
 	}
 
 	private static PublicEventCatalogRecord publicEvent(UUID eventId, UUID venueId) {

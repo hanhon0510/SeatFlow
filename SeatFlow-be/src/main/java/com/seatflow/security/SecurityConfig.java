@@ -28,7 +28,8 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.seatflow.common.ApiResponse;
+import com.seatflow.common.ApiErrorCode;
+import com.seatflow.common.ApiErrorResponseFactory;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -60,6 +61,7 @@ public class SecurityConfig {
 								"/api/v1/health/redis",
 								"/actuator/health",
 								"/actuator/info",
+								"/error",
 								"/ws",
 								"/ws/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/v1/events", "/api/v1/events/**").permitAll()
@@ -111,8 +113,13 @@ public class SecurityConfig {
 					HttpServletResponse response,
 					AuthenticationException authException) throws IOException, ServletException {
 				response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-				response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				objectMapper.writeValue(response.getOutputStream(), ApiResponse.error("Unauthorized"));
+				response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+				ApiErrorResponseFactory.write(
+						request,
+						response,
+						objectMapper,
+						ApiErrorCode.UNAUTHORIZED,
+						authException);
 			}
 		};
 	}
@@ -125,8 +132,13 @@ public class SecurityConfig {
 					HttpServletResponse response,
 					AccessDeniedException accessDeniedException) throws IOException, ServletException {
 				response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-				response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-				objectMapper.writeValue(response.getOutputStream(), ApiResponse.error("Forbidden"));
+				response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+				ApiErrorResponseFactory.write(
+						request,
+						response,
+						objectMapper,
+						ApiErrorCode.FORBIDDEN,
+						accessDeniedException);
 			}
 		};
 	}

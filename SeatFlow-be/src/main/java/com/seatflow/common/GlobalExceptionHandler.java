@@ -1,13 +1,22 @@
 package com.seatflow.common;
 
+import java.sql.SQLException;
 import java.time.Duration;
-import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import org.springframework.http.HttpStatus;
+import org.apache.ibatis.exceptions.PersistenceException;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -19,9 +28,9 @@ import com.seatflow.event.EventNotFoundException;
 import com.seatflow.event.EventPublicationException;
 import com.seatflow.event.EventStateConflictException;
 import com.seatflow.event.InvalidEventCatalogQueryException;
+import com.seatflow.event.InvalidEventPaginationException;
 import com.seatflow.event.InvalidEventSectionException;
 import com.seatflow.event.InvalidEventSectionPriceException;
-import com.seatflow.event.InvalidEventPaginationException;
 import com.seatflow.event.InvalidEventTimingException;
 import com.seatflow.event.MissingEventSectionPricingException;
 import com.seatflow.event.NoEventSeatsException;
@@ -40,7 +49,6 @@ import com.seatflow.order.OrderNotFoundException;
 import com.seatflow.payment.InvalidPaymentTokenException;
 import com.seatflow.payment.PaymentConflictException;
 import com.seatflow.ratelimit.RateLimitExceededException;
-import com.seatflow.ratelimit.RateLimitExceededResponse;
 import com.seatflow.ratelimit.RateLimitResult;
 import com.seatflow.ratelimit.RateLimitStorageException;
 import com.seatflow.reservation.ReservationConflictException;
@@ -57,262 +65,459 @@ import com.seatflow.venue.InvalidVenueTimezoneException;
 import com.seatflow.venue.VenueAlreadyArchivedException;
 import com.seatflow.venue.VenueNotFoundException;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+	private static final Pattern POSTGRES_CONSTRAINT_PATTERN =
+			Pattern.compile("constraint \"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
+
 	@ExceptionHandler(MethodArgumentNotValidException.class)
-	public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
-		return error("Invalid request", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleValidation(
+			MethodArgumentNotValidException ex,
+			HttpServletRequest request) {
+		return ApiErrorResponseFactory.response(
+				request,
+				ApiErrorCode.VALIDATION_FAILED,
+				ex,
+				validationErrors(ex));
+	}
+
+	@ExceptionHandler(ConstraintViolationException.class)
+	public ResponseEntity<ApiErrorResponse> handleConstraintViolation(
+			ConstraintViolationException ex,
+			HttpServletRequest request) {
+		List<ApiFieldError> errors = ex.getConstraintViolations().stream()
+				.map(violation -> new ApiFieldError(
+						violation.getPropertyPath().toString(),
+						safeMessage(violation.getMessage()),
+						violation.getConstraintDescriptor().getAnnotation().annotationType().getSimpleName()))
+				.sorted(Comparator.comparing(ApiFieldError::field).thenComparing(ApiFieldError::message))
+				.toList();
+		return ApiErrorResponseFactory.response(request, ApiErrorCode.VALIDATION_FAILED, ex, errors);
+	}
+
+	@ExceptionHandler({
+			HttpMessageNotReadableException.class,
+			MissingServletRequestParameterException.class
+	})
+	public ResponseEntity<ApiErrorResponse> handleMalformedRequest(Exception ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.VALIDATION_FAILED, ex);
 	}
 
 	@ExceptionHandler(DatabaseHealthUnavailableException.class)
-	public ResponseEntity<ApiResponse<Void>> handleDatabaseHealthUnavailable(DatabaseHealthUnavailableException ex) {
-		return error("Database health check failed", HttpStatus.SERVICE_UNAVAILABLE);
+	public ResponseEntity<ApiErrorResponse> handleDatabaseHealthUnavailable(
+			DatabaseHealthUnavailableException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.DATABASE_HEALTH_UNAVAILABLE, ex);
 	}
 
 	@ExceptionHandler(RedisHealthUnavailableException.class)
-	public ResponseEntity<ApiResponse<Void>> handleRedisHealthUnavailable(RedisHealthUnavailableException ex) {
-		return error("Redis health check failed", HttpStatus.SERVICE_UNAVAILABLE);
+	public ResponseEntity<ApiErrorResponse> handleRedisHealthUnavailable(
+			RedisHealthUnavailableException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.REDIS_HEALTH_UNAVAILABLE, ex);
 	}
 
 	@ExceptionHandler(UserAlreadyExistsException.class)
-	public ResponseEntity<ApiResponse<Void>> handleUserAlreadyExists(UserAlreadyExistsException ex) {
-		return error("User already exists", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleUserAlreadyExists(
+			UserAlreadyExistsException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.USER_ALREADY_EXISTS, ex);
 	}
 
 	@ExceptionHandler(AuthenticationFailedException.class)
-	public ResponseEntity<ApiResponse<Void>> handleAuthenticationFailed(AuthenticationFailedException ex) {
-		return error("Invalid email or password", HttpStatus.UNAUTHORIZED);
+	public ResponseEntity<ApiErrorResponse> handleAuthenticationFailed(
+			AuthenticationFailedException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.AUTHENTICATION_FAILED, ex);
 	}
 
 	@ExceptionHandler(InvalidRefreshTokenException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
-		return error("Invalid refresh token", HttpStatus.UNAUTHORIZED);
+	public ResponseEntity<ApiErrorResponse> handleInvalidRefreshToken(
+			InvalidRefreshTokenException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_REFRESH_TOKEN, ex);
 	}
 
 	@ExceptionHandler(AccessDeniedException.class)
-	public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
-		return error("Forbidden", HttpStatus.FORBIDDEN);
+	public ResponseEntity<ApiErrorResponse> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.FORBIDDEN, ex);
 	}
 
 	@ExceptionHandler(InvalidVenueTimezoneException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidVenueTimezone(InvalidVenueTimezoneException ex) {
-		return error("Invalid timezone", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleInvalidVenueTimezone(
+			InvalidVenueTimezoneException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_TIMEZONE, ex);
 	}
 
-	@ExceptionHandler(InvalidVenuePaginationException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidVenuePagination(InvalidVenuePaginationException ex) {
-		return error("Invalid pagination", HttpStatus.BAD_REQUEST);
-	}
-
-	@ExceptionHandler(InvalidEventPaginationException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidEventPagination(InvalidEventPaginationException ex) {
-		return error("Invalid pagination", HttpStatus.BAD_REQUEST);
+	@ExceptionHandler({
+			InvalidVenuePaginationException.class,
+			InvalidEventPaginationException.class,
+			InvalidOrderPaginationException.class
+	})
+	public ResponseEntity<ApiErrorResponse> handleInvalidPagination(Exception ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_PAGINATION, ex);
 	}
 
 	@ExceptionHandler(InvalidEventCatalogQueryException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidEventCatalogQuery(InvalidEventCatalogQueryException ex) {
-		return error("Invalid event catalog query", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleInvalidEventCatalogQuery(
+			InvalidEventCatalogQueryException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_EVENT_CATALOG_QUERY, ex);
 	}
 
 	@ExceptionHandler(InvalidEventTimingException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidEventTiming(InvalidEventTimingException ex) {
-		return error("Invalid event timing", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleInvalidEventTiming(
+			InvalidEventTimingException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_EVENT_TIMING, ex);
 	}
 
 	@ExceptionHandler(InvalidEventSectionException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidEventSection(InvalidEventSectionException ex) {
-		return error("Invalid event section", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleInvalidEventSection(
+			InvalidEventSectionException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_EVENT_SECTION, ex);
 	}
 
 	@ExceptionHandler(InvalidEventSectionPriceException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidEventSectionPrice(InvalidEventSectionPriceException ex) {
-		return error("Invalid event section price", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleInvalidEventSectionPrice(
+			InvalidEventSectionPriceException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_EVENT_SECTION_PRICE, ex);
 	}
 
 	@ExceptionHandler(DuplicateEventSectionException.class)
-	public ResponseEntity<ApiResponse<Void>> handleDuplicateEventSection(DuplicateEventSectionException ex) {
-		return error("Duplicate event section", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleDuplicateEventSection(
+			DuplicateEventSectionException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.DUPLICATE_EVENT_SECTION, ex);
 	}
 
 	@ExceptionHandler(VenueNotFoundException.class)
-	public ResponseEntity<ApiResponse<Void>> handleVenueNotFound(VenueNotFoundException ex) {
-		return error("Venue not found", HttpStatus.NOT_FOUND);
+	public ResponseEntity<ApiErrorResponse> handleVenueNotFound(VenueNotFoundException ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.VENUE_NOT_FOUND, ex);
 	}
 
 	@ExceptionHandler(EventNotFoundException.class)
-	public ResponseEntity<ApiResponse<Void>> handleEventNotFound(EventNotFoundException ex) {
-		return error("Event not found", HttpStatus.NOT_FOUND);
+	public ResponseEntity<ApiErrorResponse> handleEventNotFound(EventNotFoundException ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.EVENT_NOT_FOUND, ex);
 	}
 
 	@ExceptionHandler(EventStateConflictException.class)
-	public ResponseEntity<ApiResponse<Void>> handleEventStateConflict(EventStateConflictException ex) {
-		return error("Event state conflict", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleEventStateConflict(
+			EventStateConflictException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.EVENT_STATE_CONFLICT, ex);
 	}
 
 	@ExceptionHandler(MissingEventSectionPricingException.class)
-	public ResponseEntity<ApiResponse<Void>> handleMissingEventSectionPricing(
-			MissingEventSectionPricingException ex) {
-		return error("Event section pricing is incomplete", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleMissingEventSectionPricing(
+			MissingEventSectionPricingException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.MISSING_EVENT_SECTION_PRICING, ex);
 	}
 
 	@ExceptionHandler(NoEventSeatsException.class)
-	public ResponseEntity<ApiResponse<Void>> handleNoEventSeats(NoEventSeatsException ex) {
-		return error("Event has no seats", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleNoEventSeats(NoEventSeatsException ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.NO_EVENT_SEATS, ex);
 	}
 
 	@ExceptionHandler(EventPublicationException.class)
-	public ResponseEntity<ApiResponse<Void>> handleEventPublication(EventPublicationException ex) {
-		return error("Event publication failed", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleEventPublication(
+			EventPublicationException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.EVENT_PUBLICATION_FAILED, ex);
 	}
 
 	@ExceptionHandler(SeatHoldConflictException.class)
-	public ResponseEntity<ApiResponse<Void>> handleSeatHoldConflict(SeatHoldConflictException ex) {
-		return error("Seat hold conflict", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleSeatHoldConflict(
+			SeatHoldConflictException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.SEAT_ALREADY_HELD, ex);
 	}
 
 	@ExceptionHandler(InvalidSeatHoldRequestException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidSeatHoldRequest(InvalidSeatHoldRequestException ex) {
-		return error("Invalid seat hold request", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleInvalidSeatHoldRequest(
+			InvalidSeatHoldRequestException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_SEAT_HOLD_REQUEST, ex);
 	}
 
 	@ExceptionHandler(SeatHoldNotFoundException.class)
-	public ResponseEntity<ApiResponse<Void>> handleSeatHoldNotFound(SeatHoldNotFoundException ex) {
-		return error("Seat hold not found", HttpStatus.NOT_FOUND);
+	public ResponseEntity<ApiErrorResponse> handleSeatHoldNotFound(
+			SeatHoldNotFoundException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.SEAT_HOLD_NOT_FOUND, ex);
 	}
 
 	@ExceptionHandler(SeatHoldStorageException.class)
-	public ResponseEntity<ApiResponse<Void>> handleSeatHoldStorage(SeatHoldStorageException ex) {
-		return error("Seat hold storage unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+	public ResponseEntity<ApiErrorResponse> handleSeatHoldStorage(
+			SeatHoldStorageException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.SEAT_HOLD_STORAGE_UNAVAILABLE, ex);
 	}
 
 	@ExceptionHandler(ReservationNotFoundException.class)
-	public ResponseEntity<ApiResponse<Void>> handleReservationNotFound(ReservationNotFoundException ex) {
-		return error("Reservation not found", HttpStatus.NOT_FOUND);
+	public ResponseEntity<ApiErrorResponse> handleReservationNotFound(
+			ReservationNotFoundException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.RESERVATION_NOT_FOUND, ex);
 	}
 
 	@ExceptionHandler(ReservationConflictException.class)
-	public ResponseEntity<ApiResponse<Void>> handleReservationConflict(ReservationConflictException ex) {
-		return error("Reservation conflict", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleReservationConflict(
+			ReservationConflictException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.RESERVATION_CONFLICT, ex);
 	}
 
 	@ExceptionHandler(OrderNotFoundException.class)
-	public ResponseEntity<ApiResponse<Void>> handleOrderNotFound(OrderNotFoundException ex) {
-		return error("Order not found", HttpStatus.NOT_FOUND);
+	public ResponseEntity<ApiErrorResponse> handleOrderNotFound(OrderNotFoundException ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.ORDER_NOT_FOUND, ex);
 	}
 
 	@ExceptionHandler(OrderConflictException.class)
-	public ResponseEntity<ApiResponse<Void>> handleOrderConflict(OrderConflictException ex) {
-		return error("Order conflict", HttpStatus.CONFLICT);
-	}
-
-	@ExceptionHandler(InvalidOrderPaginationException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidOrderPagination(InvalidOrderPaginationException ex) {
-		return error("Invalid pagination", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleOrderConflict(OrderConflictException ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.ORDER_CONFLICT, ex);
 	}
 
 	@ExceptionHandler(InvalidPaymentTokenException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidPaymentToken(InvalidPaymentTokenException ex) {
-		return error("Invalid payment token", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleInvalidPaymentToken(
+			InvalidPaymentTokenException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_PAYMENT_TOKEN, ex);
 	}
 
 	@ExceptionHandler(PaymentConflictException.class)
-	public ResponseEntity<ApiResponse<Void>> handlePaymentConflict(PaymentConflictException ex) {
-		return error("Payment conflict", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handlePaymentConflict(
+			PaymentConflictException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.PAYMENT_CONFLICT, ex);
 	}
 
 	@ExceptionHandler(TicketNotFoundException.class)
-	public ResponseEntity<ApiResponse<Void>> handleTicketNotFound(TicketNotFoundException ex) {
-		return error("Ticket not found", HttpStatus.NOT_FOUND);
+	public ResponseEntity<ApiErrorResponse> handleTicketNotFound(
+			TicketNotFoundException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.TICKET_NOT_FOUND, ex);
 	}
 
 	@ExceptionHandler(TicketIssuanceException.class)
-	public ResponseEntity<ApiResponse<Void>> handleTicketIssuance(TicketIssuanceException ex) {
-		return error("Ticket issuance failed", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleTicketIssuance(
+			TicketIssuanceException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.TICKET_ISSUANCE_FAILED, ex);
 	}
 
 	@ExceptionHandler(InvalidIdempotencyKeyException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidIdempotencyKey(InvalidIdempotencyKeyException ex) {
-		return error("Idempotency-Key header is required", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleInvalidIdempotencyKey(
+			InvalidIdempotencyKeyException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.IDEMPOTENCY_KEY_REQUIRED, ex);
 	}
 
 	@ExceptionHandler(IdempotencyConflictException.class)
-	public ResponseEntity<ApiResponse<Void>> handleIdempotencyConflict(IdempotencyConflictException ex) {
-		return error("Idempotency key conflict", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleIdempotencyConflict(
+			IdempotencyConflictException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.IDEMPOTENCY_KEY_CONFLICT, ex);
 	}
 
 	@ExceptionHandler(IdempotencyStorageException.class)
-	public ResponseEntity<ApiResponse<Void>> handleIdempotencyStorage(IdempotencyStorageException ex) {
-		return error("Idempotency storage failed", HttpStatus.INTERNAL_SERVER_ERROR);
+	public ResponseEntity<ApiErrorResponse> handleIdempotencyStorage(
+			IdempotencyStorageException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.IDEMPOTENCY_STORAGE_FAILED, ex);
 	}
 
 	@ExceptionHandler(RateLimitExceededException.class)
-	public ResponseEntity<ApiResponse<RateLimitExceededResponse>> handleRateLimitExceeded(
-			RateLimitExceededException ex) {
+	public ResponseEntity<ApiErrorResponse> handleRateLimitExceeded(
+			RateLimitExceededException ex,
+			HttpServletRequest request) {
 		RateLimitResult result = ex.result();
 		long retryAfterSeconds = secondsCeiling(result.retryAfter());
 		long resetAfterSeconds = secondsCeiling(result.resetAfter());
-		RateLimitExceededResponse data = new RateLimitExceededResponse(
-				result.limit(),
-				result.remaining(),
-				retryAfterSeconds,
-				resetAfterSeconds);
-		return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-				.header("Retry-After", Long.toString(retryAfterSeconds))
-				.header("X-RateLimit-Limit", Integer.toString(result.limit()))
-				.header("X-RateLimit-Remaining", Integer.toString(result.remaining()))
-				.header("X-RateLimit-Reset-After", Long.toString(resetAfterSeconds))
-				.body(new ApiResponse<>(false, "Rate limit exceeded", data, Instant.now()));
+		return ApiErrorResponseFactory.response(
+				request,
+				ApiErrorCode.RATE_LIMIT_EXCEEDED,
+				ex,
+				List.of(),
+				headers -> {
+					headers.set("Retry-After", Long.toString(retryAfterSeconds));
+					headers.set("X-RateLimit-Limit", Integer.toString(result.limit()));
+					headers.set("X-RateLimit-Remaining", Integer.toString(result.remaining()));
+					headers.set("X-RateLimit-Reset-After", Long.toString(resetAfterSeconds));
+				});
 	}
 
 	@ExceptionHandler(RateLimitStorageException.class)
-	public ResponseEntity<ApiResponse<Void>> handleRateLimitStorage(RateLimitStorageException ex) {
-		return error("Rate limit storage unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+	public ResponseEntity<ApiErrorResponse> handleRateLimitStorage(
+			RateLimitStorageException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.RATE_LIMIT_STORAGE_UNAVAILABLE, ex);
 	}
 
 	@ExceptionHandler(VenueAlreadyArchivedException.class)
-	public ResponseEntity<ApiResponse<Void>> handleVenueAlreadyArchived(VenueAlreadyArchivedException ex) {
-		return error("Venue is already archived", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleVenueAlreadyArchived(
+			VenueAlreadyArchivedException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.VENUE_ALREADY_ARCHIVED, ex);
 	}
 
 	@ExceptionHandler(ArchivedVenueCannotHostEventsException.class)
-	public ResponseEntity<ApiResponse<Void>> handleArchivedVenueCannotHostEvents(
-			ArchivedVenueCannotHostEventsException ex) {
-		return error("Archived venue cannot host new events", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleArchivedVenueCannotHostEvents(
+			ArchivedVenueCannotHostEventsException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.ARCHIVED_VENUE_CANNOT_HOST_EVENTS, ex);
 	}
 
 	@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-	public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
-		return error("Method not supported", HttpStatus.METHOD_NOT_ALLOWED);
+	public ResponseEntity<ApiErrorResponse> handleMethodNotSupported(
+			HttpRequestMethodNotSupportedException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.METHOD_NOT_ALLOWED, ex);
 	}
 
 	@ExceptionHandler(SectionNotFoundException.class)
-	public ResponseEntity<ApiResponse<Void>> handleSectionNotFound(SectionNotFoundException ex) {
-		return error("Section not found", HttpStatus.NOT_FOUND);
+	public ResponseEntity<ApiErrorResponse> handleSectionNotFound(
+			SectionNotFoundException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.SECTION_NOT_FOUND, ex);
 	}
 
 	@ExceptionHandler(SeatNotFoundException.class)
-	public ResponseEntity<ApiResponse<Void>> handleSeatNotFound(SeatNotFoundException ex) {
-		return error("Seat not found", HttpStatus.NOT_FOUND);
+	public ResponseEntity<ApiErrorResponse> handleSeatNotFound(SeatNotFoundException ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.SEAT_NOT_FOUND, ex);
 	}
 
 	@ExceptionHandler(DuplicateSeatLabelException.class)
-	public ResponseEntity<ApiResponse<Void>> handleDuplicateSeatLabel(DuplicateSeatLabelException ex) {
-		return error("Duplicate seat label", HttpStatus.CONFLICT);
+	public ResponseEntity<ApiErrorResponse> handleDuplicateSeatLabel(
+			DuplicateSeatLabelException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.DUPLICATE_SEAT_LABEL, ex);
 	}
 
 	@ExceptionHandler(InvalidSeatBatchException.class)
-	public ResponseEntity<ApiResponse<Void>> handleInvalidSeatBatch(InvalidSeatBatchException ex) {
-		return error("Invalid seat batch", HttpStatus.BAD_REQUEST);
+	public ResponseEntity<ApiErrorResponse> handleInvalidSeatBatch(
+			InvalidSeatBatchException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_SEAT_BATCH, ex);
+	}
+
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<ApiErrorResponse> handleDataIntegrity(
+			DataIntegrityViolationException ex,
+			HttpServletRequest request) {
+		return error(request, constraintErrorCode(ex).orElse(ApiErrorCode.CONSTRAINT_CONFLICT), ex);
+	}
+
+	@ExceptionHandler(PersistenceException.class)
+	public ResponseEntity<ApiErrorResponse> handleMyBatisPersistence(
+			PersistenceException ex,
+			HttpServletRequest request) {
+		Optional<ApiErrorCode> constraintErrorCode = constraintErrorCode(ex);
+		if (constraintErrorCode.isPresent()) {
+			return error(request, constraintErrorCode.get(), ex);
+		}
+		return error(request, ApiErrorCode.PERSISTENCE_ERROR, ex);
+	}
+
+	@ExceptionHandler(DataAccessException.class)
+	public ResponseEntity<ApiErrorResponse> handleDataAccess(DataAccessException ex, HttpServletRequest request) {
+		Optional<ApiErrorCode> constraintErrorCode = constraintErrorCode(ex);
+		if (constraintErrorCode.isPresent()) {
+			return error(request, constraintErrorCode.get(), ex);
+		}
+		return error(request, ApiErrorCode.PERSISTENCE_ERROR, ex);
 	}
 
 	@ExceptionHandler(Exception.class)
-	public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception ex) {
-		return error("Unexpected error", HttpStatus.INTERNAL_SERVER_ERROR);
+	public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception ex, HttpServletRequest request) {
+		return error(request, ApiErrorCode.INTERNAL_ERROR, ex);
 	}
 
-	private ResponseEntity<ApiResponse<Void>> error(String message, HttpStatus status) {
-		return ResponseEntity.status(status).body(ApiResponse.error(message));
+	private ResponseEntity<ApiErrorResponse> error(
+			HttpServletRequest request,
+			ApiErrorCode errorCode,
+			Throwable exception) {
+		return ApiErrorResponseFactory.response(request, errorCode, exception);
+	}
+
+	private static List<ApiFieldError> validationErrors(MethodArgumentNotValidException ex) {
+		List<ApiFieldError> fieldErrors = ex.getBindingResult().getFieldErrors().stream()
+				.map(fieldError -> new ApiFieldError(
+						fieldError.getField(),
+						safeMessage(fieldError.getDefaultMessage()),
+						safeMessage(fieldError.getCode())))
+				.toList();
+		List<ApiFieldError> globalErrors = ex.getBindingResult().getGlobalErrors().stream()
+				.map(globalError -> new ApiFieldError(
+						globalError.getObjectName(),
+						safeMessage(globalError.getDefaultMessage()),
+						safeMessage(globalError.getCode())))
+				.toList();
+		return java.util.stream.Stream.concat(fieldErrors.stream(), globalErrors.stream())
+				.sorted(Comparator.comparing(ApiFieldError::field).thenComparing(ApiFieldError::message))
+				.toList();
+	}
+
+	private static Optional<ApiErrorCode> constraintErrorCode(Throwable exception) {
+		SQLException sqlException = findSqlException(exception);
+		if (sqlException == null) {
+			return exception instanceof DataIntegrityViolationException
+					? Optional.of(ApiErrorCode.CONSTRAINT_CONFLICT)
+					: Optional.empty();
+		}
+		String sqlState = sqlException.getSQLState();
+		if (sqlState == null || !sqlState.startsWith("23")) {
+			return Optional.empty();
+		}
+
+		return Optional.of(errorCodeForConstraint(constraintName(sqlException).orElse(null)));
+	}
+
+	private static SQLException findSqlException(Throwable exception) {
+		for (Throwable current = exception; current != null; current = current.getCause()) {
+			if (current instanceof SQLException sqlException) {
+				return sqlException;
+			}
+		}
+		return null;
+	}
+
+	private static Optional<String> constraintName(SQLException sqlException) {
+		String message = sqlException.getMessage();
+		if (message == null) {
+			return Optional.empty();
+		}
+		Matcher matcher = POSTGRES_CONSTRAINT_PATTERN.matcher(message);
+		if (matcher.find()) {
+			return Optional.of(matcher.group(1));
+		}
+		return Optional.empty();
+	}
+
+	private static ApiErrorCode errorCodeForConstraint(String constraintName) {
+		if (constraintName == null) {
+			return ApiErrorCode.CONSTRAINT_CONFLICT;
+		}
+		return switch (constraintName) {
+			case "users_normalized_email_uq" -> ApiErrorCode.USER_ALREADY_EXISTS;
+			case "seats_section_label_uq" -> ApiErrorCode.DUPLICATE_SEAT_LABEL;
+			case "event_sections_event_section_uq" -> ApiErrorCode.DUPLICATE_EVENT_SECTION;
+			case "tickets_order_event_seat_uq" -> ApiErrorCode.TICKET_ALREADY_ISSUED;
+			case "idempotency_records_scope_uq" -> ApiErrorCode.IDEMPOTENCY_KEY_CONFLICT;
+			default -> ApiErrorCode.CONSTRAINT_CONFLICT;
+		};
+	}
+
+	private static String safeMessage(String message) {
+		return message == null || message.isBlank() ? "Invalid value" : message;
 	}
 
 	private static long secondsCeiling(Duration duration) {

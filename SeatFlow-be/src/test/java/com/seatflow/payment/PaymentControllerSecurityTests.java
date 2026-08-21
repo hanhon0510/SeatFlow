@@ -97,7 +97,7 @@ class PaymentControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("tok_success")))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test
@@ -108,7 +108,7 @@ class PaymentControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("Invalid request"));
+				.andExpect(jsonPath("$.title").value("Invalid request"));
 
 		when(paymentIdempotencyService.createPayment(
 				eq(ORDER_ID),
@@ -122,7 +122,7 @@ class PaymentControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("unknown")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("Invalid payment token"));
+				.andExpect(jsonPath("$.title").value("Invalid payment token"));
 	}
 
 	@Test
@@ -141,7 +141,7 @@ class PaymentControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("tok_success")))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Order not found"));
+				.andExpect(jsonPath("$.title").value("Order not found"));
 
 		mockMvc.perform(post("/api/v1/orders/{orderId}/payments", ORDER_ID)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken())
@@ -149,7 +149,7 @@ class PaymentControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("tok_success")))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Payment conflict"));
+				.andExpect(jsonPath("$.title").value("Payment conflict"));
 	}
 
 	@Test
@@ -166,7 +166,7 @@ class PaymentControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody("tok_success")))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("Idempotency-Key header is required"));
+				.andExpect(jsonPath("$.title").value("Idempotency-Key header is required"));
 	}
 
 	private String bearerToken() {

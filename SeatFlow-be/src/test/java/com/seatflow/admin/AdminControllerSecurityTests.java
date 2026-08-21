@@ -74,16 +74,16 @@ class AdminControllerSecurityTests {
 		mockMvc.perform(get("/api/v1/admin")
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 	}
 
 	@Test
 	void unauthenticatedRequestReceivesUnauthorizedAtAdminEndpoint() throws Exception {
 		mockMvc.perform(get("/api/v1/admin"))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	@Test
@@ -102,7 +102,7 @@ class AdminControllerSecurityTests {
 		mockMvc.perform(get("/api/v1/admin")
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(tokenUser)))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 	}
 
 	private String bearerToken(UserRecord user) {

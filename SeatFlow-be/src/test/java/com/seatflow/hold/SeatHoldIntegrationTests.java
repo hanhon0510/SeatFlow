@@ -129,7 +129,7 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody(publishedSeat.eventSeat().id())))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Seat hold conflict"));
+				.andExpect(jsonPath("$.title").value("Seat hold conflict"));
 	}
 
 	@Test
@@ -249,11 +249,11 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 		mockMvc.perform(get("/api/v1/holds/{holdId}", holdId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser)))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 		mockMvc.perform(delete("/api/v1/holds/{holdId}", holdId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(otherUser)))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 
 		assertThat(redisTemplate.opsForValue().get(seatKey)).isNotBlank();
 	}
@@ -272,7 +272,7 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 		mockMvc.perform(get("/api/v1/holds/{holdId}", holdId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
 				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.message").value("Seat hold not found"));
+				.andExpect(jsonPath("$.title").value("Seat hold not found"));
 		mockMvc.perform(delete("/api/v1/holds/{holdId}", holdId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
 				.andExpect(status().isNoContent());
@@ -318,7 +318,7 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody(firstEventSeat.eventSeat().id())))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Seat hold conflict"));
+				.andExpect(jsonPath("$.title").value("Seat hold conflict"));
 	}
 
 	@Test
@@ -335,14 +335,14 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody(soldSeat.eventSeat().id())))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Seat hold conflict"));
+				.andExpect(jsonPath("$.title").value("Seat hold conflict"));
 
 		mockMvc.perform(post("/api/v1/events/{eventId}/holds", blockedSeat.event().id())
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(user))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody(blockedSeat.eventSeat().id())))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Seat hold conflict"));
+				.andExpect(jsonPath("$.title").value("Seat hold conflict"));
 	}
 
 	@Test
@@ -355,7 +355,7 @@ class SeatHoldIntegrationTests extends RedisTestContainerSupport {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(requestBody(publishedSeat.eventSeat().id())))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Seat hold conflict"));
+				.andExpect(jsonPath("$.title").value("Seat hold conflict"));
 	}
 
 	private PublishedSeat insertPublishedSeat(SalesWindow salesWindow, boolean salesEnabled) {

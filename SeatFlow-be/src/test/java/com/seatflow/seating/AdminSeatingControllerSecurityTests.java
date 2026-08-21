@@ -188,8 +188,8 @@ class AdminSeatingControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(seatJson("A", 1, "A1", false)))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.success").value(false))
-				.andExpect(jsonPath("$.message").value("Duplicate seat label"));
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Duplicate seat label"));
 	}
 
 	@Test
@@ -224,7 +224,7 @@ class AdminSeatingControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(sectionJson("Orchestra", 1)))
 				.andExpect(status().isForbidden())
-				.andExpect(jsonPath("$.message").value("Forbidden"));
+				.andExpect(jsonPath("$.title").value("Forbidden"));
 
 		mockMvc.perform(post("/api/v1/admin/sections/{sectionId}/seats", sectionId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER))
@@ -239,7 +239,7 @@ class AdminSeatingControllerSecurityTests {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(sectionJson("Orchestra", 1)))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Unauthorized"));
+				.andExpect(jsonPath("$.title").value("Unauthorized"));
 	}
 
 	private String bearerToken(UserRole role) {
