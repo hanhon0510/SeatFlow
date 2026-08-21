@@ -9,16 +9,22 @@ public record SeatFlowKafkaProperties(
 		boolean enabled,
 		TopicNames topics,
 		ConsumerGroups consumerGroups,
-		Retry retry) {
+		Retry retry,
+		Health health) {
 
 	public SeatFlowKafkaProperties(boolean enabled, TopicNames topics, ConsumerGroups consumerGroups) {
-		this(enabled, topics, consumerGroups, null);
+		this(enabled, topics, consumerGroups, null, null);
+	}
+
+	public SeatFlowKafkaProperties(boolean enabled, TopicNames topics, ConsumerGroups consumerGroups, Retry retry) {
+		this(enabled, topics, consumerGroups, retry, null);
 	}
 
 	public SeatFlowKafkaProperties {
 		topics = topics == null ? TopicNames.defaults() : topics.withDefaults();
 		consumerGroups = consumerGroups == null ? ConsumerGroups.defaults() : consumerGroups.withDefaults();
 		retry = retry == null ? Retry.defaults() : retry.withDefaults();
+		health = health == null ? Health.defaults() : health.withDefaults();
 	}
 
 	public record TopicNames(
@@ -73,6 +79,20 @@ public record SeatFlowKafkaProperties(
 			return new Retry(
 					maxAttempts > 0 ? maxAttempts : defaults.maxAttempts,
 					backoff != null && !backoff.isNegative() ? backoff : defaults.backoff);
+		}
+	}
+
+	public record Health(Duration timeout) {
+
+		public static Health defaults() {
+			return new Health(Duration.ofSeconds(2));
+		}
+
+		private Health withDefaults() {
+			Health defaults = defaults();
+			return new Health(timeout != null && !timeout.isNegative() && !timeout.isZero()
+					? timeout
+					: defaults.timeout);
 		}
 	}
 

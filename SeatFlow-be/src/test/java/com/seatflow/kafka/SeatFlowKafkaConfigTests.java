@@ -24,9 +24,11 @@ class SeatFlowKafkaConfigTests {
 				true,
 				null,
 				null,
-				new SeatFlowKafkaProperties.Retry(0, Duration.ofMillis(-1)));
+				new SeatFlowKafkaProperties.Retry(0, Duration.ofMillis(-1)),
+				new SeatFlowKafkaProperties.Health(Duration.ZERO));
 
 		assertThat(properties.retry().maxAttempts()).isEqualTo(3);
 		assertThat(properties.retry().backoff()).isEqualTo(Duration.ofSeconds(1));
+		assertThat(properties.health().timeout()).isEqualTo(Duration.ofSeconds(2));
 	}
 }

@@ -103,6 +103,8 @@ public enum ApiErrorCode {
 			HttpStatus.SERVICE_UNAVAILABLE, "DATABASE_HEALTH_UNAVAILABLE", "Database health check failed."),
 	REDIS_HEALTH_UNAVAILABLE("redis-health-unavailable", "Redis health check failed",
 			HttpStatus.SERVICE_UNAVAILABLE, "REDIS_HEALTH_UNAVAILABLE", "Redis health check failed."),
+	KAFKA_HEALTH_UNAVAILABLE("kafka-health-unavailable", "Kafka health check failed",
+			HttpStatus.SERVICE_UNAVAILABLE, "KAFKA_HEALTH_UNAVAILABLE", "Kafka health check failed."),
 	INTERNAL_ERROR("internal-error", "Unexpected error", HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
 			"An unexpected error occurred.");
 

@@ -87,8 +87,15 @@ Key variables (see `.env.example`):
 - `POSTGRES_USER` — PostgreSQL user
 - `POSTGRES_PASSWORD` — PostgreSQL password, stored only in local `.env`
 - `POSTGRES_PORT` — local PostgreSQL port
+- `POSTGRES_CONNECTION_TIMEOUT_MS` — PostgreSQL connection timeout
+- `POSTGRES_VALIDATION_TIMEOUT_MS` — PostgreSQL validation timeout
 - `KAFKA_PORT` — local Kafka port
 - `KAFKA_BOOTSTRAP_SERVERS` — Kafka bootstrap servers for the backend
+- `KAFKA_ADMIN_FAIL_FAST` — whether Kafka admin startup fails the app when brokers are unavailable
+- `KAFKA_ADMIN_REQUEST_TIMEOUT_MS` — Kafka admin request timeout
+- `KAFKA_ADMIN_DEFAULT_API_TIMEOUT_MS` — Kafka admin API timeout
+- `KAFKA_CONSUMER_REQUEST_TIMEOUT_MS` — Kafka consumer request timeout
+- `KAFKA_CONSUMER_DEFAULT_API_TIMEOUT_MS` — Kafka consumer API timeout
 - `PORT` — backend HTTP port
 - `SEATFLOW_JWT_SECRET` — JWT signing secret, at least 32 bytes
 - `SEATFLOW_JWT_ISSUER` — JWT issuer
@@ -105,9 +112,11 @@ Key variables (see `.env.example`):
 - `SEATFLOW_KAFKA_GROUP_NOTIFICATION_EVENTS` — notification event consumer group
 - `SEATFLOW_KAFKA_RETRY_MAX_ATTEMPTS` — max consumer delivery attempts before dead-lettering
 - `SEATFLOW_KAFKA_RETRY_BACKOFF` — delay between consumer retry attempts
+- `SEATFLOW_KAFKA_HEALTH_TIMEOUT` — timeout for Kafka readiness checks
 - `SEATFLOW_OUTBOX_PUBLISHER_ENABLED` — enables scheduled outbox publishing, default `false` except local profile
 - `SEATFLOW_OUTBOX_PUBLISHER_BATCH_SIZE` — number of pending outbox records locked per publish loop
 - `SEATFLOW_OUTBOX_PUBLISHER_RETRY_DELAY` — delay before retrying a failed outbox publish
+- `SEATFLOW_OUTBOX_PUBLISHER_RETRY_MAX_DELAY` — maximum backoff between failed outbox publish attempts
 - `SEATFLOW_OUTBOX_PUBLISHER_TIMEOUT` — timeout while waiting for Kafka send acknowledgement
 - `SEATFLOW_OUTBOX_PUBLISHER_FIXED_DELAY_MS` — scheduler delay between outbox publish loops
 - `SEATFLOW_LOCAL_ADMIN_ENABLED` — opt-in local profile admin seeding, default `false`
@@ -135,7 +144,11 @@ partition, correlation id, and error category; stack traces are kept in logs.
 Health endpoints:
 
 - `GET /api/v1/health` — application health
+- `GET /api/v1/health/live` — liveness, independent of dependency state
+- `GET /api/v1/health/ready` — readiness for PostgreSQL, Redis, and enabled Kafka
 - `GET /api/v1/health/database` — PostgreSQL health through MyBatis
+- `GET /api/v1/health/redis` — Redis health through PING
+- `GET /api/v1/health/kafka` — Kafka health when Kafka is enabled, otherwise `DISABLED`
 
 ## Backend Conventions
 

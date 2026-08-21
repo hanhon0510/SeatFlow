@@ -1,6 +1,7 @@
 package com.seatflow.outbox;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -77,10 +78,26 @@ public class OutboxPublisher {
 	}
 
 	private void scheduleRetry(OutboxEventRecord event) {
-		Instant nextAttemptAt = clock.instant().plus(outboxProperties.publisher().retryDelay());
+		Instant nextAttemptAt = clock.instant().plus(retryDelay(event.attemptCount()));
 		if (outboxMapper.scheduleRetry(event.id(), nextAttemptAt) != 1) {
 			throw new OutboxPublishException();
 		}
+	}
+
+	private Duration retryDelay(int attemptCount) {
+		OutboxProperties.Publisher publisher = outboxProperties.publisher();
+		Duration delay = publisher.retryDelay();
+		Duration maxDelay = publisher.retryMaxDelay();
+		int growthSteps = Math.min(Math.max(attemptCount, 0), 20);
+		for (int i = 0; i < growthSteps && delay.compareTo(maxDelay) < 0; i++) {
+			try {
+				delay = delay.multipliedBy(2);
+			}
+			catch (ArithmeticException ex) {
+				return maxDelay;
+			}
+		}
+		return delay.compareTo(maxDelay) > 0 ? maxDelay : delay;
 	}
 
 	private EventEnvelope<JsonNode> envelope(OutboxEventRecord event) {

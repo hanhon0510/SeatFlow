@@ -15,10 +15,11 @@ public record OutboxProperties(Publisher publisher) {
 			boolean enabled,
 			int batchSize,
 			Duration retryDelay,
+			Duration retryMaxDelay,
 			Duration publishTimeout) {
 
 		private static Publisher defaults() {
-			return new Publisher(false, 50, Duration.ofSeconds(30), Duration.ofSeconds(10));
+			return new Publisher(false, 50, Duration.ofSeconds(30), Duration.ofMinutes(5), Duration.ofSeconds(10));
 		}
 
 		private Publisher withDefaults() {
@@ -26,8 +27,13 @@ public record OutboxProperties(Publisher publisher) {
 			return new Publisher(
 					enabled,
 					batchSize > 0 ? batchSize : defaults.batchSize,
-					retryDelay != null ? retryDelay : defaults.retryDelay,
-					publishTimeout != null ? publishTimeout : defaults.publishTimeout);
+					positive(retryDelay) ? retryDelay : defaults.retryDelay,
+					positive(retryMaxDelay) ? retryMaxDelay : defaults.retryMaxDelay,
+					positive(publishTimeout) ? publishTimeout : defaults.publishTimeout);
 		}
+	}
+
+	private static boolean positive(Duration duration) {
+		return duration != null && !duration.isNegative() && !duration.isZero();
 	}
 }

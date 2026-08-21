@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.seatflow.event.EventNotFoundException;
+import com.seatflow.health.KafkaHealthUnavailableException;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.validation.Valid;
@@ -138,6 +139,16 @@ class ApiErrorResponseTests {
 				.andExpect(content().string(not(containsString("IllegalStateException"))));
 	}
 
+	@Test
+	void kafkaHealthErrorUsesSafeProblemSchema() throws Exception {
+		mockMvc.perform(get("/kafka-health")
+						.header(CorrelationId.HEADER_NAME, CORRELATION_ID))
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.title").value("Kafka health check failed"))
+				.andExpect(jsonPath("$.code").value("KAFKA_HEALTH_UNAVAILABLE"))
+				.andExpect(content().string(not(containsString("broker.internal"))));
+	}
+
 	@RestController
 	private static class ErrorTestController {
 
@@ -173,6 +184,11 @@ class ApiErrorResponseTests {
 		@GetMapping("/internal")
 		void internal() {
 			throw new IllegalStateException("SELECT password_hash FROM users");
+		}
+
+		@GetMapping("/kafka-health")
+		void kafkaHealth() {
+			throw new KafkaHealthUnavailableException(new IllegalStateException("broker.internal:9092 unavailable"));
 		}
 	}
 

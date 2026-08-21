@@ -35,6 +35,7 @@ import com.seatflow.event.InvalidEventTimingException;
 import com.seatflow.event.MissingEventSectionPricingException;
 import com.seatflow.event.NoEventSeatsException;
 import com.seatflow.health.DatabaseHealthUnavailableException;
+import com.seatflow.health.KafkaHealthUnavailableException;
 import com.seatflow.health.RedisHealthUnavailableException;
 import com.seatflow.hold.InvalidSeatHoldRequestException;
 import com.seatflow.hold.SeatHoldConflictException;
@@ -119,6 +120,13 @@ public class GlobalExceptionHandler {
 			RedisHealthUnavailableException ex,
 			HttpServletRequest request) {
 		return error(request, ApiErrorCode.REDIS_HEALTH_UNAVAILABLE, ex);
+	}
+
+	@ExceptionHandler(KafkaHealthUnavailableException.class)
+	public ResponseEntity<ApiErrorResponse> handleKafkaHealthUnavailable(
+			KafkaHealthUnavailableException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.KAFKA_HEALTH_UNAVAILABLE, ex);
 	}
 
 	@ExceptionHandler(UserAlreadyExistsException.class)

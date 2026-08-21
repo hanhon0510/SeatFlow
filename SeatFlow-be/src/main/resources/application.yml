@@ -15,6 +15,9 @@ spring:
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-timeout: ${POSTGRES_CONNECTION_TIMEOUT_MS:3000}
+      validation-timeout: ${POSTGRES_VALIDATION_TIMEOUT_MS:1000}
 
   data:
     redis:
@@ -25,6 +28,11 @@ spring:
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    admin:
+      fail-fast: ${KAFKA_ADMIN_FAIL_FAST:false}
+      properties:
+        request.timeout.ms: ${KAFKA_ADMIN_REQUEST_TIMEOUT_MS:5000}
+        default.api.timeout.ms: ${KAFKA_ADMIN_DEFAULT_API_TIMEOUT_MS:5000}
     producer:
       client-id: ${KAFKA_PRODUCER_CLIENT_ID:seatflow-backend}
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -46,6 +54,8 @@ spring:
         spring.json.value.default.type: com.seatflow.kafka.EventEnvelope
         spring.json.trusted.packages: com.seatflow,java.util,java.time
         spring.json.use.type.headers: false
+        request.timeout.ms: ${KAFKA_CONSUMER_REQUEST_TIMEOUT_MS:10000}
+        default.api.timeout.ms: ${KAFKA_CONSUMER_DEFAULT_API_TIMEOUT_MS:10000}
     listener:
       ack-mode: record
 
@@ -66,14 +76,23 @@ logging:
     level: "%5p [correlationId=%X{correlationId:-}]"
 
 management:
+  health:
+    kafka:
+      enabled: ${SEATFLOW_KAFKA_ENABLED:false}
   endpoints:
     web:
       exposure:
         include: health,info
   endpoint:
     health:
+      validate-group-membership: false
       probes:
         enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db,redis,kafka
 
 server:
   port: ${PORT}
@@ -120,10 +139,13 @@ seatflow:
     retry:
       max-attempts: ${SEATFLOW_KAFKA_RETRY_MAX_ATTEMPTS:3}
       backoff: ${SEATFLOW_KAFKA_RETRY_BACKOFF:1s}
+    health:
+      timeout: ${SEATFLOW_KAFKA_HEALTH_TIMEOUT:2s}
   outbox:
     publisher:
       enabled: ${SEATFLOW_OUTBOX_PUBLISHER_ENABLED:false}
       batch-size: ${SEATFLOW_OUTBOX_PUBLISHER_BATCH_SIZE:50}
       retry-delay: ${SEATFLOW_OUTBOX_PUBLISHER_RETRY_DELAY:30s}
+      retry-max-delay: ${SEATFLOW_OUTBOX_PUBLISHER_RETRY_MAX_DELAY:5m}
       publish-timeout: ${SEATFLOW_OUTBOX_PUBLISHER_TIMEOUT:10s}
       fixed-delay-ms: ${SEATFLOW_OUTBOX_PUBLISHER_FIXED_DELAY_MS:5000}

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,6 +40,7 @@ class OutboxPublisherTests {
 	private static final Instant CREATED_AT = Instant.parse("2026-08-10T11:59:00Z");
 	private static final Instant NOW = Instant.parse("2026-08-10T12:00:00Z");
 	private static final Duration RETRY_DELAY = Duration.ofSeconds(20);
+	private static final Duration RETRY_MAX_DELAY = Duration.ofMinutes(2);
 
 	@Mock
 	private OutboxMapper outboxMapper;
@@ -47,23 +49,19 @@ class OutboxPublisherTests {
 	private KafkaEventPublisher eventPublisher;
 
 	private SeatFlowKafkaProperties kafkaProperties;
+	private OutboxProperties outboxProperties;
 	private OutboxPublisher publisher;
 
 	@BeforeEach
 	void setUp() {
 		kafkaProperties = new SeatFlowKafkaProperties(true, null, null);
-		OutboxProperties outboxProperties = new OutboxProperties(new OutboxProperties.Publisher(
+		outboxProperties = new OutboxProperties(new OutboxProperties.Publisher(
 				false,
 				50,
 				RETRY_DELAY,
+				RETRY_MAX_DELAY,
 				Duration.ofSeconds(5)));
-		publisher = new OutboxPublisher(
-				outboxMapper,
-				eventPublisher,
-				kafkaProperties,
-				outboxProperties,
-				new ObjectMapper(),
-				Clock.fixed(NOW, ZoneOffset.UTC));
+		publisher = newPublisher();
 	}
 
 	@Test
@@ -113,6 +111,43 @@ class OutboxPublisherTests {
 	}
 
 	@Test
+	void kafkaRecoveryPublishesPendingEventAfterPublisherRestart() {
+		OutboxEventRecord event = orderPaidEvent("{}");
+		CompletableFuture<SendResult<Object, Object>> failed = new CompletableFuture<>();
+		failed.completeExceptionally(new IllegalStateException("broker unavailable"));
+		CompletableFuture<SendResult<Object, Object>> sent = CompletableFuture.completedFuture(null);
+		when(outboxMapper.lockPending(1)).thenReturn(List.of(event), List.of(event));
+		when(eventPublisher.publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class)))
+				.thenReturn(failed, sent);
+		when(outboxMapper.scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY))).thenReturn(1);
+		when(outboxMapper.markPublished(EVENT_ID, NOW)).thenReturn(1);
+
+		assertThat(publisher.publishPending(1)).isEqualTo(1);
+		assertThat(newPublisher().publishPending(1)).isEqualTo(1);
+
+		verify(outboxMapper).scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY));
+		verify(outboxMapper).markPublished(EVENT_ID, NOW);
+		verify(eventPublisher, times(2)).publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class));
+	}
+
+	@Test
+	void retryDelayBacksOffAndCapsAtConfiguredMaximum() {
+		OutboxEventRecord event = orderPaidEvent("{}", 4);
+		CompletableFuture<SendResult<Object, Object>> failed = new CompletableFuture<>();
+		failed.completeExceptionally(new IllegalStateException("broker unavailable"));
+		when(outboxMapper.lockPending(1)).thenReturn(List.of(event));
+		when(eventPublisher.publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class)))
+				.thenReturn(failed);
+		when(outboxMapper.scheduleRetry(EVENT_ID, NOW.plus(RETRY_MAX_DELAY))).thenReturn(1);
+
+		int published = publisher.publishPending(1);
+
+		assertThat(published).isEqualTo(1);
+		verify(outboxMapper).scheduleRetry(EVENT_ID, NOW.plus(RETRY_MAX_DELAY));
+		verify(outboxMapper, never()).markPublished(any(), any());
+	}
+
+	@Test
 	void invalidPayloadIsNotPublishedAndSchedulesRetry() {
 		OutboxEventRecord event = orderPaidEvent("{invalid-json");
 		when(outboxMapper.lockPending(1)).thenReturn(List.of(event));
@@ -141,7 +176,21 @@ class OutboxPublisherTests {
 		verify(outboxMapper, never()).scheduleRetry(any(), any());
 	}
 
+	private OutboxPublisher newPublisher() {
+		return new OutboxPublisher(
+				outboxMapper,
+				eventPublisher,
+				kafkaProperties,
+				outboxProperties,
+				new ObjectMapper(),
+				Clock.fixed(NOW, ZoneOffset.UTC));
+	}
+
 	private static OutboxEventRecord orderPaidEvent(String payload) {
+		return orderPaidEvent(payload, 0);
+	}
+
+	private static OutboxEventRecord orderPaidEvent(String payload, int attemptCount) {
 		return new OutboxEventRecord(
 				EVENT_ID,
 				"Order",
@@ -151,7 +200,7 @@ class OutboxPublisherTests {
 				payload,
 				CORRELATION_ID,
 				OutboxEventStatus.PENDING,
-				0,
+				attemptCount,
 				CREATED_AT,
 				null,
 				CREATED_AT);
