@@ -31,6 +31,9 @@ SeatFlow-be/build/
 SeatFlow-fe/node_modules/
 SeatFlow-fe/dist/
 SeatFlow-fe/dist-ssr/
+SeatFlow-fe/playwright-report/
+SeatFlow-fe/test-results/
+SeatFlow-fe/blob-report/
 *.local
 
 logs/
