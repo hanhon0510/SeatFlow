@@ -91,7 +91,6 @@ export type PublishedEventSeed = {
 const eventStartTime = '2099-06-01T20:00:00.000Z'
 const salesStartTime = '2024-01-01T00:00:00.000Z'
 const salesEndTime = '2099-05-31T20:00:00.000Z'
-const defaultPassword = 'SeatFlowE2e123!'
 
 let rootEnvCache: Record<string, string> | null = null
 
@@ -117,7 +116,7 @@ export function accountFor(testInfo: TestInfo, role: string): E2EAccount {
 
   return {
     email: `${localPart}@example.test`,
-    password: defaultPassword,
+    password: envValue('E2E_USER_PASSWORD', generatedE2ePassword(namespace, role, title)),
   }
 }
 
@@ -434,6 +433,11 @@ function flattenEventSeats(layout: EventSeatLayout) {
 
 function seedNamespace() {
   return slug(envValue('E2E_SEED_NAMESPACE', 'sf046'))
+}
+
+function generatedE2ePassword(namespace: string, role: string, title: string) {
+  const base = `${namespace}-${slug(role)}-${title}`.slice(0, 80)
+  return `E2e-${base}-A1!`
 }
 
 function envValue(key: string, fallback: string) {

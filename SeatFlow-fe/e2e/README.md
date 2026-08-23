@@ -39,7 +39,7 @@ E2E_ADMIN_EMAIL=admin@example.com
 E2E_ADMIN_PASSWORD=ChangeMeStrong123!
 ```
 
-The seed namespace keeps test data deterministic. Use a different namespace for isolated CI runs.
+The seed namespace keeps test data deterministic. Use a different namespace for isolated CI runs. Generated test users use deterministic per-test passwords by default; set `E2E_USER_PASSWORD` only when a fixed override is required.
 
 Failure artifacts are retained in ignored folders:
 
