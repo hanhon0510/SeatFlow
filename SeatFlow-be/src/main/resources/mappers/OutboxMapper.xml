@@ -77,6 +77,12 @@
         LIMIT #{batchSize}
     </select>
 
+    <select id="countPending" resultType="long">
+        SELECT COUNT(*)
+        FROM outbox_events
+        WHERE status = 'PENDING'
+    </select>
+
     <update id="markPublished">
         UPDATE outbox_events
         SET

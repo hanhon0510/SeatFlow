@@ -20,6 +20,7 @@ import com.seatflow.order.OrderMapper;
 import com.seatflow.order.OrderNotFoundException;
 import com.seatflow.order.OrderRecord;
 import com.seatflow.order.OrderStatus;
+import com.seatflow.observability.BusinessMetrics;
 import com.seatflow.outbox.OutboxService;
 import com.seatflow.reservation.ReservationItemMapper;
 import com.seatflow.reservation.ReservationItemRecord;
@@ -41,6 +42,7 @@ public class PaymentService {
 	private final OutboxService outboxService;
 	private final ApplicationEventPublisher eventPublisher;
 	private final Clock clock;
+	private final BusinessMetrics businessMetrics;
 
 	public PaymentService(
 			PaymentMapper paymentMapper,
@@ -52,7 +54,8 @@ public class PaymentService {
 			SeatHoldStore seatHoldStore,
 			OutboxService outboxService,
 			ApplicationEventPublisher eventPublisher,
-			Clock clock) {
+			Clock clock,
+			BusinessMetrics businessMetrics) {
 		this.paymentMapper = paymentMapper;
 		this.orderMapper = orderMapper;
 		this.reservationMapper = reservationMapper;
@@ -63,6 +66,7 @@ public class PaymentService {
 		this.outboxService = outboxService;
 		this.eventPublisher = eventPublisher;
 		this.clock = clock;
+		this.businessMetrics = businessMetrics;
 	}
 
 	@Transactional
@@ -132,6 +136,10 @@ public class PaymentService {
 		if (outcome.successful()) {
 			outboxService.recordOrderPaid(order, payment, lockedSeats, now);
 			eventPublisher.publishEvent(new SeatHoldReleaseRequested(hold));
+			businessMetrics.paymentSuccess();
+		}
+		else {
+			businessMetrics.paymentFailure();
 		}
 		return PaymentResponse.from(payment);
 	}

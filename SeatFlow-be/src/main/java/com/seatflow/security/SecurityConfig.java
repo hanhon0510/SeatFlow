@@ -60,6 +60,7 @@ public class SecurityConfig {
 								"/api/v1/health/**",
 								"/actuator/health",
 								"/actuator/info",
+								"/actuator/prometheus",
 								"/error",
 								"/ws",
 								"/ws/**").permitAll()

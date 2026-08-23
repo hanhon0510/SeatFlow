@@ -14,6 +14,8 @@ public interface OutboxMapper {
 
 	List<OutboxEventRecord> lockPending(@Param("batchSize") int batchSize);
 
+	long countPending();
+
 	int markPublished(
 			@Param("id") UUID id,
 			@Param("publishedAt") Instant publishedAt);

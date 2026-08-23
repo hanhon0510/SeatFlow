@@ -26,6 +26,9 @@ import com.seatflow.event.EventSeatStatus;
 import com.seatflow.hold.SeatHoldNotFoundException;
 import com.seatflow.hold.SeatHoldResponse;
 import com.seatflow.hold.SeatHoldService;
+import com.seatflow.observability.BusinessMetrics;
+
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 @ExtendWith(MockitoExtension.class)
 class ReservationServiceTests {
@@ -48,15 +51,19 @@ class ReservationServiceTests {
 	@Mock
 	private SeatHoldService seatHoldService;
 
+	private SimpleMeterRegistry meterRegistry;
+
 	private ReservationService reservationService;
 
 	@BeforeEach
 	void setUp() {
+		meterRegistry = new SimpleMeterRegistry();
 		reservationService = new ReservationService(
 				reservationMapper,
 				reservationItemMapper,
 				seatHoldService,
-				Clock.fixed(NOW, ZoneOffset.UTC));
+				Clock.fixed(NOW, ZoneOffset.UTC),
+				new BusinessMetrics(meterRegistry));
 	}
 
 	@Test
@@ -86,6 +93,7 @@ class ReservationServiceTests {
 				.containsExactly(new BigDecimal("125000.50"), new BigDecimal("85000.25"));
 		assertThat(response.createdAt()).isEqualTo(NOW);
 		assertThat(response.updatedAt()).isEqualTo(NOW);
+		assertThat(meterRegistry.get("reservation_created").counter().count()).isEqualTo(1);
 	}
 
 	@Test

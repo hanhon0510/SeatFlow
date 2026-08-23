@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.seatflow.observability.BusinessMetrics;
+
 @Service
 public class TicketService {
 
@@ -14,10 +16,15 @@ public class TicketService {
 
 	private final TicketMapper ticketMapper;
 	private final TicketCodeGenerator ticketCodeGenerator;
+	private final BusinessMetrics businessMetrics;
 
-	public TicketService(TicketMapper ticketMapper, TicketCodeGenerator ticketCodeGenerator) {
+	public TicketService(
+			TicketMapper ticketMapper,
+			TicketCodeGenerator ticketCodeGenerator,
+			BusinessMetrics businessMetrics) {
 		this.ticketMapper = ticketMapper;
 		this.ticketCodeGenerator = ticketCodeGenerator;
+		this.businessMetrics = businessMetrics;
 	}
 
 	@Transactional
@@ -63,6 +70,7 @@ public class TicketService {
 					issuedAt,
 					issuedAt);
 			if (insertedRows == 1) {
+				businessMetrics.ticketIssued();
 				return;
 			}
 

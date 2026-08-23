@@ -30,6 +30,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seatflow.kafka.EventEnvelope;
 import com.seatflow.kafka.KafkaEventPublisher;
 import com.seatflow.kafka.SeatFlowKafkaProperties;
+import com.seatflow.observability.BusinessMetrics;
+
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 @ExtendWith(MockitoExtension.class)
 class OutboxPublisherTests {
@@ -50,6 +53,7 @@ class OutboxPublisherTests {
 
 	private SeatFlowKafkaProperties kafkaProperties;
 	private OutboxProperties outboxProperties;
+	private SimpleMeterRegistry meterRegistry;
 	private OutboxPublisher publisher;
 
 	@BeforeEach
@@ -61,6 +65,7 @@ class OutboxPublisherTests {
 				RETRY_DELAY,
 				RETRY_MAX_DELAY,
 				Duration.ofSeconds(5)));
+		meterRegistry = new SimpleMeterRegistry();
 		publisher = newPublisher();
 	}
 
@@ -108,6 +113,7 @@ class OutboxPublisherTests {
 		assertThat(published).isEqualTo(1);
 		verify(outboxMapper).scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY));
 		verify(outboxMapper, never()).markPublished(any(), any());
+		assertThat(meterRegistry.get("outbox_publish_failure").counter().count()).isEqualTo(1);
 	}
 
 	@Test
@@ -180,10 +186,11 @@ class OutboxPublisherTests {
 		return new OutboxPublisher(
 				outboxMapper,
 				eventPublisher,
-				kafkaProperties,
-				outboxProperties,
-				new ObjectMapper(),
-				Clock.fixed(NOW, ZoneOffset.UTC));
+			kafkaProperties,
+			outboxProperties,
+			new ObjectMapper(),
+			Clock.fixed(NOW, ZoneOffset.UTC),
+			new BusinessMetrics(meterRegistry));
 	}
 
 	private static OutboxEventRecord orderPaidEvent(String payload) {

@@ -19,6 +19,7 @@ import com.seatflow.event.EventSeatHoldCandidate;
 import com.seatflow.event.EventSeatMapper;
 import com.seatflow.event.EventSeatStatus;
 import com.seatflow.event.EventStatus;
+import com.seatflow.observability.BusinessMetrics;
 import com.seatflow.seatupdates.SeatStateNotifier;
 
 @Service
@@ -31,54 +32,64 @@ public class SeatHoldService {
 	private final SeatHoldProperties properties;
 	private final Clock clock;
 	private final SeatStateNotifier seatStateNotifier;
+	private final BusinessMetrics businessMetrics;
 
 	public SeatHoldService(
 			EventSeatMapper eventSeatMapper,
 			SeatHoldStore seatHoldStore,
 			SeatHoldProperties properties,
 			Clock clock,
-			SeatStateNotifier seatStateNotifier) {
+			SeatStateNotifier seatStateNotifier,
+			BusinessMetrics businessMetrics) {
 		this.eventSeatMapper = eventSeatMapper;
 		this.seatHoldStore = seatHoldStore;
 		this.properties = properties;
 		this.clock = clock;
 		this.seatStateNotifier = seatStateNotifier;
+		this.businessMetrics = businessMetrics;
 	}
 
 	public SeatHoldResponse createHold(UUID eventId, UUID userId, SeatHoldRequest request) {
-		Instant now = clock.instant();
-		List<UUID> requestedEventSeatIds = request.requestedEventSeatIds();
-		validateRequestSeatIds(requestedEventSeatIds);
+		try {
+			Instant now = clock.instant();
+			List<UUID> requestedEventSeatIds = request.requestedEventSeatIds();
+			validateRequestSeatIds(requestedEventSeatIds);
 
-		List<EventSeatHoldCandidate> candidates = orderedCandidates(
-				eventId,
-				requestedEventSeatIds,
-				eventSeatMapper.findHoldCandidates(eventId, requestedEventSeatIds));
-		candidates.forEach(candidate -> validateHoldCandidate(candidate, now));
+			List<EventSeatHoldCandidate> candidates = orderedCandidates(
+					eventId,
+					requestedEventSeatIds,
+					eventSeatMapper.findHoldCandidates(eventId, requestedEventSeatIds));
+			candidates.forEach(candidate -> validateHoldCandidate(candidate, now));
 
-		UUID holdId = UUID.randomUUID();
-		Duration ttl = properties.ttl();
-		Instant expiresAt = now.plus(ttl);
-		EventSeatHoldCandidate firstCandidate = candidates.getFirst();
-		SeatHoldRecord hold = new SeatHoldRecord(
-				holdId,
-				firstCandidate.eventId(),
-				candidates.stream().map(EventSeatHoldCandidate::eventSeatId).toList(),
-				candidates.stream().map(EventSeatHoldCandidate::seatId).toList(),
-				userId,
-				expiresAt);
-		if (!createHold(hold, ttl)) {
-			throw new SeatHoldConflictException();
+			UUID holdId = UUID.randomUUID();
+			Duration ttl = properties.ttl();
+			Instant expiresAt = now.plus(ttl);
+			EventSeatHoldCandidate firstCandidate = candidates.getFirst();
+			SeatHoldRecord hold = new SeatHoldRecord(
+					holdId,
+					firstCandidate.eventId(),
+					candidates.stream().map(EventSeatHoldCandidate::eventSeatId).toList(),
+					candidates.stream().map(EventSeatHoldCandidate::seatId).toList(),
+					userId,
+					expiresAt);
+			if (!createHold(hold, ttl)) {
+				throw new SeatHoldConflictException();
+			}
+			businessMetrics.seatHoldCreated();
+			notifySeatsHeld(hold);
+
+			return new SeatHoldResponse(
+					holdId,
+					firstCandidate.eventId(),
+					firstCandidate.eventSeatId(),
+					hold.eventSeatIds(),
+					userId,
+					expiresAt);
 		}
-		notifySeatsHeld(hold);
-
-		return new SeatHoldResponse(
-				holdId,
-				firstCandidate.eventId(),
-				firstCandidate.eventSeatId(),
-				hold.eventSeatIds(),
-				userId,
-				expiresAt);
+		catch (SeatHoldConflictException ex) {
+			businessMetrics.seatHoldConflict();
+			throw ex;
+		}
 	}
 
 	public SeatHoldResponse getHold(UUID holdId, UUID userId) {
@@ -102,6 +113,7 @@ public class SeatHoldService {
 		catch (RuntimeException ex) {
 			throw new SeatHoldStorageException(ex);
 		}
+		businessMetrics.seatHoldReleased();
 		notifySeatsReleased(hold);
 	}
 

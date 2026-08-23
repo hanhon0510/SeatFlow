@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seatflow.kafka.EventEnvelope;
 import com.seatflow.kafka.KafkaEventPublisher;
 import com.seatflow.kafka.SeatFlowKafkaProperties;
+import com.seatflow.observability.BusinessMetrics;
 
 @Service
 @ConditionalOnBean(KafkaEventPublisher.class)
@@ -27,6 +28,7 @@ public class OutboxPublisher {
 	private final OutboxProperties outboxProperties;
 	private final ObjectMapper objectMapper;
 	private final Clock clock;
+	private final BusinessMetrics businessMetrics;
 
 	public OutboxPublisher(
 			OutboxMapper outboxMapper,
@@ -34,13 +36,15 @@ public class OutboxPublisher {
 			SeatFlowKafkaProperties kafkaProperties,
 			OutboxProperties outboxProperties,
 			ObjectMapper objectMapper,
-			Clock clock) {
+			Clock clock,
+			BusinessMetrics businessMetrics) {
 		this.outboxMapper = outboxMapper;
 		this.eventPublisher = eventPublisher;
 		this.kafkaProperties = kafkaProperties;
 		this.outboxProperties = outboxProperties;
 		this.objectMapper = objectMapper;
 		this.clock = clock;
+		this.businessMetrics = businessMetrics;
 	}
 
 	@Transactional
@@ -82,6 +86,7 @@ public class OutboxPublisher {
 		if (outboxMapper.scheduleRetry(event.id(), nextAttemptAt) != 1) {
 			throw new OutboxPublishException();
 		}
+		businessMetrics.outboxPublishFailure();
 	}
 
 	private Duration retryDelay(int attemptCount) {

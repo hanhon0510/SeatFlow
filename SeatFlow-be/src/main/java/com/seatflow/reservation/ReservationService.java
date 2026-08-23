@@ -17,6 +17,7 @@ import com.seatflow.event.EventSeatStatus;
 import com.seatflow.hold.SeatHoldNotFoundException;
 import com.seatflow.hold.SeatHoldResponse;
 import com.seatflow.hold.SeatHoldService;
+import com.seatflow.observability.BusinessMetrics;
 
 @Service
 public class ReservationService {
@@ -25,16 +26,19 @@ public class ReservationService {
 	private final ReservationItemMapper reservationItemMapper;
 	private final SeatHoldService seatHoldService;
 	private final Clock clock;
+	private final BusinessMetrics businessMetrics;
 
 	public ReservationService(
 			ReservationMapper reservationMapper,
 			ReservationItemMapper reservationItemMapper,
 			SeatHoldService seatHoldService,
-			Clock clock) {
+			Clock clock,
+			BusinessMetrics businessMetrics) {
 		this.reservationMapper = reservationMapper;
 		this.reservationItemMapper = reservationItemMapper;
 		this.seatHoldService = seatHoldService;
 		this.clock = clock;
+		this.businessMetrics = businessMetrics;
 	}
 
 	@Transactional
@@ -84,6 +88,7 @@ public class ReservationService {
 			throw new ReservationConflictException();
 		}
 
+		businessMetrics.reservationCreated();
 		return ReservationResponse.from(reservation, items);
 	}
 

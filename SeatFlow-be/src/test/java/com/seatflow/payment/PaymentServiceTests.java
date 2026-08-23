@@ -35,6 +35,7 @@ import com.seatflow.order.OrderMapper;
 import com.seatflow.order.OrderNotFoundException;
 import com.seatflow.order.OrderRecord;
 import com.seatflow.order.OrderStatus;
+import com.seatflow.observability.BusinessMetrics;
 import com.seatflow.outbox.OutboxService;
 import com.seatflow.outbox.OutboxStorageException;
 import com.seatflow.reservation.ReservationItemMapper;
@@ -43,6 +44,8 @@ import com.seatflow.reservation.ReservationMapper;
 import com.seatflow.reservation.ReservationRecord;
 import com.seatflow.reservation.ReservationStatus;
 import com.seatflow.ticket.TicketService;
+
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTests {
@@ -87,10 +90,13 @@ class PaymentServiceTests {
 	@Mock
 	private ApplicationEventPublisher eventPublisher;
 
+	private SimpleMeterRegistry meterRegistry;
+
 	private PaymentService paymentService;
 
 	@BeforeEach
 	void setUp() {
+		meterRegistry = new SimpleMeterRegistry();
 		paymentService = new PaymentService(
 				paymentMapper,
 				orderMapper,
@@ -101,7 +107,8 @@ class PaymentServiceTests {
 				seatHoldStore,
 				outboxService,
 				eventPublisher,
-				Clock.fixed(NOW, ZoneOffset.UTC));
+				Clock.fixed(NOW, ZoneOffset.UTC),
+				new BusinessMetrics(meterRegistry));
 	}
 
 	@Test
@@ -138,6 +145,7 @@ class PaymentServiceTests {
 		assertThat(eventCaptor.getValue().hold().holdId()).isEqualTo(HOLD_ID);
 		assertThat(eventCaptor.getValue().hold().eventSeatIds())
 				.containsExactly(EVENT_SEAT_ID_1, EVENT_SEAT_ID_2);
+		assertThat(meterRegistry.get("payment_success").counter().count()).isEqualTo(1);
 	}
 
 	@ParameterizedTest
@@ -165,6 +173,7 @@ class PaymentServiceTests {
 		verify(ticketService, never()).issueTickets(any(), any(), any());
 		verify(outboxService, never()).recordOrderPaid(any(), any(), any(), any());
 		verify(eventPublisher, never()).publishEvent(any());
+		assertThat(meterRegistry.get("payment_failure").counter().count()).isEqualTo(1);
 	}
 
 	@Test

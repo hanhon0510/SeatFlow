@@ -28,8 +28,11 @@ import com.seatflow.event.EventSeatMapper;
 import com.seatflow.event.EventSeatRecord;
 import com.seatflow.event.EventSeatStatus;
 import com.seatflow.event.EventStatus;
+import com.seatflow.observability.BusinessMetrics;
 import com.seatflow.seatupdates.SeatStateChangeType;
 import com.seatflow.seatupdates.SeatStateNotifier;
+
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 class SeatHoldServiceTests {
 
@@ -50,7 +53,12 @@ class SeatHoldServiceTests {
 	void createsHoldForAvailableSeatDuringOpenSales() {
 		MutableClock clock = new MutableClock(NOW);
 		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
-		SeatHoldService service = service(candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE), store, clock);
+		SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		SeatHoldService service = service(
+				candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				store,
+				clock,
+				meterRegistry);
 
 		SeatHoldResponse response = service.createHold(EVENT_ID, USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
 
@@ -63,6 +71,7 @@ class SeatHoldServiceTests {
 		assertThat(store.hasSeatHold(EVENT_ID, EVENT_SEAT_ID)).isTrue();
 		assertThat(store.dataHolds).containsKey(response.holdId());
 		assertThat(store.userHolds).containsEntry(USER_ID, response.holdId());
+		assertThat(meterRegistry.get("seat_hold_created").counter().count()).isEqualTo(1);
 	}
 
 	@Test
@@ -195,12 +204,18 @@ class SeatHoldServiceTests {
 	void rejectsCompetingHoldForSameSeat() {
 		MutableClock clock = new MutableClock(NOW);
 		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
-		SeatHoldService service = service(candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE), store, clock);
+		SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		SeatHoldService service = service(
+				candidate(EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+				store,
+				clock,
+				meterRegistry);
 
 		service.createHold(EVENT_ID, USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
 
 		assertThatThrownBy(() -> service.createHold(EVENT_ID, OTHER_USER_ID, new SeatHoldRequest(EVENT_SEAT_ID)))
 				.isInstanceOf(SeatHoldConflictException.class);
+		assertThat(meterRegistry.get("seat_hold_conflict").counter().count()).isEqualTo(1);
 	}
 
 	@Test
@@ -433,9 +448,14 @@ class SeatHoldServiceTests {
 	void ownerCanReleaseMultiSeatHoldAndSeatsBecomeAvailable() {
 		MutableClock clock = new MutableClock(NOW);
 		FakeSeatHoldStore store = new FakeSeatHoldStore(clock);
-		SeatHoldService service = service(List.of(
-				candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
-				candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)), store, clock);
+		SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		SeatHoldService service = service(
+				List.of(
+						candidate(EVENT_SEAT_ID, SEAT_ID, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE),
+						candidate(EVENT_SEAT_ID_2, SEAT_ID_2, EventStatus.PUBLISHED, EventSeatStatus.AVAILABLE)),
+				store,
+				clock,
+				meterRegistry);
 		SeatHoldResponse created = service.createHold(
 				EVENT_ID,
 				USER_ID,
@@ -449,6 +469,7 @@ class SeatHoldServiceTests {
 		assertThat(store.userHolds).doesNotContainKey(USER_ID);
 		SeatHoldResponse secondHold = service.createHold(EVENT_ID, OTHER_USER_ID, new SeatHoldRequest(EVENT_SEAT_ID));
 		assertThat(secondHold.userId()).isEqualTo(OTHER_USER_ID);
+		assertThat(meterRegistry.get("seat_hold_released").counter().count()).isEqualTo(1);
 	}
 
 	@Test
@@ -534,6 +555,14 @@ class SeatHoldServiceTests {
 			EventSeatHoldCandidate candidate,
 			FakeSeatHoldStore store,
 			Clock clock,
+			SimpleMeterRegistry meterRegistry) {
+		return service(candidate == null ? List.of() : List.of(candidate), store, clock, meterRegistry);
+	}
+
+	private static SeatHoldService service(
+			EventSeatHoldCandidate candidate,
+			FakeSeatHoldStore store,
+			Clock clock,
 			SeatStateNotifier seatStateNotifier) {
 		return service(
 				candidate == null ? List.of() : List.of(candidate),
@@ -548,6 +577,14 @@ class SeatHoldServiceTests {
 			FakeSeatHoldStore store,
 			Clock clock) {
 		return service(candidates, store, clock, 8);
+	}
+
+	private static SeatHoldService service(
+			List<EventSeatHoldCandidate> candidates,
+			FakeSeatHoldStore store,
+			Clock clock,
+			SimpleMeterRegistry meterRegistry) {
+		return service(candidates, store, clock, 8, new RecordingSeatStateNotifier(), meterRegistry);
 	}
 
 	private static SeatHoldService service(
@@ -577,7 +614,24 @@ class SeatHoldServiceTests {
 				store,
 				new SeatHoldProperties(TTL, maxSeats),
 				clock,
-				seatStateNotifier);
+				seatStateNotifier,
+				new BusinessMetrics(new SimpleMeterRegistry()));
+	}
+
+	private static SeatHoldService service(
+			List<EventSeatHoldCandidate> candidates,
+			FakeSeatHoldStore store,
+			Clock clock,
+			int maxSeats,
+			SeatStateNotifier seatStateNotifier,
+			SimpleMeterRegistry meterRegistry) {
+		return new SeatHoldService(
+				new StubEventSeatMapper(candidates),
+				store,
+				new SeatHoldProperties(TTL, maxSeats),
+				clock,
+				seatStateNotifier,
+				new BusinessMetrics(meterRegistry));
 	}
 
 	private static EventSeatHoldCandidate candidate(EventStatus eventStatus, EventSeatStatus permanentStatus) {
