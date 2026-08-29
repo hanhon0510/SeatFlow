@@ -9,11 +9,11 @@
             <arg column="aggregate_type" javaType="java.lang.String" />
             <arg column="aggregate_id" javaType="java.util.UUID" />
             <arg column="event_type" javaType="java.lang.String" />
-            <arg column="event_version" javaType="int" />
+            <arg column="event_version" javaType="_int" />
             <arg column="payload" javaType="java.lang.String" />
             <arg column="correlation_id" javaType="java.util.UUID" />
             <arg column="status" javaType="com.seatflow.outbox.OutboxEventStatus" />
-            <arg column="attempt_count" javaType="int" />
+            <arg column="attempt_count" javaType="_int" />
             <arg column="created_at" javaType="java.time.Instant" />
             <arg column="published_at" javaType="java.time.Instant" />
             <arg column="next_attempt_at" javaType="java.time.Instant" />
