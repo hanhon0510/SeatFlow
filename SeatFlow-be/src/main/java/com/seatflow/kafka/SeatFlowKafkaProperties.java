@@ -3,6 +3,7 @@ package com.seatflow.kafka;
 import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 @ConfigurationProperties(prefix = "seatflow.kafka")
 public record SeatFlowKafkaProperties(
@@ -20,6 +21,9 @@ public record SeatFlowKafkaProperties(
 		this(enabled, topics, consumerGroups, retry, null);
 	}
 
+	// The two convenience constructors above leave Spring unable to pick a binding constructor
+	// on its own, which fails every context load with "No default constructor found".
+	@ConstructorBinding
 	public SeatFlowKafkaProperties {
 		topics = topics == null ? TopicNames.defaults() : topics.withDefaults();
 		consumerGroups = consumerGroups == null ? ConsumerGroups.defaults() : consumerGroups.withDefaults();
