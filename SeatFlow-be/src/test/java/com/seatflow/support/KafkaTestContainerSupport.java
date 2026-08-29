@@ -3,14 +3,19 @@ package com.seatflow.support;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.KafkaContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.utility.DockerImageName;
 
 public abstract class KafkaTestContainerSupport extends PostgresTestContainerSupport {
 
-	@Container
 	private static final KafkaContainer KAFKA = new KafkaContainer(
 			DockerImageName.parse("confluentinc/cp-kafka:7.7.1"));
+
+	// Started here rather than via @Container: the field is shared by every subclass, and
+	// JUnit would stop it after the first test class finishes, leaving the rest of the suite
+	// pointing at a dead container. Ryuk reaps it when the JVM exits.
+	static {
+		KAFKA.start();
+	}
 
 	@DynamicPropertySource
 	protected static void registerKafkaProperties(DynamicPropertyRegistry registry) {

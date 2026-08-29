@@ -3,15 +3,20 @@ package com.seatflow.support;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.utility.DockerImageName;
 
 public abstract class RedisTestContainerSupport extends PostgresTestContainerSupport {
 
-	@Container
 	private static final GenericContainer<?> REDIS = new GenericContainer<>(
 			DockerImageName.parse("redis:7-alpine"))
 			.withExposedPorts(6379);
+
+	// Started here rather than via @Container: the field is shared by every subclass, and
+	// JUnit would stop it after the first test class finishes, leaving the rest of the suite
+	// pointing at a dead container. Ryuk reaps it when the JVM exits.
+	static {
+		REDIS.start();
+	}
 
 	@DynamicPropertySource
 	protected static void registerRedisProperties(DynamicPropertyRegistry registry) {
