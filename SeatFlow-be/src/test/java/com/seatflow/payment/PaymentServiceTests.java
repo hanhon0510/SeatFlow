@@ -150,16 +150,11 @@ class PaymentServiceTests {
 
 	@ParameterizedTest
 	@MethodSource("failedOutcomes")
-	void failedOutcomesFailOrderWithoutSellingOrReleasing(
+	void failedOutcomesLeaveTheOrderRetryableWithoutSellingOrReleasing(
 			String token,
 			PaymentStatus expectedStatus,
 			String expectedFailureReason) {
 		stubPendingPayment(expectedStatus, expectedFailureReason);
-		when(reservationMapper.updateStatus(
-				RESERVATION_ID,
-				ReservationStatus.PENDING_PAYMENT,
-				ReservationStatus.PAYMENT_FAILED,
-				NOW)).thenReturn(1);
 
 		PaymentResponse response = paymentService.createPayment(
 				ORDER_ID,
@@ -168,7 +163,10 @@ class PaymentServiceTests {
 
 		assertThat(response.status()).isEqualTo(expectedStatus);
 		assertThat(response.failureReason()).isEqualTo(expectedFailureReason);
-		verify(orderMapper).updateStatus(ORDER_ID, USER_ID, OrderStatus.PENDING, OrderStatus.FAILED, NOW);
+		// A decline or provider timeout must not strand the seats the customer still holds:
+		// the order stays PENDING so the attempt can be repeated inside the hold window.
+		verify(orderMapper, never()).updateStatus(any(), any(), any(), any(), any());
+		verify(reservationMapper, never()).updateStatus(any(), any(), any(), any());
 		verify(eventSeatMapper, never()).markSold(any());
 		verify(ticketService, never()).issueTickets(any(), any(), any());
 		verify(outboxService, never()).recordOrderPaid(any(), any(), any(), any());
@@ -294,8 +292,11 @@ class PaymentServiceTests {
 		stubPurchaseData(reservation(ReservationStatus.PENDING_PAYMENT, NOW.plusSeconds(60)));
 		when(seatHoldStore.isHoldActive(any(SeatHoldRecord.class))).thenReturn(true);
 		when(paymentMapper.insertPending(any(), eq(ORDER_ID), eq(USER_ID), any(), eq(NOW))).thenReturn(1);
-		when(orderMapper.updateStatus(eq(ORDER_ID), eq(USER_ID), eq(OrderStatus.PENDING), any(), eq(NOW)))
-				.thenReturn(1);
+		if (terminalStatus == PaymentStatus.SUCCEEDED) {
+			// Only a successful attempt moves the order off PENDING.
+			when(orderMapper.updateStatus(eq(ORDER_ID), eq(USER_ID), eq(OrderStatus.PENDING), any(), eq(NOW)))
+					.thenReturn(1);
+		}
 		when(paymentMapper.updateStatus(any(), eq(PaymentStatus.PENDING), eq(terminalStatus),
 				eq(failureReason), eq(NOW))).thenReturn(1);
 		when(paymentMapper.findById(any())).thenReturn(payment(terminalStatus, failureReason));

@@ -46,11 +46,11 @@ import com.seatflow.event.EventSeatRecord;
 import com.seatflow.event.EventSeatStatus;
 import com.seatflow.event.EventSectionMapper;
 import com.seatflow.event.EventSectionRecord;
+import com.seatflow.hold.SeatHoldRecord;
+import com.seatflow.hold.SeatHoldStore;
 import com.seatflow.idempotency.IdempotencyMapper;
 import com.seatflow.idempotency.IdempotencyOperation;
 import com.seatflow.idempotency.IdempotencyRecord;
-import com.seatflow.hold.SeatHoldRecord;
-import com.seatflow.hold.SeatHoldStore;
 import com.seatflow.order.OrderCreateRequest;
 import com.seatflow.order.OrderMapper;
 import com.seatflow.order.OrderResponse;
@@ -184,7 +184,7 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 			"tok_timeout, TIMED_OUT, Payment timed out",
 			"tok_error, FAILED, Simulated provider error"
 	})
-	void failedPaymentOutcomesLeaveSeatsAvailable(
+	void failedPaymentOutcomesLeaveSeatsAvailableAndTheOrderRetryable(
 			String token,
 			String expectedStatus,
 			String expectedReason) throws Exception {
@@ -198,10 +198,12 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				.andExpect(jsonPath("$.amount").value(125000.00))
 				.andExpect(jsonPath("$.failureReason").value(expectedReason));
 
+		// A decline or timeout is not terminal: the customer still holds the seats, so the
+		// order has to stay payable for as long as that hold lasts.
 		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
-				.isEqualTo(OrderStatus.FAILED);
+				.isEqualTo(OrderStatus.PENDING);
 		assertThat(reservationMapper.findByIdAndUser(fixture.reservation().id(), fixture.user().id()).status())
-				.isEqualTo(ReservationStatus.PAYMENT_FAILED);
+				.isEqualTo(ReservationStatus.PENDING_PAYMENT);
 		assertThat(eventSeatMapper.findByEventId(fixture.inventory().event().id()))
 				.allSatisfy(seat -> {
 					assertThat(seat.permanentStatus()).isEqualTo(EventSeatStatus.AVAILABLE);
@@ -210,6 +212,30 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(countRows("outbox_events")).isZero();
 		verify(seatHoldStore, never()).releaseHold(any(SeatHoldRecord.class));
 	}
+
+	@Test
+	void retryAfterADeclineCanStillCompleteThePurchase() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-retry-after-decline@example.com",
+				List.of(new BigDecimal("125000.00")));
+
+		createPayment(fixture, "tok_declined")
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.status").value("DECLINED"));
+
+		// A new idempotency key is a genuinely new attempt, and the seats are still held.
+		createPayment(fixture, "tok_success")
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.status").value("SUCCEEDED"));
+
+		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
+				.isEqualTo(OrderStatus.PAID);
+		assertThat(reservationMapper.findByIdAndUser(fixture.reservation().id(), fixture.user().id()).status())
+				.isEqualTo(ReservationStatus.CONFIRMED);
+		assertThat(countRows("payments")).isEqualTo(2);
+		assertThat(countRows("tickets")).isEqualTo(1);
+	}
+
 
 	@Test
 	void foreignOrderIsNotExposed() throws Exception {

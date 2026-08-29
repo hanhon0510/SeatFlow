@@ -104,20 +104,17 @@ public class PaymentService {
 			throw new PaymentConflictException();
 		}
 
-		OrderStatus targetOrderStatus = outcome.successful() ? OrderStatus.PAID : OrderStatus.FAILED;
-		if (orderMapper.updateStatus(order.id(), userId, OrderStatus.PENDING, targetOrderStatus, now) != 1) {
-			throw new PaymentConflictException();
-		}
-
+		// A failed attempt deliberately leaves the order PENDING and the reservation
+		// PENDING_PAYMENT. Declines and provider timeouts are transient, and a terminal status
+		// here would forfeit seats the customer still holds — with no way to retry and, for a
+		// timeout, no way to reconcile a charge that may in fact have succeeded. The attempt is
+		// still recorded as its own payment row, so the audit trail keeps every outcome.
+		// Retries stay bounded by the payments rate limit and, absolutely, by the hold TTL.
 		if (outcome.successful()) {
+			if (orderMapper.updateStatus(order.id(), userId, OrderStatus.PENDING, OrderStatus.PAID, now) != 1) {
+				throw new PaymentConflictException();
+			}
 			completeSuccessfulPayment(order, reservation, lockedSeats, now);
-		}
-		else if (reservationMapper.updateStatus(
-					reservation.id(),
-					ReservationStatus.PENDING_PAYMENT,
-					ReservationStatus.PAYMENT_FAILED,
-					now) != 1) {
-			throw new PaymentConflictException();
 		}
 
 		if (paymentMapper.updateStatus(
