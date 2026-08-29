@@ -265,7 +265,7 @@ class EventPublishServiceTests {
 		}
 
 		@Override
-		public List<EventSeatLayoutRow> findPublishedLayoutByEventId(UUID eventId) {
+		public List<EventSeatLayoutRow> findPublishedLayoutByEventId(UUID eventId, UUID sectionId) {
 			return List.of();
 		}
 

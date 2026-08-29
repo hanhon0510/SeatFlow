@@ -10,18 +10,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.seatflow.ratelimit.RateLimitService;
+
+import jakarta.servlet.http.HttpServletRequest;
+
 @RestController
 @RequestMapping("/api/v1/events")
 public class PublicEventController {
 
 	private final PublicEventCatalogService eventCatalogService;
 	private final EventSeatLayoutService eventSeatLayoutService;
+	private final RateLimitService rateLimitService;
 
 	public PublicEventController(
 			PublicEventCatalogService eventCatalogService,
-			EventSeatLayoutService eventSeatLayoutService) {
+			EventSeatLayoutService eventSeatLayoutService,
+			RateLimitService rateLimitService) {
 		this.eventCatalogService = eventCatalogService;
 		this.eventSeatLayoutService = eventSeatLayoutService;
+		this.rateLimitService = rateLimitService;
 	}
 
 	@GetMapping
@@ -44,8 +51,11 @@ public class PublicEventController {
 	@GetMapping("/{eventId}/seats")
 	public EventSeatLayoutResponse seats(
 			@PathVariable UUID eventId,
-			@AuthenticationPrincipal Jwt jwt) {
-		return eventSeatLayoutService.getSeatLayout(eventId, userIdOrNull(jwt));
+			@RequestParam(required = false) UUID sectionId,
+			@AuthenticationPrincipal Jwt jwt,
+			HttpServletRequest servletRequest) {
+		rateLimitService.checkSeatLayout(servletRequest);
+		return eventSeatLayoutService.getSeatLayout(eventId, userIdOrNull(jwt), sectionId);
 	}
 
 	private static UUID userIdOrNull(Jwt jwt) {

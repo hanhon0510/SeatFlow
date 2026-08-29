@@ -113,7 +113,7 @@ class EventSeatMapperIntegrationTests extends PostgresTestContainerSupport {
 				event.id(),
 				orchestraA2.id());
 
-		List<EventSeatLayoutRow> rows = eventSeatMapper.findPublishedLayoutByEventId(event.id());
+		List<EventSeatLayoutRow> rows = eventSeatMapper.findPublishedLayoutByEventId(event.id(), null);
 
 		assertThat(rows).hasSize(3);
 		assertThat(rows).extracting(EventSeatLayoutRow::sectionName)
@@ -143,7 +143,7 @@ class EventSeatMapperIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(eventSeatMapper.insertForDraftEvent(event.id())).isEqualTo(1);
 
 		assertThat(eventSeatMapper.countByEventId(event.id())).isEqualTo(1);
-		assertThat(eventSeatMapper.findPublishedLayoutByEventId(event.id())).isEmpty();
+		assertThat(eventSeatMapper.findPublishedLayoutByEventId(event.id(), null)).isEmpty();
 	}
 
 	@Test

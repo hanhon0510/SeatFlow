@@ -173,6 +173,9 @@
         JOIN venue_sections venue_section ON venue_section.id = seat.section_id
         WHERE e.id = #{eventId}
           AND e.status = 'PUBLISHED'
+        <if test="sectionId != null">
+          AND seat.section_id = #{sectionId}
+        </if>
         ORDER BY
             venue_section.display_order ASC,
             venue_section.name ASC,

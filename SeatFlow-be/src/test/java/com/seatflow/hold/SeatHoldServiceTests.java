@@ -725,7 +725,7 @@ class SeatHoldServiceTests {
 		}
 
 		@Override
-		public List<EventSeatLayoutRow> findPublishedLayoutByEventId(UUID eventId) {
+		public List<EventSeatLayoutRow> findPublishedLayoutByEventId(UUID eventId, UUID sectionId) {
 			throw new UnsupportedOperationException();
 		}
 

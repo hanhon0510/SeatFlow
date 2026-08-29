@@ -169,6 +169,7 @@ class EventSeatLayoutServiceTests {
 
 		private final List<EventSeatLayoutRow> rows;
 		private UUID requestedEventId;
+		private UUID requestedSectionId;
 
 		private InMemoryEventSeatMapper(List<EventSeatLayoutRow> rows) {
 			this.rows = rows;
@@ -210,8 +211,9 @@ class EventSeatLayoutServiceTests {
 		}
 
 		@Override
-		public List<EventSeatLayoutRow> findPublishedLayoutByEventId(UUID eventId) {
+		public List<EventSeatLayoutRow> findPublishedLayoutByEventId(UUID eventId, UUID sectionId) {
 			requestedEventId = eventId;
+			requestedSectionId = sectionId;
 			return rows;
 		}
 

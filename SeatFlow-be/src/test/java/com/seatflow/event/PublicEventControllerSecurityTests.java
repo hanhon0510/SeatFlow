@@ -25,6 +25,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.seatflow.hold.SeatHoldStore;
+import com.seatflow.ratelimit.RateLimitService;
 import com.seatflow.security.JwtConfig;
 import com.seatflow.security.JwtTokenService;
 import com.seatflow.security.SecurityConfig;
@@ -68,6 +69,9 @@ class PublicEventControllerSecurityTests {
 
 	@MockitoBean
 	private SeatHoldStore seatHoldStore;
+
+	@MockitoBean
+	private RateLimitService rateLimitService;
 
 	@Test
 	void unauthenticatedUserCanBrowsePublishedEvents() throws Exception {
@@ -126,7 +130,7 @@ class PublicEventControllerSecurityTests {
 		UUID eventId = UUID.randomUUID();
 		UUID sectionId = UUID.randomUUID();
 		UUID eventSeatId = UUID.randomUUID();
-		when(eventSeatMapper.findPublishedLayoutByEventId(eventId)).thenReturn(List.of(eventSeatRow(
+		when(eventSeatMapper.findPublishedLayoutByEventId(eventId, null)).thenReturn(List.of(eventSeatRow(
 				sectionId,
 				"Orchestra",
 				1,
@@ -158,7 +162,7 @@ class PublicEventControllerSecurityTests {
 		UUID eventId = UUID.randomUUID();
 		UUID sectionId = UUID.randomUUID();
 		UUID eventSeatId = UUID.randomUUID();
-		when(eventSeatMapper.findPublishedLayoutByEventId(eventId)).thenReturn(List.of(eventSeatRow(
+		when(eventSeatMapper.findPublishedLayoutByEventId(eventId, null)).thenReturn(List.of(eventSeatRow(
 				sectionId,
 				"Orchestra",
 				1,
@@ -181,7 +185,7 @@ class PublicEventControllerSecurityTests {
 	@Test
 	void draftEventSeatLayoutIsUnavailablePublicly() throws Exception {
 		UUID eventId = UUID.randomUUID();
-		when(eventSeatMapper.findPublishedLayoutByEventId(eventId)).thenReturn(List.of());
+		when(eventSeatMapper.findPublishedLayoutByEventId(eventId, null)).thenReturn(List.of());
 
 		mockMvc.perform(get("/api/v1/events/{eventId}/seats", eventId))
 				.andExpect(status().isNotFound())

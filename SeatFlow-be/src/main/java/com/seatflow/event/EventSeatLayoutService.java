@@ -22,12 +22,24 @@ public class EventSeatLayoutService {
 	}
 
 	public EventSeatLayoutResponse getSeatLayout(UUID eventId) {
-		return getSeatLayout(eventId, null);
+		return getSeatLayout(eventId, null, null);
 	}
 
 	public EventSeatLayoutResponse getSeatLayout(UUID eventId, UUID currentUserId) {
-		List<EventSeatLayoutRow> rows = eventSeatMapper.findPublishedLayoutByEventId(eventId);
+		return getSeatLayout(eventId, currentUserId, null);
+	}
+
+	/**
+	 * @param sectionId optional filter. A whole-venue layout is a row per seat plus a Redis
+	 *                  lookup per seat, so large venues should be fetched a section at a time;
+	 *                  omitting it keeps the original whole-map behaviour.
+	 */
+	public EventSeatLayoutResponse getSeatLayout(UUID eventId, UUID currentUserId, UUID sectionId) {
+		List<EventSeatLayoutRow> rows = eventSeatMapper.findPublishedLayoutByEventId(eventId, sectionId);
 		if (rows.isEmpty()) {
+			// An unknown event and an unknown section are both 404 here on purpose: telling them
+			// apart would mean running the unfiltered layout query, which is exactly the cost
+			// the section filter exists to avoid.
 			throw new EventNotFoundException();
 		}
 
