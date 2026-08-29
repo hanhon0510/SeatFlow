@@ -29,12 +29,28 @@ public class RateLimitService {
 		this.clientIpResolver = clientIpResolver;
 	}
 
+	/**
+	 * Two buckets, because they stop different attacks. The per-address bucket caps total login
+	 * volume from one source, which is what blocks a password spray across many accounts; the
+	 * per-address-and-email bucket caps attempts against a single account. Keying on the email
+	 * alone is deliberately avoided — it would let anyone lock a victim out of their own account.
+	 */
 	public void checkLogin(HttpServletRequest request, String email) {
-		check("login", clientIpResolver.resolve(request) + "|" + normalizeEmail(email), properties.login());
+		String clientIp = clientIpResolver.resolve(request);
+		check("login-ip", clientIp, properties.loginPerIp());
+		check("login", clientIp + "|" + normalizeEmail(email), properties.login());
 	}
 
 	public void checkRegister(HttpServletRequest request, String email) {
 		check("register", clientIpResolver.resolve(request) + "|" + normalizeEmail(email), properties.register());
+	}
+
+	/**
+	 * The seat layout is the heaviest read in the system and is served unauthenticated, so it
+	 * needs an address-scoped bucket of its own rather than inheriting the write-path limits.
+	 */
+	public void checkSeatLayout(HttpServletRequest request) {
+		check("seat-layout", clientIpResolver.resolve(request), properties.seatLayout());
 	}
 
 	public void checkHold(UUID userId) {

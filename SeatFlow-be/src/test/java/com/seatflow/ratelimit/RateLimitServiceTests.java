@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -28,9 +29,41 @@ class RateLimitServiceTests {
 		service.checkLogin(new MockHttpServletRequest(), " User@Example.COM ");
 		service.checkLogin(new MockHttpServletRequest(), "user@example.com");
 
+		org.mockito.Mockito.verify(limiter, org.mockito.Mockito.times(4))
+				.consume(keyCaptor.capture(), eq(2), eq(Duration.ofMinutes(1)));
+		List<String> keys = keyCaptor.getAllValues();
+		assertThat(keys.get(1)).isEqualTo(keys.get(3));
+	}
+
+	@Test
+	void loginSpreadAcrossAccountsStillSharesOneAddressBucket() {
+		RedisRateLimiter limiter = limiter();
+		RateLimitService service = service(limiter, "203.0.113.10");
+		ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+
+		service.checkLogin(new MockHttpServletRequest(), "victim-one@example.com");
+		service.checkLogin(new MockHttpServletRequest(), "victim-two@example.com");
+
+		org.mockito.Mockito.verify(limiter, org.mockito.Mockito.times(4))
+				.consume(keyCaptor.capture(), eq(2), eq(Duration.ofMinutes(1)));
+		List<String> keys = keyCaptor.getAllValues();
+		// Without the shared address bucket, every new account name would hand a sprayer a
+		// fresh allowance and the throttle would never bite.
+		assertThat(keys.get(0)).isEqualTo(keys.get(2));
+		assertThat(keys.get(1)).isNotEqualTo(keys.get(3));
+	}
+
+	@Test
+	void seatLayoutIsScopedByClientAddress() {
+		RedisRateLimiter limiter = limiter();
+		ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+
+		service(limiter, "203.0.113.10").checkSeatLayout(new MockHttpServletRequest());
+		service(limiter, "203.0.113.11").checkSeatLayout(new MockHttpServletRequest());
+
 		org.mockito.Mockito.verify(limiter, org.mockito.Mockito.times(2))
 				.consume(keyCaptor.capture(), eq(2), eq(Duration.ofMinutes(1)));
-		assertThat(keyCaptor.getAllValues().get(0)).isEqualTo(keyCaptor.getAllValues().get(1));
+		assertThat(keyCaptor.getAllValues().get(0)).isNotEqualTo(keyCaptor.getAllValues().get(1));
 	}
 
 	@Test
@@ -67,6 +100,9 @@ class RateLimitServiceTests {
 		RateLimitProperties properties = new RateLimitProperties(
 				false,
 				false,
+				List.of(),
+				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),
+				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),
 				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),
 				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),
 				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),
@@ -99,6 +135,9 @@ class RateLimitServiceTests {
 		return new RateLimitProperties(
 				true,
 				false,
+				List.of(),
+				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),
+				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),
 				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),
 				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),
 				new RateLimitProperties.Policy(2, Duration.ofMinutes(1)),

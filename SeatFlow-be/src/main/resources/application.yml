@@ -112,10 +112,19 @@ seatflow:
     max-seats: ${SEATFLOW_HOLD_MAX_SEATS:8}
   rate-limit:
     enabled: ${SEATFLOW_RATE_LIMIT_ENABLED:true}
+    # Forwarding headers are honoured only when the peer matches trusted-proxies, so leaving
+    # that list empty disables header parsing no matter what this flag says.
     trust-proxy-headers: ${SEATFLOW_RATE_LIMIT_TRUST_PROXY_HEADERS:false}
+    trusted-proxies: ${SEATFLOW_RATE_LIMIT_TRUSTED_PROXIES:}
     login:
       limit: ${SEATFLOW_RATE_LIMIT_LOGIN_LIMIT:5}
       window: ${SEATFLOW_RATE_LIMIT_LOGIN_WINDOW:1m}
+    login-per-ip:
+      limit: ${SEATFLOW_RATE_LIMIT_LOGIN_IP_LIMIT:30}
+      window: ${SEATFLOW_RATE_LIMIT_LOGIN_IP_WINDOW:15m}
+    seat-layout:
+      limit: ${SEATFLOW_RATE_LIMIT_SEAT_LAYOUT_LIMIT:60}
+      window: ${SEATFLOW_RATE_LIMIT_SEAT_LAYOUT_WINDOW:1m}
     register:
       limit: ${SEATFLOW_RATE_LIMIT_REGISTER_LIMIT:3}
       window: ${SEATFLOW_RATE_LIMIT_REGISTER_WINDOW:10m}
