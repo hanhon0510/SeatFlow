@@ -27,4 +27,8 @@ public interface ReservationMapper {
 			@Param("expectedStatus") ReservationStatus expectedStatus,
 			@Param("newStatus") ReservationStatus newStatus,
 			@Param("updatedAt") Instant updatedAt);
+
+	int closeLapsed(
+			@Param("now") Instant now,
+			@Param("limit") int limit);
 }

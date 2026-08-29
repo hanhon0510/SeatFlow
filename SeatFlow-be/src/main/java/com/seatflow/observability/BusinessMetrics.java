@@ -12,6 +12,7 @@ public class BusinessMetrics {
 	private final Counter seatHoldConflict;
 	private final Counter seatHoldReleased;
 	private final Counter reservationCreated;
+	private final Counter reservationExpired;
 	private final Counter paymentSuccess;
 	private final Counter paymentFailure;
 	private final Counter ticketIssued;
@@ -23,6 +24,7 @@ public class BusinessMetrics {
 		this.seatHoldConflict = counter(registry, "seat_hold_conflict", "Seat hold conflicts");
 		this.seatHoldReleased = counter(registry, "seat_hold_released", "Seat holds released");
 		this.reservationCreated = counter(registry, "reservation_created", "Reservations created");
+		this.reservationExpired = counter(registry, "reservation_expired", "Reservations closed by the retention sweep");
 		this.paymentSuccess = counter(registry, "payment_success", "Successful payments");
 		this.paymentFailure = counter(registry, "payment_failure", "Failed payments");
 		this.ticketIssued = counter(registry, "ticket_issued", "Tickets issued");
@@ -44,6 +46,12 @@ public class BusinessMetrics {
 
 	public void reservationCreated() {
 		reservationCreated.increment();
+	}
+
+	public void reservationExpired(int count) {
+		if (count > 0) {
+			reservationExpired.increment(count);
+		}
 	}
 
 	public void paymentSuccess() {

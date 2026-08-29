@@ -25,3 +25,6 @@ seatflow:
   outbox:
     publisher:
       enabled: false
+  # Tests drive the sweep explicitly; a background thread would race their fixtures.
+  maintenance:
+    enabled: false

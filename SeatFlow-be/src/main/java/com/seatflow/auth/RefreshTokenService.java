@@ -81,8 +81,8 @@ public class RefreshTokenService {
 		}
 	}
 
-	public int deleteExpiredTokens() {
-		return refreshTokenMapper.deleteExpired(clock.instant());
+	public int deleteExpiredTokens(int limit) {
+		return refreshTokenMapper.deleteExpired(clock.instant(), limit);
 	}
 
 	private IssuedRefreshToken issueRefreshToken(UserRecord user) {

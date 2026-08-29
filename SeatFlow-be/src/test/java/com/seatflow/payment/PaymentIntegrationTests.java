@@ -51,6 +51,8 @@ import com.seatflow.hold.SeatHoldStore;
 import com.seatflow.idempotency.IdempotencyMapper;
 import com.seatflow.idempotency.IdempotencyOperation;
 import com.seatflow.idempotency.IdempotencyRecord;
+import com.seatflow.maintenance.MaintenanceService;
+import com.seatflow.maintenance.MaintenanceSummary;
 import com.seatflow.order.OrderCreateRequest;
 import com.seatflow.order.OrderMapper;
 import com.seatflow.order.OrderResponse;
@@ -104,6 +106,9 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 
 	@Autowired
 	private OrderMapper orderMapper;
+
+	@Autowired
+	private MaintenanceService maintenanceService;
 
 	@Autowired
 	private ReservationMapper reservationMapper;
@@ -236,6 +241,75 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(countRows("tickets")).isEqualTo(1);
 	}
 
+	@Test
+	void maintenanceSweepClosesAnAbandonedCheckoutAsCancelled() {
+		PaymentFixture fixture = insertFixture(
+				"payment-sweep-abandoned@example.com",
+				List.of(new BigDecimal("125000.00")));
+		lapseHoldWindow(fixture);
+
+		MaintenanceSummary summary = maintenanceService.sweep();
+
+		assertThat(summary.expiredReservations()).isEqualTo(1);
+		assertThat(summary.closedOrders()).isEqualTo(1);
+		assertThat(reservationMapper.findByIdAndUser(fixture.reservation().id(), fixture.user().id()).status())
+				.isEqualTo(ReservationStatus.EXPIRED);
+		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
+				.isEqualTo(OrderStatus.CANCELLED);
+	}
+
+	@Test
+	void maintenanceSweepClosesACheckoutThatFailedPaymentAsFailed() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-sweep-declined@example.com",
+				List.of(new BigDecimal("125000.00")));
+		createPayment(fixture, "tok_declined").andExpect(status().isCreated());
+		lapseHoldWindow(fixture);
+
+		maintenanceService.sweep();
+
+		// An abandoned checkout and one that actually tried to pay stay tellable apart.
+		assertThat(reservationMapper.findByIdAndUser(fixture.reservation().id(), fixture.user().id()).status())
+				.isEqualTo(ReservationStatus.PAYMENT_FAILED);
+		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
+				.isEqualTo(OrderStatus.FAILED);
+	}
+
+	@Test
+	void maintenanceSweepLeavesALiveCheckoutAlone() {
+		PaymentFixture fixture = insertFixture(
+				"payment-sweep-live@example.com",
+				List.of(new BigDecimal("125000.00")));
+
+		MaintenanceSummary summary = maintenanceService.sweep();
+
+		assertThat(summary.expiredReservations()).isZero();
+		assertThat(summary.closedOrders()).isZero();
+		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
+				.isEqualTo(OrderStatus.PENDING);
+	}
+
+	@Test
+	void maintenanceSweepLeavesAPaidOrderAlone() throws Exception {
+		PaymentFixture fixture = insertFixture(
+				"payment-sweep-paid@example.com",
+				List.of(new BigDecimal("125000.00")));
+		createPayment(fixture, "tok_success").andExpect(status().isCreated());
+		lapseHoldWindow(fixture);
+
+		maintenanceService.sweep();
+
+		assertThat(reservationMapper.findByIdAndUser(fixture.reservation().id(), fixture.user().id()).status())
+				.isEqualTo(ReservationStatus.CONFIRMED);
+		assertThat(orderMapper.findByIdAndUser(fixture.order().id(), fixture.user().id()).status())
+				.isEqualTo(OrderStatus.PAID);
+	}
+
+	private void lapseHoldWindow(PaymentFixture fixture) {
+		assertThat(jdbcTemplate.update(
+				"UPDATE reservations SET expires_at = created_at WHERE id = ?",
+				fixture.reservation().id())).isEqualTo(1);
+	}
 
 	@Test
 	void foreignOrderIsNotExposed() throws Exception {

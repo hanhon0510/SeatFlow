@@ -163,3 +163,10 @@ seatflow:
       # batch-size * publish-timeout.
       pass-timeout: ${SEATFLOW_OUTBOX_PUBLISHER_PASS_TIMEOUT:30s}
       fixed-delay-ms: ${SEATFLOW_OUTBOX_PUBLISHER_FIXED_DELAY_MS:5000}
+  maintenance:
+    enabled: ${SEATFLOW_MAINTENANCE_ENABLED:true}
+    fixed-delay-ms: ${SEATFLOW_MAINTENANCE_FIXED_DELAY_MS:60000}
+    batch-size: ${SEATFLOW_MAINTENANCE_BATCH_SIZE:500}
+    max-batches-per-run: ${SEATFLOW_MAINTENANCE_MAX_BATCHES_PER_RUN:20}
+    outbox-retention: ${SEATFLOW_MAINTENANCE_OUTBOX_RETENTION:7d}
+    processed-event-retention: ${SEATFLOW_MAINTENANCE_PROCESSED_EVENT_RETENTION:7d}

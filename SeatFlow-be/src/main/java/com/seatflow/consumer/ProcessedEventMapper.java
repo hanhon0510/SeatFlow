@@ -11,6 +11,10 @@ public interface ProcessedEventMapper {
 
 	int insert(ProcessedEventRecord record);
 
+	int deleteProcessedBefore(
+			@Param("threshold") Instant threshold,
+			@Param("limit") int limit);
+
 	ProcessedEventRecord findByConsumerAndEvent(
 			@Param("consumerName") String consumerName,
 			@Param("eventId") UUID eventId);

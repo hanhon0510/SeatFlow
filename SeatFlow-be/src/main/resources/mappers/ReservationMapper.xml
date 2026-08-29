@@ -101,4 +101,35 @@
         WHERE id = #{id}
           AND status = #{expectedStatus}
     </update>
+
+    <!--
+        Closes reservations whose hold window has lapsed. A reservation that saw at least one
+        payment attempt is distinguished as PAYMENT_FAILED so abandoned checkouts and failed
+        ones stay tellable apart in reporting. Batched and SKIP LOCKED so the sweep never grows
+        into a long transaction, and safe against a live checkout: the payment path already
+        rejects any reservation whose expires_at has passed.
+    -->
+    <update id="closeLapsed">
+        UPDATE reservations target
+        SET
+            status = CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM orders o
+                    JOIN payments p ON p.order_id = o.id
+                    WHERE o.reservation_id = target.id
+                ) THEN 'PAYMENT_FAILED'
+                ELSE 'EXPIRED'
+            END,
+            updated_at = #{now}
+        WHERE target.id IN (
+            SELECT id
+            FROM reservations
+            WHERE status = 'PENDING_PAYMENT'
+              AND expires_at &lt;= #{now}
+            ORDER BY expires_at
+            LIMIT #{limit}
+            FOR UPDATE SKIP LOCKED
+        )
+    </update>
 </mapper>

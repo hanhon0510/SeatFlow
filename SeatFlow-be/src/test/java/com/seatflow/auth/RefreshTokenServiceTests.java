@@ -121,7 +121,7 @@ class RefreshTokenServiceTests {
 				NOW.plusSeconds(REFRESH_EXPIRES_IN_SECONDS)));
 		RefreshTokenService service = refreshTokenService(refreshTokenMapper, new SingleUserMapper(user), generator);
 
-		assertThat(service.deleteExpiredTokens()).isEqualTo(1);
+		assertThat(service.deleteExpiredTokens(100)).isEqualTo(1);
 		assertThat(refreshTokenMapper.findByHash(generator.hashToken("expired-refresh-token"))).isNull();
 		assertThat(refreshTokenMapper.findActiveByHash(generator.hashToken("active-refresh-token"), NOW)).isNotNull();
 	}
@@ -219,10 +219,14 @@ class RefreshTokenServiceTests {
 		}
 
 		@Override
-		public int deleteExpired(Instant now) {
-			int before = tokensByHash.size();
-			tokensByHash.entrySet().removeIf(entry -> !entry.getValue().expiresAt().isAfter(now));
-			return before - tokensByHash.size();
+		public int deleteExpired(Instant now, int limit) {
+			List<String> expired = tokensByHash.entrySet().stream()
+					.filter(entry -> !entry.getValue().expiresAt().isAfter(now))
+					.map(Map.Entry::getKey)
+					.limit(limit)
+					.toList();
+			expired.forEach(tokensByHash::remove);
+			return expired.size();
 		}
 
 		private static RefreshTokenRecord revoked(RefreshTokenRecord refreshToken, Instant revokedAt) {

@@ -28,6 +28,17 @@
         ON CONFLICT (consumer_name, event_id) DO NOTHING
     </insert>
 
+    <delete id="deleteProcessedBefore">
+        DELETE FROM processed_events
+        WHERE id IN (
+            SELECT id
+            FROM processed_events
+            WHERE processed_at &lt;= #{threshold}
+            ORDER BY processed_at
+            LIMIT #{limit}
+        )
+    </delete>
+
     <select id="findByConsumerAndEvent" resultMap="ProcessedEventRecordResultMap">
         SELECT
             id,

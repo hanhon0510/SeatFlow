@@ -79,7 +79,7 @@ class RefreshTokenMapperIntegrationTests extends PostgresTestContainerSupport {
 		RefreshTokenRecord expired = insertRefreshToken(user, "expired", Instant.now().minusSeconds(1));
 		RefreshTokenRecord active = insertRefreshToken(user, "active", Instant.now().plusSeconds(3600));
 
-		int deletedRows = refreshTokenMapper.deleteExpired(Instant.now());
+		int deletedRows = refreshTokenMapper.deleteExpired(Instant.now(), 100);
 
 		assertThat(deletedRows).isEqualTo(1);
 		assertThat(refreshTokenMapper.findByHash(expired.tokenHash())).isNull();

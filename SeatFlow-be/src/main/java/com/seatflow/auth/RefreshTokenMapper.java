@@ -19,5 +19,5 @@ public interface RefreshTokenMapper {
 
 	int revokeAllUserTokens(@Param("userId") UUID userId, @Param("revokedAt") Instant revokedAt);
 
-	int deleteExpired(@Param("now") Instant now);
+	int deleteExpired(@Param("now") Instant now, @Param("limit") int limit);
 }

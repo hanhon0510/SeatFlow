@@ -15,6 +15,10 @@ public interface IdempotencyMapper {
 			@Param("idempotencyKey") String idempotencyKey,
 			@Param("now") Instant now);
 
+	int deleteExpired(
+			@Param("now") Instant now,
+			@Param("limit") int limit);
+
 	int insert(IdempotencyRecord record);
 
 	IdempotencyRecord findByScope(

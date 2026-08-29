@@ -32,6 +32,10 @@ public interface OrderMapper {
 			@Param("limit") int limit,
 			@Param("offset") long offset);
 
+	int closeForClosedReservations(
+			@Param("now") Instant now,
+			@Param("limit") int limit);
+
 	int updateStatus(
 			@Param("id") UUID id,
 			@Param("userId") UUID userId,

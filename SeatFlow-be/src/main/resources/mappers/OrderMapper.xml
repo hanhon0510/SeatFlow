@@ -100,4 +100,31 @@
           AND user_id = #{userId}
           AND status = #{expectedStatus}
     </update>
+
+    <!--
+        Closes orders left PENDING against a reservation that has since been closed. Until this
+        ran, such an order sat in the customer's order list forever and held the
+        orders_active_reservation_uq slot against a reservation that can never be paid.
+        Orders that saw a payment attempt close as FAILED, the rest as CANCELLED.
+    -->
+    <update id="closeForClosedReservations">
+        UPDATE orders target
+        SET
+            status = CASE
+                WHEN EXISTS (SELECT 1 FROM payments p WHERE p.order_id = target.id)
+                    THEN 'FAILED'
+                ELSE 'CANCELLED'
+            END,
+            updated_at = #{now}
+        WHERE target.id IN (
+            SELECT o.id
+            FROM orders o
+            JOIN reservations r ON r.id = o.reservation_id
+            WHERE o.status = 'PENDING'
+              AND r.status IN ('EXPIRED', 'CANCELLED', 'PAYMENT_FAILED')
+            ORDER BY o.created_at
+            LIMIT #{limit}
+            FOR UPDATE OF o SKIP LOCKED
+        )
+    </update>
 </mapper>
