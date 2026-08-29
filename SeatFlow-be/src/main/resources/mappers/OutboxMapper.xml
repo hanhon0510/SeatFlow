@@ -66,15 +66,39 @@
         )
     </insert>
 
-    <select id="lockPending" resultMap="OutboxEventRecordResultMap">
-        SELECT
-            <include refid="OutboxEventColumns" />
-        FROM outbox_events
-        WHERE status = 'PENDING'
-          AND next_attempt_at &lt;= NOW()
-        ORDER BY created_at
-        FOR UPDATE SKIP LOCKED
-        LIMIT #{batchSize}
+    <!--
+        Claims a batch in one atomic statement so the publisher never holds a transaction
+        open while it talks to Kafka. The lease (next_attempt_at = leaseUntil) hides the
+        claimed rows from other pollers; if this process dies mid-publish they simply become
+        eligible again once the lease lapses. A duplicate publish is harmless because the
+        outbox id is reused as the envelope eventId and consumers dedupe on processed_events.
+    -->
+    <select id="claimPending" resultMap="OutboxEventRecordResultMap">
+        UPDATE outbox_events target
+        SET next_attempt_at = #{leaseUntil}
+        FROM (
+            SELECT id
+            FROM outbox_events
+            WHERE status = 'PENDING'
+              AND next_attempt_at &lt;= #{now}
+            ORDER BY created_at
+            FOR UPDATE SKIP LOCKED
+            LIMIT #{batchSize}
+        ) claimed
+        WHERE target.id = claimed.id
+        RETURNING
+            target.id,
+            target.aggregate_type,
+            target.aggregate_id,
+            target.event_type,
+            target.event_version,
+            target.payload::text AS payload,
+            target.correlation_id,
+            target.status,
+            target.attempt_count,
+            target.created_at,
+            target.published_at,
+            target.next_attempt_at
     </select>
 
     <select id="countPending" resultType="long">
@@ -100,6 +124,18 @@
         WHERE id = #{id}
           AND status = 'PENDING'
     </update>
+
+    <delete id="deletePublishedBefore">
+        DELETE FROM outbox_events
+        WHERE id IN (
+            SELECT id
+            FROM outbox_events
+            WHERE status = 'PUBLISHED'
+              AND published_at &lt;= #{threshold}
+            ORDER BY published_at
+            LIMIT #{limit}
+        )
+    </delete>
 
     <select id="findById" resultMap="OutboxEventRecordResultMap">
         SELECT

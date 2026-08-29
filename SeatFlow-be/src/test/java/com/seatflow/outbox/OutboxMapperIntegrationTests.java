@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,8 +19,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.seatflow.support.PostgresTestContainerSupport;
@@ -36,9 +35,6 @@ class OutboxMapperIntegrationTests extends PostgresTestContainerSupport {
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
 
-	@Autowired
-	private PlatformTransactionManager transactionManager;
-
 	@BeforeEach
 	void setUp() {
 		cleanDatabase();
@@ -49,57 +45,89 @@ class OutboxMapperIntegrationTests extends PostgresTestContainerSupport {
 		cleanDatabase();
 	}
 
+	/**
+	 * The claim has to hide rows from other pollers without an enclosing transaction — that is
+	 * the whole point of the lease. If this ever needed a transaction again, the publisher would
+	 * be back to holding one open across Kafka round trips.
+	 */
 	@Test
-	void lockPendingSkipsRowsAlreadyLockedByAnotherPublisher() throws Exception {
+	void claimPendingLeasesRowsWithoutHoldingATransactionOpen() {
 		OutboxEventRecord first = event(NOW.minusSeconds(2));
 		OutboxEventRecord second = event(NOW.minusSeconds(1));
 		assertThat(outboxMapper.insert(first)).isEqualTo(1);
 		assertThat(outboxMapper.insert(second)).isEqualTo(1);
 
-		CountDownLatch firstPublisherLocked = new CountDownLatch(1);
-		CountDownLatch releaseFirstPublisher = new CountDownLatch(1);
+		Instant leaseUntil = NOW.plusSeconds(60);
+		List<OutboxEventRecord> firstClaim = outboxMapper.claimPending(1, NOW, leaseUntil);
+
+		assertThat(firstClaim).hasSize(1);
+		assertThat(firstClaim.getFirst().id()).isEqualTo(first.id());
+		assertThat(firstClaim.getFirst().nextAttemptAt()).isEqualTo(leaseUntil);
+
+		List<OutboxEventRecord> secondClaim = outboxMapper.claimPending(5, NOW, leaseUntil);
+
+		assertThat(secondClaim).hasSize(1);
+		assertThat(secondClaim.getFirst().id()).isEqualTo(second.id());
+		assertThat(outboxMapper.claimPending(5, NOW, leaseUntil)).isEmpty();
+	}
+
+	@Test
+	void claimPendingReclaimsRowsOnceTheLeaseLapses() {
+		OutboxEventRecord pending = event(NOW.minusSeconds(2));
+		assertThat(outboxMapper.insert(pending)).isEqualTo(1);
+
+		Instant leaseUntil = NOW.plusSeconds(60);
+		assertThat(outboxMapper.claimPending(5, NOW, leaseUntil)).hasSize(1);
+		assertThat(outboxMapper.claimPending(5, NOW.plusSeconds(30), leaseUntil)).isEmpty();
+
+		// A publisher that dies mid-pass must not strand its batch.
+		assertThat(outboxMapper.claimPending(5, NOW.plusSeconds(61), NOW.plusSeconds(121))).hasSize(1);
+	}
+
+	@Test
+	void concurrentClaimsNeverHandTheSameRowToTwoPublishers() throws Exception {
+		OutboxEventRecord first = event(NOW.minusSeconds(2));
+		OutboxEventRecord second = event(NOW.minusSeconds(1));
+		assertThat(outboxMapper.insert(first)).isEqualTo(1);
+		assertThat(outboxMapper.insert(second)).isEqualTo(1);
+
+		CountDownLatch start = new CountDownLatch(1);
 		ExecutorService executor = Executors.newFixedThreadPool(2);
-
 		try {
-			Future<List<OutboxEventRecord>> firstLock = executor.submit(() -> inTransaction(() -> {
-				List<OutboxEventRecord> locked = outboxMapper.lockPending(1);
-				firstPublisherLocked.countDown();
-				assertThat(releaseFirstPublisher.await(5, TimeUnit.SECONDS)).isTrue();
-				return locked;
-			}));
-			assertThat(firstPublisherLocked.await(5, TimeUnit.SECONDS)).isTrue();
+			Callable<List<OutboxEventRecord>> claim = () -> {
+				assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+				return outboxMapper.claimPending(2, NOW, NOW.plusSeconds(60));
+			};
+			Future<List<OutboxEventRecord>> left = executor.submit(claim);
+			Future<List<OutboxEventRecord>> right = executor.submit(claim);
+			start.countDown();
 
-			Future<List<OutboxEventRecord>> secondLock = executor.submit(() -> inTransaction(
-					() -> outboxMapper.lockPending(2)));
+			List<UUID> claimed = Stream
+					.concat(left.get(10, TimeUnit.SECONDS).stream(), right.get(10, TimeUnit.SECONDS).stream())
+					.map(OutboxEventRecord::id)
+					.toList();
 
-			List<OutboxEventRecord> secondPublisherRows = secondLock.get(5, TimeUnit.SECONDS);
-			releaseFirstPublisher.countDown();
-			List<OutboxEventRecord> firstPublisherRows = firstLock.get(5, TimeUnit.SECONDS);
-
-			assertThat(firstPublisherRows).hasSize(1);
-			assertThat(secondPublisherRows).hasSize(1);
-			assertThat(secondPublisherRows.getFirst().id()).isNotEqualTo(firstPublisherRows.getFirst().id());
-			assertThat(List.of(firstPublisherRows.getFirst().id(), secondPublisherRows.getFirst().id()))
-					.containsExactlyInAnyOrder(first.id(), second.id());
+			assertThat(claimed).doesNotHaveDuplicates();
+			assertThat(claimed).containsExactlyInAnyOrder(first.id(), second.id());
 		}
 		finally {
-			releaseFirstPublisher.countDown();
 			executor.shutdownNow();
 		}
 	}
 
-	private <T> T inTransaction(Callable<T> action) {
-		return new TransactionTemplate(transactionManager).execute(status -> {
-			try {
-				return action.call();
-			}
-			catch (RuntimeException ex) {
-				throw ex;
-			}
-			catch (Exception ex) {
-				throw new IllegalStateException(ex);
-			}
-		});
+	@Test
+	void deletePublishedBeforeRemovesOnlySettledRowsPastTheThreshold() {
+		OutboxEventRecord stillPending = event(NOW.minusSeconds(600));
+		assertThat(outboxMapper.insert(stillPending)).isEqualTo(1);
+		OutboxEventRecord published = event(NOW.minusSeconds(600));
+		assertThat(outboxMapper.insert(published)).isEqualTo(1);
+		assertThat(outboxMapper.markPublished(published.id(), NOW.minusSeconds(300))).isEqualTo(1);
+
+		assertThat(outboxMapper.deletePublishedBefore(NOW.minusSeconds(400), 100)).isZero();
+		assertThat(outboxMapper.deletePublishedBefore(NOW.minusSeconds(200), 100)).isEqualTo(1);
+
+		assertThat(outboxMapper.findById(published.id())).isNull();
+		assertThat(outboxMapper.findById(stillPending.id())).isNotNull();
 	}
 
 	private static OutboxEventRecord event(Instant createdAt) {

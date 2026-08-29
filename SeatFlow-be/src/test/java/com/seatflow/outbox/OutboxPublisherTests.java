@@ -44,6 +44,7 @@ class OutboxPublisherTests {
 	private static final Instant NOW = Instant.parse("2026-08-10T12:00:00Z");
 	private static final Duration RETRY_DELAY = Duration.ofSeconds(20);
 	private static final Duration RETRY_MAX_DELAY = Duration.ofMinutes(2);
+	private static final Duration CLAIM_LEASE = Duration.ofMinutes(1);
 
 	@Mock
 	private OutboxMapper outboxMapper;
@@ -64,7 +65,9 @@ class OutboxPublisherTests {
 				50,
 				RETRY_DELAY,
 				RETRY_MAX_DELAY,
-				Duration.ofSeconds(5)));
+				Duration.ofSeconds(5),
+				Duration.ofMinutes(1),
+				Duration.ofSeconds(30)));
 		meterRegistry = new SimpleMeterRegistry();
 		publisher = newPublisher();
 	}
@@ -75,7 +78,7 @@ class OutboxPublisherTests {
 				{"orderId":"%s","paymentId":"%s"}
 				""".formatted(AGGREGATE_ID, CORRELATION_ID));
 		CompletableFuture<SendResult<Object, Object>> sent = CompletableFuture.completedFuture(null);
-		when(outboxMapper.lockPending(50)).thenReturn(List.of(event));
+		when(claimPending(50)).thenReturn(List.of(event));
 		when(eventPublisher.publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class)))
 				.thenReturn(sent);
 		when(outboxMapper.markPublished(EVENT_ID, NOW)).thenReturn(1);
@@ -103,14 +106,14 @@ class OutboxPublisherTests {
 		OutboxEventRecord event = orderPaidEvent("{}");
 		CompletableFuture<SendResult<Object, Object>> failed = new CompletableFuture<>();
 		failed.completeExceptionally(new IllegalStateException("broker unavailable"));
-		when(outboxMapper.lockPending(1)).thenReturn(List.of(event));
+		when(claimPending(1)).thenReturn(List.of(event));
 		when(eventPublisher.publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class)))
 				.thenReturn(failed);
 		when(outboxMapper.scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY))).thenReturn(1);
 
 		int published = publisher.publishPending(1);
 
-		assertThat(published).isEqualTo(1);
+		assertThat(published).isZero();
 		verify(outboxMapper).scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY));
 		verify(outboxMapper, never()).markPublished(any(), any());
 		assertThat(meterRegistry.get("outbox_publish_failure").counter().count()).isEqualTo(1);
@@ -122,13 +125,13 @@ class OutboxPublisherTests {
 		CompletableFuture<SendResult<Object, Object>> failed = new CompletableFuture<>();
 		failed.completeExceptionally(new IllegalStateException("broker unavailable"));
 		CompletableFuture<SendResult<Object, Object>> sent = CompletableFuture.completedFuture(null);
-		when(outboxMapper.lockPending(1)).thenReturn(List.of(event), List.of(event));
+		when(claimPending(1)).thenReturn(List.of(event), List.of(event));
 		when(eventPublisher.publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class)))
 				.thenReturn(failed, sent);
 		when(outboxMapper.scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY))).thenReturn(1);
 		when(outboxMapper.markPublished(EVENT_ID, NOW)).thenReturn(1);
 
-		assertThat(publisher.publishPending(1)).isEqualTo(1);
+		assertThat(publisher.publishPending(1)).isZero();
 		assertThat(newPublisher().publishPending(1)).isEqualTo(1);
 
 		verify(outboxMapper).scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY));
@@ -141,14 +144,14 @@ class OutboxPublisherTests {
 		OutboxEventRecord event = orderPaidEvent("{}", 4);
 		CompletableFuture<SendResult<Object, Object>> failed = new CompletableFuture<>();
 		failed.completeExceptionally(new IllegalStateException("broker unavailable"));
-		when(outboxMapper.lockPending(1)).thenReturn(List.of(event));
+		when(claimPending(1)).thenReturn(List.of(event));
 		when(eventPublisher.publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class)))
 				.thenReturn(failed);
 		when(outboxMapper.scheduleRetry(EVENT_ID, NOW.plus(RETRY_MAX_DELAY))).thenReturn(1);
 
 		int published = publisher.publishPending(1);
 
-		assertThat(published).isEqualTo(1);
+		assertThat(published).isZero();
 		verify(outboxMapper).scheduleRetry(EVENT_ID, NOW.plus(RETRY_MAX_DELAY));
 		verify(outboxMapper, never()).markPublished(any(), any());
 	}
@@ -156,12 +159,12 @@ class OutboxPublisherTests {
 	@Test
 	void invalidPayloadIsNotPublishedAndSchedulesRetry() {
 		OutboxEventRecord event = orderPaidEvent("{invalid-json");
-		when(outboxMapper.lockPending(1)).thenReturn(List.of(event));
+		when(claimPending(1)).thenReturn(List.of(event));
 		when(outboxMapper.scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY))).thenReturn(1);
 
 		int published = publisher.publishPending(1);
 
-		assertThat(published).isEqualTo(1);
+		assertThat(published).isZero();
 		verify(eventPublisher, never()).publish(any(), any());
 		verify(outboxMapper).scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY));
 		verify(outboxMapper, never()).markPublished(any(), any());
@@ -171,7 +174,7 @@ class OutboxPublisherTests {
 	void markPublishedFailureIsNotConvertedToRetry() {
 		OutboxEventRecord event = orderPaidEvent("{}");
 		CompletableFuture<SendResult<Object, Object>> sent = CompletableFuture.completedFuture(null);
-		when(outboxMapper.lockPending(50)).thenReturn(List.of(event));
+		when(claimPending(50)).thenReturn(List.of(event));
 		when(eventPublisher.publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class)))
 				.thenReturn(sent);
 		when(outboxMapper.markPublished(EVENT_ID, NOW)).thenReturn(0);
@@ -180,6 +183,10 @@ class OutboxPublisherTests {
 				.isInstanceOf(OutboxPublishException.class);
 
 		verify(outboxMapper, never()).scheduleRetry(any(), any());
+	}
+
+	private List<OutboxEventRecord> claimPending(int batchSize) {
+		return outboxMapper.claimPending(batchSize, NOW, NOW.plus(CLAIM_LEASE));
 	}
 
 	private OutboxPublisher newPublisher() {

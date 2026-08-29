@@ -12,9 +12,16 @@ public interface OutboxMapper {
 
 	int insert(OutboxEventRecord event);
 
-	List<OutboxEventRecord> lockPending(@Param("batchSize") int batchSize);
+	List<OutboxEventRecord> claimPending(
+			@Param("batchSize") int batchSize,
+			@Param("now") Instant now,
+			@Param("leaseUntil") Instant leaseUntil);
 
 	long countPending();
+
+	int deletePublishedBefore(
+			@Param("threshold") Instant threshold,
+			@Param("limit") int limit);
 
 	int markPublished(
 			@Param("id") UUID id,

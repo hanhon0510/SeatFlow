@@ -148,4 +148,9 @@ seatflow:
       retry-delay: ${SEATFLOW_OUTBOX_PUBLISHER_RETRY_DELAY:30s}
       retry-max-delay: ${SEATFLOW_OUTBOX_PUBLISHER_RETRY_MAX_DELAY:5m}
       publish-timeout: ${SEATFLOW_OUTBOX_PUBLISHER_TIMEOUT:10s}
+      # How long a claimed batch stays hidden from other pollers. Must exceed publish-timeout.
+      claim-lease: ${SEATFLOW_OUTBOX_PUBLISHER_CLAIM_LEASE:1m}
+      # Wall-clock budget for one pass, so a broker outage cannot stall the publisher for
+      # batch-size * publish-timeout.
+      pass-timeout: ${SEATFLOW_OUTBOX_PUBLISHER_PASS_TIMEOUT:30s}
       fixed-delay-ms: ${SEATFLOW_OUTBOX_PUBLISHER_FIXED_DELAY_MS:5000}

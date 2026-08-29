@@ -6,9 +6,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -21,6 +22,8 @@ import com.seatflow.observability.BusinessMetrics;
 @Service
 @ConditionalOnBean(KafkaEventPublisher.class)
 public class OutboxPublisher {
+
+	private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
 
 	private final OutboxMapper outboxMapper;
 	private final KafkaEventPublisher eventPublisher;
@@ -47,21 +50,49 @@ public class OutboxPublisher {
 		this.businessMetrics = businessMetrics;
 	}
 
-	@Transactional
 	public int publishPending() {
 		return publishPending(outboxProperties.publisher().batchSize());
 	}
 
-	@Transactional
+	/**
+	 * Claims a batch, then publishes it <em>outside</em> any database transaction.
+	 *
+	 * <p>Publishing used to happen inside {@code @Transactional}, which meant a broker outage
+	 * held one transaction open for {@code batchSize * publishTimeout} — long enough to pin
+	 * the xmin horizon and stop VACUUM from reclaiming dead tuples on the booking tables.
+	 * The claim is now a single atomic statement and every status write is its own
+	 * auto-committed statement, so no transaction outlives a single round trip.
+	 *
+	 * @return the number of events actually published in this pass
+	 */
 	public int publishPending(int batchSize) {
-		List<OutboxEventRecord> events = outboxMapper.lockPending(batchSize);
-		for (OutboxEventRecord event : events) {
-			publish(event);
+		OutboxProperties.Publisher publisher = outboxProperties.publisher();
+		Instant now = clock.instant();
+		List<OutboxEventRecord> events = outboxMapper.claimPending(
+				batchSize,
+				now,
+				now.plus(publisher.claimLease()));
+
+		long deadlineNanos = System.nanoTime() + publisher.passTimeout().toNanos();
+		int published = 0;
+		for (int index = 0; index < events.size(); index++) {
+			if (System.nanoTime() - deadlineNanos >= 0) {
+				log.warn(
+						"Outbox pass exceeded its {} budget with {} of {} claimed events unattempted; "
+								+ "they stay claimed until the lease lapses",
+						publisher.passTimeout(),
+						events.size() - index,
+						events.size());
+				break;
+			}
+			if (publish(events.get(index))) {
+				published++;
+			}
 		}
-		return events.size();
+		return published;
 	}
 
-	private void publish(OutboxEventRecord event) {
+	private boolean publish(OutboxEventRecord event) {
 		try {
 			eventPublisher.publish(topic(event), envelope(event))
 					.get(outboxProperties.publisher().publishTimeout().toMillis(), TimeUnit.MILLISECONDS);
@@ -69,16 +100,17 @@ public class OutboxPublisher {
 		catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();
 			scheduleRetry(event);
-			return;
+			return false;
 		}
 		catch (Exception ex) {
 			scheduleRetry(event);
-			return;
+			return false;
 		}
 
 		if (outboxMapper.markPublished(event.id(), clock.instant()) != 1) {
 			throw new OutboxPublishException();
 		}
+		return true;
 	}
 
 	private void scheduleRetry(OutboxEventRecord event) {
