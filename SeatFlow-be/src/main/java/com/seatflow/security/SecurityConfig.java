@@ -91,9 +91,23 @@ public class SecurityConfig {
 		return new BCryptPasswordEncoder();
 	}
 
+	/**
+	 * Deliberately a named class rather than a lambda. Spring MVC adds every {@code Converter}
+	 * bean to its FormatterRegistry, and a lambda erases its type arguments, so registration
+	 * fails with "Unable to determine source type &lt;S&gt; and target type &lt;T&gt;" and takes
+	 * the whole application context down with it.
+	 */
 	@Bean
 	public Converter<Jwt, JwtAuthenticationToken> jwtAuthenticationConverter() {
-		return jwt -> new JwtAuthenticationToken(jwt, authorities(jwt), jwt.getSubject());
+		return new JwtAuthenticationTokenConverter();
+	}
+
+	static final class JwtAuthenticationTokenConverter implements Converter<Jwt, JwtAuthenticationToken> {
+
+		@Override
+		public JwtAuthenticationToken convert(Jwt jwt) {
+			return new JwtAuthenticationToken(jwt, authorities(jwt), jwt.getSubject());
+		}
 	}
 
 	private static Collection<GrantedAuthority> authorities(Jwt jwt) {
