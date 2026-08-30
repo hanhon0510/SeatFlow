@@ -3,7 +3,8 @@ package com.seatflow.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -109,8 +110,8 @@ class DatabaseSchemaIntegrationTests extends PostgresTestContainerSupport {
 				fixture.orderId(),
 				fixture.secondEventSeatId(),
 				"schema-ticket-code-00000000000000000003",
-				Instant.now(),
-				Instant.now()))
+				OffsetDateTime.now(ZoneOffset.UTC),
+				OffsetDateTime.now(ZoneOffset.UTC)))
 				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("tickets_status_check");
 	}
@@ -121,12 +122,12 @@ class DatabaseSchemaIntegrationTests extends PostgresTestContainerSupport {
 		jdbcTemplate.update("""
 				INSERT INTO processed_events (id, consumer_name, event_id, processed_at)
 				VALUES (?, 'schema-consumer', ?, ?)
-				""", UUID.randomUUID(), eventId, Instant.now());
+				""", UUID.randomUUID(), eventId, OffsetDateTime.now(ZoneOffset.UTC));
 
 		assertThatThrownBy(() -> jdbcTemplate.update("""
 				INSERT INTO processed_events (id, consumer_name, event_id, processed_at)
 				VALUES (?, 'schema-consumer', ?, ?)
-				""", UUID.randomUUID(), eventId, Instant.now()))
+				""", UUID.randomUUID(), eventId, OffsetDateTime.now(ZoneOffset.UTC)))
 				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("processed_events_consumer_event_uq");
 
@@ -140,8 +141,8 @@ class DatabaseSchemaIntegrationTests extends PostgresTestContainerSupport {
 				UUID.randomUUID(),
 				UUID.randomUUID(),
 				UUID.randomUUID(),
-				Instant.now(),
-				Instant.now()))
+				OffsetDateTime.now(ZoneOffset.UTC),
+				OffsetDateTime.now(ZoneOffset.UTC)))
 				.isInstanceOf(DataIntegrityViolationException.class)
 				.hasMessageContaining("outbox_events_event_version_check");
 	}
@@ -173,7 +174,7 @@ class DatabaseSchemaIntegrationTests extends PostgresTestContainerSupport {
 		UUID secondEventSeatId = UUID.randomUUID();
 		UUID reservationId = UUID.randomUUID();
 		UUID orderId = UUID.randomUUID();
-		Instant now = Instant.now();
+		OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
 		insertUser(userId, "schema-ticket-%s@example.com".formatted(userId));
 		jdbcTemplate.update("""
@@ -215,7 +216,7 @@ class DatabaseSchemaIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	private void insertTicket(UUID ticketId, UUID orderId, UUID eventSeatId, String ticketCode) {
-		Instant now = Instant.now();
+		OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 		jdbcTemplate.update("""
 				INSERT INTO tickets (id, order_id, event_seat_id, ticket_code, status, issued_at, created_at)
 				VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?)

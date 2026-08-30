@@ -575,9 +575,11 @@ class PaymentIntegrationTests extends PostgresTestContainerSupport {
 				""");
 
 		try {
+			// A write the database refuses is classified as a persistence failure, not as a
+			// generic unexpected one - same 500, but the more specific of the two.
 			createPayment(fixture, "tok_success")
 					.andExpect(status().isInternalServerError())
-					.andExpect(jsonPath("$.title").value("Unexpected error"));
+					.andExpect(jsonPath("$.title").value("Persistence error"));
 		}
 		finally {
 			jdbcTemplate.execute("DROP TRIGGER IF EXISTS seatflow_test_reject_outbox_insert_trigger ON outbox_events");

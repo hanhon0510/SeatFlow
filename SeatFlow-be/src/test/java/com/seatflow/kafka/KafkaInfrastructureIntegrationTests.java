@@ -30,6 +30,7 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 import org.springframework.kafka.support.serializer.SerializationUtils;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.seatflow.support.KafkaTestContainerSupport;
@@ -129,7 +130,12 @@ class KafkaInfrastructureIntegrationTests extends KafkaTestContainerSupport {
 		assertThat(node.get("occurredAt").asText()).isEqualTo("2026-08-15T01:02:03Z");
 		assertThat(node.get("payload").get("orderId").asText()).isEqualTo(aggregateId.toString());
 		assertThat(decoded.eventType()).isEqualTo("OrderPaid");
-		assertThat(decoded.payload()).isInstanceOf(Map.class);
+		// Asserts the payload is convertible rather than that it is one concrete Map type.
+		// spring-kafka-test drags in jackson-module-scala, which Jackson auto-registers, so an
+		// untyped JSON object decodes to a Scala Map here and a java.util.LinkedHashMap in
+		// production. What consumers actually rely on is convertValue, which works from either.
+		assertThat(objectMapper.convertValue(decoded.payload(), new TypeReference<Map<String, String>>() { }))
+				.containsEntry("orderId", aggregateId.toString());
 	}
 
 	@Test
