@@ -20,9 +20,16 @@ public class CurrentUserService {
 		return UserMeResponse.from(getCurrentUserRecord(jwt));
 	}
 
+	/**
+	 * The row is loaded anyway, so checking status here is free. It does not cover the booking
+	 * endpoints, which authenticate from the JWT alone and never load the user - disabling an
+	 * account still leaves those reachable until the access token expires. That window is bounded
+	 * by the JWT TTL, and refresh already refuses a disabled user, so the session cannot be
+	 * extended past it.
+	 */
 	public UserRecord getCurrentUserRecord(Jwt jwt) {
 		UserRecord user = userMapper.findById(userId(jwt));
-		if (user == null) {
+		if (user == null || user.status() == UserStatus.DISABLED) {
 			throw new AuthenticationFailedException();
 		}
 
