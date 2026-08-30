@@ -162,6 +162,8 @@ seatflow:
       # Wall-clock budget for one pass, so a broker outage cannot stall the publisher for
       # batch-size * publish-timeout.
       pass-timeout: ${SEATFLOW_OUTBOX_PUBLISHER_PASS_TIMEOUT:30s}
+      # Attempts before an event is marked FAILED instead of retried forever.
+      max-attempts: ${SEATFLOW_OUTBOX_PUBLISHER_MAX_ATTEMPTS:10}
       fixed-delay-ms: ${SEATFLOW_OUTBOX_PUBLISHER_FIXED_DELAY_MS:5000}
   maintenance:
     enabled: ${SEATFLOW_MAINTENANCE_ENABLED:true}

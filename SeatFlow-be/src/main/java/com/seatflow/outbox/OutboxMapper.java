@@ -27,6 +27,10 @@ public interface OutboxMapper {
 			@Param("id") UUID id,
 			@Param("publishedAt") Instant publishedAt);
 
+	int markFailed(
+			@Param("id") UUID id,
+			@Param("failureReason") String failureReason);
+
 	int scheduleRetry(
 			@Param("id") UUID id,
 			@Param("nextAttemptAt") Instant nextAttemptAt);

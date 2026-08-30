@@ -18,7 +18,8 @@ public record OutboxProperties(Publisher publisher) {
 			Duration retryMaxDelay,
 			Duration publishTimeout,
 			Duration claimLease,
-			Duration passTimeout) {
+			Duration passTimeout,
+			int maxAttempts) {
 
 		private static Publisher defaults() {
 			return new Publisher(
@@ -28,7 +29,8 @@ public record OutboxProperties(Publisher publisher) {
 					Duration.ofMinutes(5),
 					Duration.ofSeconds(10),
 					Duration.ofMinutes(1),
-					Duration.ofSeconds(30));
+					Duration.ofSeconds(30),
+					10);
 		}
 
 		private Publisher withDefaults() {
@@ -46,7 +48,8 @@ public record OutboxProperties(Publisher publisher) {
 					positive(retryMaxDelay) ? retryMaxDelay : defaults.retryMaxDelay,
 					resolvedPublishTimeout,
 					resolvedClaimLease,
-					positive(passTimeout) ? passTimeout : defaults.passTimeout);
+					positive(passTimeout) ? passTimeout : defaults.passTimeout,
+					maxAttempts > 0 ? maxAttempts : defaults.maxAttempts);
 		}
 	}
 

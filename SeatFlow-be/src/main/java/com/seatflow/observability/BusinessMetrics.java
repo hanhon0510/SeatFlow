@@ -17,6 +17,7 @@ public class BusinessMetrics {
 	private final Counter paymentFailure;
 	private final Counter ticketIssued;
 	private final Counter outboxPublishFailure;
+	private final Counter outboxEventAbandoned;
 	private final Counter kafkaConsumerFailure;
 
 	public BusinessMetrics(MeterRegistry registry) {
@@ -29,6 +30,10 @@ public class BusinessMetrics {
 		this.paymentFailure = counter(registry, "payment_failure", "Failed payments");
 		this.ticketIssued = counter(registry, "ticket_issued", "Tickets issued");
 		this.outboxPublishFailure = counter(registry, "outbox_publish_failure", "Outbox publish failures");
+		this.outboxEventAbandoned = counter(
+				registry,
+				"outbox_event_abandoned",
+				"Outbox events given up on permanently");
 		this.kafkaConsumerFailure = counter(registry, "kafka_consumer_failure", "Kafka consumer failures");
 	}
 
@@ -68,6 +73,10 @@ public class BusinessMetrics {
 
 	public void outboxPublishFailure() {
 		outboxPublishFailure.increment();
+	}
+
+	public void outboxEventAbandoned() {
+		outboxEventAbandoned.increment();
 	}
 
 	public void kafkaConsumerFailure() {

@@ -25,6 +25,9 @@ public class OutboxPublisher {
 
 	private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
 
+	private static final String ORDER_PAID_EVENT = "OrderPaid";
+	private static final int MAX_FAILURE_REASON_LENGTH = 500;
+
 	private final OutboxMapper outboxMapper;
 	private final KafkaEventPublisher eventPublisher;
 	private final SeatFlowKafkaProperties kafkaProperties;
@@ -93,8 +96,22 @@ public class OutboxPublisher {
 	}
 
 	private boolean publish(OutboxEventRecord event) {
+		// Resolved before the try so that a payload we can never serialise, or a type with no
+		// topic, is treated as the permanent failure it is rather than as a transport blip that
+		// would be retried forever.
+		String topic;
+		EventEnvelope<JsonNode> envelope;
 		try {
-			eventPublisher.publish(topic(event), envelope(event))
+			topic = topic(event);
+			envelope = envelope(event);
+		}
+		catch (RuntimeException ex) {
+			markFailed(event, ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
+			return false;
+		}
+
+		try {
+			eventPublisher.publish(topic, envelope)
 					.get(outboxProperties.publisher().publishTimeout().toMillis(), TimeUnit.MILLISECONDS);
 		}
 		catch (InterruptedException ex) {
@@ -113,12 +130,43 @@ public class OutboxPublisher {
 		return true;
 	}
 
+	/**
+	 * Retries a transport failure, or gives up once the attempt cap is reached. Without the cap
+	 * an event that the broker keeps rejecting is re-attempted indefinitely, with nothing to show
+	 * for it but a growing attempt_count.
+	 */
 	private void scheduleRetry(OutboxEventRecord event) {
+		int maxAttempts = outboxProperties.publisher().maxAttempts();
+		if (event.attemptCount() + 1 >= maxAttempts) {
+			markFailed(event, "Giving up after %d publish attempts".formatted(maxAttempts));
+			return;
+		}
 		Instant nextAttemptAt = clock.instant().plus(retryDelay(event.attemptCount()));
 		if (outboxMapper.scheduleRetry(event.id(), nextAttemptAt) != 1) {
 			throw new OutboxPublishException();
 		}
 		businessMetrics.outboxPublishFailure();
+	}
+
+	private void markFailed(OutboxEventRecord event, String failureReason) {
+		log.error(
+				"Giving up on outbox event {} of type {} after {} attempts: {}",
+				event.id(),
+				event.eventType(),
+				event.attemptCount(),
+				failureReason);
+		if (outboxMapper.markFailed(event.id(), truncate(failureReason)) != 1) {
+			throw new OutboxPublishException();
+		}
+		businessMetrics.outboxPublishFailure();
+		businessMetrics.outboxEventAbandoned();
+	}
+
+	private static String truncate(String failureReason) {
+		String reason = failureReason == null || failureReason.isBlank() ? "unknown" : failureReason;
+		return reason.length() <= MAX_FAILURE_REASON_LENGTH
+				? reason
+				: reason.substring(0, MAX_FAILURE_REASON_LENGTH);
 	}
 
 	private Duration retryDelay(int attemptCount) {
@@ -153,10 +201,16 @@ public class OutboxPublisher {
 		}
 	}
 
+	/**
+	 * An unmapped event type used to fall through to the dead-letter topic, where the send
+	 * succeeded and the row was marked PUBLISHED as though it had been delivered normally - no
+	 * error, no metric, no log. Adding a second event type would have gone straight there
+	 * unnoticed. Treat it as the programming error it is instead.
+	 */
 	private String topic(OutboxEventRecord event) {
-		if ("OrderPaid".equals(event.eventType())) {
+		if (ORDER_PAID_EVENT.equals(event.eventType())) {
 			return kafkaProperties.topics().orderEvents();
 		}
-		return kafkaProperties.topics().deadLetter();
+		throw new IllegalStateException("No topic mapped for outbox event type " + event.eventType());
 	}
 }

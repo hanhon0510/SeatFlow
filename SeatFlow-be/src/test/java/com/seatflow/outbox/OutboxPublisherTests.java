@@ -45,6 +45,7 @@ class OutboxPublisherTests {
 	private static final Duration RETRY_DELAY = Duration.ofSeconds(20);
 	private static final Duration RETRY_MAX_DELAY = Duration.ofMinutes(2);
 	private static final Duration CLAIM_LEASE = Duration.ofMinutes(1);
+	private static final int MAX_ATTEMPTS = 8;
 
 	@Mock
 	private OutboxMapper outboxMapper;
@@ -67,7 +68,8 @@ class OutboxPublisherTests {
 				RETRY_MAX_DELAY,
 				Duration.ofSeconds(5),
 				Duration.ofMinutes(1),
-				Duration.ofSeconds(30)));
+				Duration.ofSeconds(30),
+				MAX_ATTEMPTS));
 		meterRegistry = new SimpleMeterRegistry();
 		publisher = newPublisher();
 	}
@@ -157,17 +159,55 @@ class OutboxPublisherTests {
 	}
 
 	@Test
-	void invalidPayloadIsNotPublishedAndSchedulesRetry() {
+	void invalidPayloadIsAbandonedRatherThanRetriedForever() {
 		OutboxEventRecord event = orderPaidEvent("{invalid-json");
 		when(claimPending(1)).thenReturn(List.of(event));
-		when(outboxMapper.scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY))).thenReturn(1);
+		when(outboxMapper.markFailed(eq(EVENT_ID), any())).thenReturn(1);
 
 		int published = publisher.publishPending(1);
 
 		assertThat(published).isZero();
 		verify(eventPublisher, never()).publish(any(), any());
-		verify(outboxMapper).scheduleRetry(EVENT_ID, NOW.plus(RETRY_DELAY));
+		// A payload that cannot be serialised will never serialise. Retrying it on a backoff
+		// would repeat forever with nothing to show for it.
+		verify(outboxMapper).markFailed(eq(EVENT_ID), any());
+		verify(outboxMapper, never()).scheduleRetry(any(), any());
 		verify(outboxMapper, never()).markPublished(any(), any());
+		assertThat(meterRegistry.get("outbox_event_abandoned").counter().count()).isEqualTo(1);
+	}
+
+	@Test
+	void unmappedEventTypeIsAbandonedInsteadOfSilentlyDeadLettered() {
+		OutboxEventRecord event = event("SomethingElse", "{}", 0);
+		when(claimPending(1)).thenReturn(List.of(event));
+		when(outboxMapper.markFailed(eq(EVENT_ID), any())).thenReturn(1);
+
+		int published = publisher.publishPending(1);
+
+		assertThat(published).isZero();
+		// It used to be sent to the dead-letter topic and then marked PUBLISHED, so adding a
+		// second event type would have looked like a successful delivery.
+		verify(eventPublisher, never()).publish(any(), any());
+		verify(outboxMapper, never()).markPublished(any(), any());
+		ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+		verify(outboxMapper).markFailed(eq(EVENT_ID), reason.capture());
+		assertThat(reason.getValue()).contains("SomethingElse");
+	}
+
+	@Test
+	void aTransportFailureIsAbandonedOnceTheAttemptCapIsReached() {
+		OutboxEventRecord event = orderPaidEvent("{}", MAX_ATTEMPTS - 1);
+		CompletableFuture<SendResult<Object, Object>> failed = new CompletableFuture<>();
+		failed.completeExceptionally(new IllegalStateException("broker unavailable"));
+		when(claimPending(1)).thenReturn(List.of(event));
+		when(eventPublisher.publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class)))
+				.thenReturn(failed);
+		when(outboxMapper.markFailed(eq(EVENT_ID), any())).thenReturn(1);
+
+		assertThat(publisher.publishPending(1)).isZero();
+
+		verify(outboxMapper).markFailed(eq(EVENT_ID), any());
+		verify(outboxMapper, never()).scheduleRetry(any(), any());
 	}
 
 	@Test
@@ -205,11 +245,15 @@ class OutboxPublisherTests {
 	}
 
 	private static OutboxEventRecord orderPaidEvent(String payload, int attemptCount) {
+		return event("OrderPaid", payload, attemptCount);
+	}
+
+	private static OutboxEventRecord event(String eventType, String payload, int attemptCount) {
 		return new OutboxEventRecord(
 				EVENT_ID,
 				"Order",
 				AGGREGATE_ID,
-				"OrderPaid",
+				eventType,
 				1,
 				payload,
 				CORRELATION_ID,

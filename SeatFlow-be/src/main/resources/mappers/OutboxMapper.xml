@@ -116,6 +116,15 @@
           AND status = 'PENDING'
     </update>
 
+    <update id="markFailed">
+        UPDATE outbox_events
+        SET
+            status = 'FAILED',
+            failure_reason = #{failureReason}
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+
     <update id="scheduleRetry">
         UPDATE outbox_events
         SET
