@@ -30,6 +30,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # Without this a Redis that requires AUTH is unreachable, and setting a password in the
+      # environment would look configured while the client connected without one.
+      password: ${REDIS_PASSWORD:}
       timeout: ${REDIS_TIMEOUT:2s}
       connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
 
