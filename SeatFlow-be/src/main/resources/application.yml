@@ -5,6 +5,13 @@ spring:
   application:
     name: seatflow-backend
 
+  task:
+    scheduling:
+      # The outbox publisher and the maintenance sweep are both @Scheduled. Spring's default
+      # pool of one thread would make a slow outbox pass postpone the sweep, and vice versa.
+      pool:
+        size: ${SEATFLOW_SCHEDULER_POOL_SIZE:2}
+
   messages:
     basename: messages
     encoding: UTF-8
