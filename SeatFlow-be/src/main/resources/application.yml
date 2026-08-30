@@ -155,6 +155,9 @@ seatflow:
     metrics-public: ${SEATFLOW_ACTUATOR_METRICS_PUBLIC:false}
   kafka:
     enabled: ${SEATFLOW_KAFKA_ENABLED:false}
+    # Only applied to topics that do not exist yet.
+    topic-partitions: ${SEATFLOW_KAFKA_TOPIC_PARTITIONS:3}
+    topic-replicas: ${SEATFLOW_KAFKA_TOPIC_REPLICAS:1}
     topics:
       order-events: ${SEATFLOW_KAFKA_TOPIC_ORDER_EVENTS:seatflow.order-events.v1}
       notification-events: ${SEATFLOW_KAFKA_TOPIC_NOTIFICATION_EVENTS:seatflow.notification-events.v1}

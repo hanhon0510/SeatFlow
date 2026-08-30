@@ -11,7 +11,12 @@ public record SeatFlowKafkaProperties(
 		TopicNames topics,
 		ConsumerGroups consumerGroups,
 		Retry retry,
-		Health health) {
+		Health health,
+		Integer topicPartitions,
+		Integer topicReplicas) {
+
+	private static final int DEFAULT_TOPIC_PARTITIONS = 3;
+	private static final int DEFAULT_TOPIC_REPLICAS = 1;
 
 	public SeatFlowKafkaProperties(boolean enabled, TopicNames topics, ConsumerGroups consumerGroups) {
 		this(enabled, topics, consumerGroups, null, null);
@@ -21,10 +26,25 @@ public record SeatFlowKafkaProperties(
 		this(enabled, topics, consumerGroups, retry, null);
 	}
 
-	// The two convenience constructors above leave Spring unable to pick a binding constructor
+	public SeatFlowKafkaProperties(
+			boolean enabled,
+			TopicNames topics,
+			ConsumerGroups consumerGroups,
+			Retry retry,
+			Health health) {
+		this(enabled, topics, consumerGroups, retry, health, null, null);
+	}
+
+	// The convenience constructors above leave Spring unable to pick a binding constructor
 	// on its own, which fails every context load with "No default constructor found".
 	@ConstructorBinding
 	public SeatFlowKafkaProperties {
+		topicPartitions = topicPartitions == null || topicPartitions < 1
+				? DEFAULT_TOPIC_PARTITIONS
+				: topicPartitions;
+		topicReplicas = topicReplicas == null || topicReplicas < 1
+				? DEFAULT_TOPIC_REPLICAS
+				: topicReplicas;
 		topics = topics == null ? TopicNames.defaults() : topics.withDefaults();
 		consumerGroups = consumerGroups == null ? ConsumerGroups.defaults() : consumerGroups.withDefaults();
 		retry = retry == null ? Retry.defaults() : retry.withDefaults();

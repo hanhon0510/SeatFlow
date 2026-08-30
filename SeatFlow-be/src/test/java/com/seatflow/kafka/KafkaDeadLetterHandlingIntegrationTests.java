@@ -73,7 +73,11 @@ class KafkaDeadLetterHandlingIntegrationTests extends KafkaTestContainerSupport 
 			assertThat(header(headers, KafkaDeadLetterMetadata.ORIGINAL_EVENT_ID)).isEqualTo(badEventId.toString());
 			assertThat(header(headers, KafkaDeadLetterMetadata.ORIGINAL_TOPIC))
 					.isEqualTo(kafkaProperties.topics().orderEvents());
-			assertThat(header(headers, KafkaDeadLetterMetadata.ORIGINAL_PARTITION)).isEqualTo("0");
+			// The recoverer routes to the same partition index it consumed from, so this holds
+			// whatever the topic's partition count is. Asserting a literal "0" only passed while
+			// the topics were created with a single partition.
+			assertThat(header(headers, KafkaDeadLetterMetadata.ORIGINAL_PARTITION))
+					.isEqualTo(String.valueOf(deadLetter.partition()));
 			assertThat(header(headers, KafkaDeadLetterMetadata.CORRELATION_ID)).isEqualTo(correlationId.toString());
 			assertThat(header(headers, KafkaDeadLetterMetadata.ERROR_CATEGORY)).isEqualTo("PERMANENT");
 			assertThat(headers.lastHeader(KafkaHeaders.DLT_EXCEPTION_STACKTRACE)).isNull();

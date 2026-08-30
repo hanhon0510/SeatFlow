@@ -21,6 +21,7 @@ seatflow:
     metrics-public: ${SEATFLOW_ACTUATOR_METRICS_PUBLIC:true}
   kafka:
     enabled: ${SEATFLOW_KAFKA_ENABLED:true}
+    topic-replicas: ${SEATFLOW_KAFKA_TOPIC_REPLICAS:1}
   outbox:
     publisher:
       enabled: ${SEATFLOW_OUTBOX_PUBLISHER_ENABLED:true}

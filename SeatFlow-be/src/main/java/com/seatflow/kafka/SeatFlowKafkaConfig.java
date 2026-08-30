@@ -25,19 +25,19 @@ public class SeatFlowKafkaConfig {
 	@Bean
 	@ConditionalOnProperty(prefix = "seatflow.kafka", name = "enabled", havingValue = "true")
 	public NewTopic orderEventsTopic(SeatFlowKafkaProperties properties) {
-		return topic(properties.topics().orderEvents());
+		return topic(properties.topics().orderEvents(), properties);
 	}
 
 	@Bean
 	@ConditionalOnProperty(prefix = "seatflow.kafka", name = "enabled", havingValue = "true")
 	public NewTopic notificationEventsTopic(SeatFlowKafkaProperties properties) {
-		return topic(properties.topics().notificationEvents());
+		return topic(properties.topics().notificationEvents(), properties);
 	}
 
 	@Bean
 	@ConditionalOnProperty(prefix = "seatflow.kafka", name = "enabled", havingValue = "true")
 	public NewTopic deadLetterTopic(SeatFlowKafkaProperties properties) {
-		return topic(properties.topics().deadLetter());
+		return topic(properties.topics().deadLetter(), properties);
 	}
 
 	@Bean
@@ -72,10 +72,18 @@ public class SeatFlowKafkaConfig {
 		return factory;
 	}
 
-	private static NewTopic topic(String name) {
+	/**
+	 * A single partition capped consumer parallelism at one regardless of load. Events are keyed
+	 * by aggregate id, so per-order ordering survives any partition count; only ordering across
+	 * unrelated orders is given up, which nothing depends on.
+	 *
+	 * <p>Note this only sizes topics that do not exist yet - an already-created topic keeps its
+	 * partition count.
+	 */
+	private static NewTopic topic(String name, SeatFlowKafkaProperties properties) {
 		return TopicBuilder.name(name)
-				.partitions(1)
-				.replicas(1)
+				.partitions(properties.topicPartitions())
+				.replicas(properties.topicReplicas())
 				.build();
 	}
 
