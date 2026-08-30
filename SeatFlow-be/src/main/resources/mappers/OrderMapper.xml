@@ -43,6 +43,12 @@
             reservation.id,
             reservation.user_id,
             'PENDING',
+            <!--
+                Deliberately the sum of the line items rather than reservations.total_amount:
+                the items are what the customer is charged for seat by seat, and the reservation
+                total is itself derived from them. Both are computed from the same rows in the
+                same transaction, so they cannot diverge without a bug elsewhere.
+            -->
             SUM(reservation_item.price),
             #{currency},
             #{now},
