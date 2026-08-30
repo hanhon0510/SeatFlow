@@ -16,6 +16,9 @@ spring:
     enabled: true
 
 seatflow:
+  actuator:
+    # Local only: the port is not routable, and it keeps the dev dashboards working.
+    metrics-public: ${SEATFLOW_ACTUATOR_METRICS_PUBLIC:true}
   kafka:
     enabled: ${SEATFLOW_KAFKA_ENABLED:true}
   outbox:

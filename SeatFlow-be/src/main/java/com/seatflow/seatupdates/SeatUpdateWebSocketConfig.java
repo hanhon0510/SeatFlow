@@ -6,11 +6,19 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
+import com.seatflow.security.WebOriginProperties;
+
 @Configuration
 @EnableWebSocketMessageBroker
 public class SeatUpdateWebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
 	public static final String STOMP_ENDPOINT = "/ws";
+
+	private final WebOriginProperties webOriginProperties;
+
+	public SeatUpdateWebSocketConfig(WebOriginProperties webOriginProperties) {
+		this.webOriginProperties = webOriginProperties;
+	}
 
 	@Override
 	public void configureMessageBroker(MessageBrokerRegistry registry) {
@@ -21,6 +29,6 @@ public class SeatUpdateWebSocketConfig implements WebSocketMessageBrokerConfigur
 	@Override
 	public void registerStompEndpoints(StompEndpointRegistry registry) {
 		registry.addEndpoint(STOMP_ENDPOINT)
-				.setAllowedOriginPatterns("*");
+				.setAllowedOrigins(webOriginProperties.allowedOrigins().toArray(String[]::new));
 	}
 }

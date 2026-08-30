@@ -1,16 +1,21 @@
 package com.seatflow.security;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorityAuthorizationManager;
+import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authorization.AuthorizationManager;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -25,6 +30,10 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,14 +46,18 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 @EnableMethodSecurity
+@EnableConfigurationProperties({ WebOriginProperties.class, ActuatorProperties.class })
 public class SecurityConfig {
 
 	@Bean
 	public SecurityFilterChain securityFilterChain(
 			HttpSecurity http,
 			ObjectMapper objectMapper,
-			Converter<Jwt, JwtAuthenticationToken> jwtAuthenticationConverter) throws Exception {
+			Converter<Jwt, JwtAuthenticationToken> jwtAuthenticationConverter,
+			CorsConfigurationSource corsConfigurationSource,
+			ActuatorProperties actuatorProperties) throws Exception {
 		return http
+				.cors(cors -> cors.configurationSource(corsConfigurationSource))
 				.csrf(AbstractHttpConfigurer::disable)
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.exceptionHandling(exception -> exception
@@ -60,7 +73,6 @@ public class SecurityConfig {
 								"/api/v1/health/**",
 								"/actuator/health",
 								"/actuator/info",
-								"/actuator/prometheus",
 								"/error",
 								"/ws",
 								"/ws/**").permitAll()
@@ -77,6 +89,7 @@ public class SecurityConfig {
 						.requestMatchers(HttpMethod.GET, "/api/v1/tickets/*").hasAnyRole("USER", "ADMIN")
 						.requestMatchers(HttpMethod.GET, "/api/v1/users/me/tickets").hasAnyRole("USER", "ADMIN")
 						.requestMatchers("/api/v1/admin", "/api/v1/admin/**").hasRole("ADMIN")
+						.requestMatchers("/actuator/prometheus").access(metricsAuthorization(actuatorProperties))
 						.anyRequest().authenticated())
 				.oauth2ResourceServer(oauth2 -> oauth2
 						.authenticationEntryPoint(authenticationEntryPoint(objectMapper))
@@ -89,6 +102,33 @@ public class SecurityConfig {
 	@Bean
 	public PasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder();
+	}
+
+	@Bean
+	public CorsConfigurationSource corsConfigurationSource(WebOriginProperties webOriginProperties) {
+		CorsConfiguration configuration = new CorsConfiguration();
+		configuration.setAllowedOrigins(webOriginProperties.allowedOrigins());
+		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+		configuration.setAllowedHeaders(List.of("*"));
+		// The refresh token travels in an HttpOnly cookie, so the browser needs credentials
+		// allowed. That is also why the origins above must be exact and never a wildcard.
+		configuration.setAllowCredentials(true);
+		configuration.setMaxAge(Duration.ofHours(1));
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		source.registerCorsConfiguration("/api/**", configuration);
+		return source;
+	}
+
+	/**
+	 * The Prometheus scrape exposes URI templates, request volumes, latency distributions and
+	 * every business counter - holds, conflicts, payments, tickets. It requires ADMIN unless a
+	 * deployment explicitly declares the management surface unroutable from outside.
+	 */
+	private static AuthorizationManager<RequestAuthorizationContext> metricsAuthorization(
+			ActuatorProperties actuatorProperties) {
+		return actuatorProperties.metricsPublic()
+				? (authentication, context) -> new AuthorizationDecision(true)
+				: AuthorityAuthorizationManager.hasRole("ADMIN");
 	}
 
 	/**
