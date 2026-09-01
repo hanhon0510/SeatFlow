@@ -1,4 +1,4 @@
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { publicEventQueryKeys } from '../api/eventsApi'
@@ -41,6 +41,13 @@ export function useEventSeatUpdates({
   const selectedSeatIdsRef = useRef(selectedSeatIds)
   const notificationRef = useRef(notification)
   const onSelectionInvalidatedRef = useRef(onSelectionInvalidated)
+  // A ref, not state: the server broadcasts the hold before answering the request that
+  // created it, so the claim has to be readable before React commits another render.
+  const heldByYouSeatIdsRef = useRef<ReadonlySet<string>>(new Set())
+
+  const claimSeatsHeldByYou = useCallback((eventSeatIds: string[]) => {
+    heldByYouSeatIdsRef.current = new Set(eventSeatIds)
+  }, [])
 
   useEffect(() => {
     selectedSeatIdsRef.current = selectedSeatIds
@@ -69,8 +76,15 @@ export function useEventSeatUpdates({
           return
         }
 
-        const updatedLayout = applySeatStateUpdate(currentLayout, message)
+        const heldByYouSeatIds = heldByYouSeatIdsRef.current
+        const updatedLayout = applySeatStateUpdate(currentLayout, message, heldByYouSeatIds)
         queryClient.setQueryData(queryKey, updatedLayout)
+
+        // The visitor's own hold already has its own confirmation; echoing it back as a seat
+        // map update would only contradict it.
+        if (message.eventSeatIds.every((eventSeatId) => heldByYouSeatIds.has(eventSeatId))) {
+          return
+        }
 
         const removedSeatIds = invalidSelectedSeatIds(updatedLayout, selectedSeatIdsRef.current)
         if (removedSeatIds.length > 0) {
@@ -111,6 +125,8 @@ export function useEventSeatUpdates({
       void connection.deactivate()
     }
   }, [eventId, queryClient, setSelectedSeatIds])
+
+  return { claimSeatsHeldByYou }
 }
 
 function showSeatUpdateNotification(

@@ -26,6 +26,39 @@ describe('seat state updates', () => {
     expect(invalidSelectedSeatIds(updated, [eventSeatIdA1])).toEqual([eventSeatIdA1])
   })
 
+  it('marks seats this visitor held as held by you and keeps them selected', () => {
+    const updated = applySeatStateUpdate(
+      layout(),
+      message('SEATS_HELD', [eventSeatIdA1]),
+      new Set([eventSeatIdA1]),
+    )
+
+    expect(seat(updated, eventSeatIdA1)?.status).toBe('HELD_BY_YOU')
+    expect(invalidSelectedSeatIds(updated, [eventSeatIdA1])).toEqual([])
+  })
+
+  it('keeps a seat held by you when a later broadcast repeats it', () => {
+    const ownLayout = applySeatStateUpdate(
+      layout(),
+      message('SEATS_HELD', [eventSeatIdA1]),
+      new Set([eventSeatIdA1]),
+    )
+    const updated = applySeatStateUpdate(ownLayout, message('SEATS_HELD', [eventSeatIdA1]))
+
+    expect(seat(updated, eventSeatIdA1)?.status).toBe('HELD_BY_YOU')
+  })
+
+  it('still marks seats held by someone else unavailable', () => {
+    const updated = applySeatStateUpdate(
+      layout(),
+      message('SEATS_HELD', [eventSeatIdA2]),
+      new Set([eventSeatIdA1]),
+    )
+
+    expect(seat(updated, eventSeatIdA2)?.status).toBe('HELD')
+    expect(invalidSelectedSeatIds(updated, [eventSeatIdA2])).toEqual([eventSeatIdA2])
+  })
+
   it('marks released seats available again', () => {
     const heldLayout = applySeatStateUpdate(layout(), message('SEATS_HELD', [eventSeatIdA1]))
     const updated = applySeatStateUpdate(heldLayout, message('SEATS_RELEASED', [eventSeatIdA1]))

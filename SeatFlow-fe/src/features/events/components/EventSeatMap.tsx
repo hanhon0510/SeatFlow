@@ -35,7 +35,7 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
   const handleSelectionInvalidated = useCallback(() => {
     setHoldError('Some selected seats are no longer available. Review the updated seat map.')
   }, [])
-  useEventSeatUpdates({
+  const { claimSeatsHeldByYou } = useEventSeatUpdates({
     eventId,
     selectedSeatIds,
     setSelectedSeatIds,
@@ -44,6 +44,11 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
   })
   const createHoldMutation = useMutation({
     mutationFn: (eventSeatIds: string[]) => createSeatHold(eventId, eventSeatIds),
+    onMutate: (eventSeatIds) => {
+      // Claimed before the request goes out: the hold is broadcast to everyone the moment the
+      // server takes it, so without this the visitor's own seats come back as someone else's.
+      claimSeatsHeldByYou(eventSeatIds)
+    },
     onSuccess: (hold) => {
       notification.success({
         title: 'Seats held',
@@ -52,6 +57,7 @@ export function EventSeatMap({ eventId }: EventSeatMapProps) {
       navigate(ROUTES.checkout(hold.holdId))
     },
     onError: async (error) => {
+      claimSeatsHeldByYou([])
       if (isAxiosError(error) && error.response?.status === 409) {
         const refreshedLayout = await seatLayoutQuery.refetch()
         const availableIds = availableEventSeatIds(refreshedLayout.data)

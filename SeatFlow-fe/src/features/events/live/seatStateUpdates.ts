@@ -37,9 +37,15 @@ export function parseSeatStateUpdate(body: string): SeatStateUpdateMessage | nul
   }
 }
 
+/**
+ * @param heldByYouSeatIds seats this browser asked to hold. The broadcast is public and names
+ *                         no holder, so a visitor's own hold is only distinguishable from
+ *                         someone else's by what this client requested.
+ */
 export function applySeatStateUpdate(
   layout: EventSeatLayout,
   message: SeatStateUpdateMessage,
+  heldByYouSeatIds: ReadonlySet<string> = new Set(),
 ): EventSeatLayout {
   if (layout.eventId !== message.eventId || message.eventSeatIds.length === 0) {
     return layout
@@ -56,7 +62,11 @@ export function applySeatStateUpdate(
           return seat
         }
 
-        const nextSeat = seatWithState(seat, message.type)
+        const nextSeat = seatWithState(
+          seat,
+          message.type,
+          heldByYouSeatIds.has(seat.eventSeatId),
+        )
         if (nextSeat !== seat) {
           changed = true
         }
@@ -72,16 +82,26 @@ export function invalidSelectedSeatIds(layout: EventSeatLayout | undefined, sele
   const seatsById = seatsByEventSeatId(layout)
   return selectedSeatIds.filter((eventSeatId) => {
     const seat = seatsById.get(eventSeatId)
-    return !seat || seatState(seat) !== 'AVAILABLE'
+    if (!seat) {
+      return true
+    }
+    // A seat the visitor holds is still theirs to check out, so it is not a lost selection.
+    const state = seatState(seat)
+    return state !== 'AVAILABLE' && state !== 'HELD_BY_YOU'
   })
 }
 
-function seatWithState(seat: EventSeatLayoutSeat, type: SeatStateChangeType): EventSeatLayoutSeat {
+function seatWithState(
+  seat: EventSeatLayoutSeat,
+  type: SeatStateChangeType,
+  heldByYou: boolean,
+): EventSeatLayoutSeat {
   if (type === 'SEATS_HELD') {
     if (seat.permanentStatus !== 'AVAILABLE') {
       return seat
     }
-    return seat.status === 'HELD' ? seat : { ...seat, status: 'HELD' }
+    const status = heldByYou || seat.status === 'HELD_BY_YOU' ? 'HELD_BY_YOU' : 'HELD'
+    return seat.status === status ? seat : { ...seat, status }
   }
 
   if (type === 'SEATS_RELEASED') {
