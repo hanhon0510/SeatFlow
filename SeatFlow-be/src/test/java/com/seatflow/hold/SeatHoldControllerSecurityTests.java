@@ -94,6 +94,16 @@ class SeatHoldControllerSecurityTests {
 	}
 
 	@Test
+	void adminCannotHoldSeat() throws Exception {
+		mockMvc.perform(post("/api/v1/events/{eventId}/holds", EVENT_ID)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(requestBody(EVENT_SEAT_ID)))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.title").value("Forbidden"));
+	}
+
+	@Test
 	void unauthenticatedUserCannotHoldSeat() throws Exception {
 		mockMvc.perform(post("/api/v1/events/{eventId}/holds", EVENT_ID)
 						.contentType(MediaType.APPLICATION_JSON)
