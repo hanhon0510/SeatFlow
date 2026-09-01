@@ -11,13 +11,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminController {
 
 	private final AdminService adminService;
+	private final AdminDashboardService adminDashboardService;
 
-	public AdminController(AdminService adminService) {
+	public AdminController(AdminService adminService, AdminDashboardService adminDashboardService) {
 		this.adminService = adminService;
+		this.adminDashboardService = adminDashboardService;
 	}
 
 	@GetMapping
 	public AdminStatusResponse status(@AuthenticationPrincipal Jwt jwt) {
 		return adminService.getAdminStatus(jwt);
+	}
+
+	@GetMapping("/dashboard")
+	public AdminDashboardResponse dashboard() {
+		return adminDashboardService.getDashboard();
 	}
 }

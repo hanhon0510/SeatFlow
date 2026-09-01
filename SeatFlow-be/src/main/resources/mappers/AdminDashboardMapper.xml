@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.admin.AdminDashboardMapper">
+    <resultMap id="VenuesResultMap" type="com.seatflow.admin.AdminDashboardVenues">
+        <constructor>
+            <arg column="total" javaType="_long" />
+            <arg column="active" javaType="_long" />
+            <arg column="archived" javaType="_long" />
+            <arg column="sections" javaType="_long" />
+            <arg column="seats" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="EventsResultMap" type="com.seatflow.admin.AdminDashboardEvents">
+        <constructor>
+            <arg column="total" javaType="_long" />
+            <arg column="draft" javaType="_long" />
+            <arg column="published" javaType="_long" />
+            <arg column="cancelled" javaType="_long" />
+            <arg column="completed" javaType="_long" />
+            <arg column="on_sale_now" javaType="_long" />
+            <arg column="starting_soon" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="RevenueResultMap" type="com.seatflow.admin.AdminDashboardRevenue">
+        <constructor>
+            <idArg column="currency" javaType="java.lang.String" />
+            <arg column="amount" javaType="java.math.BigDecimal" />
+            <arg column="order_count" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="UpcomingEventResultMap" type="com.seatflow.admin.AdminDashboardUpcomingEvent">
+        <constructor>
+            <idArg column="event_id" javaType="java.util.UUID" />
+            <arg column="name" javaType="java.lang.String" />
+            <arg column="venue_name" javaType="java.lang.String" />
+            <arg column="start_time" javaType="java.time.Instant" />
+            <arg column="sales_end_time" javaType="java.time.Instant" />
+            <arg column="status" javaType="com.seatflow.event.EventStatus" />
+            <arg column="seats_total" javaType="_long" />
+            <arg column="seats_sold" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <select id="findVenueSummary" resultMap="VenuesResultMap">
+        SELECT
+            COUNT(DISTINCT venue.id) AS total,
+            COUNT(DISTINCT venue.id) FILTER (WHERE venue.status = 'ACTIVE') AS active,
+            COUNT(DISTINCT venue.id) FILTER (WHERE venue.status = 'ARCHIVED') AS archived,
+            COUNT(DISTINCT section.id) AS sections,
+            COUNT(seat.id) AS seats
+        FROM venues venue
+        LEFT JOIN venue_sections section ON section.venue_id = venue.id
+        LEFT JOIN seats seat ON seat.section_id = section.id
+    </select>
+
+    <select id="findEventSummary" resultMap="EventsResultMap">
+        SELECT
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE status = 'DRAFT') AS draft,
+            COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS published,
+            COUNT(*) FILTER (WHERE status = 'CANCELLED') AS cancelled,
+            COUNT(*) FILTER (WHERE status = 'COMPLETED') AS completed,
+            COUNT(*) FILTER (
+                WHERE status = 'PUBLISHED'
+                  AND sales_start_time &lt;= #{now}
+                  AND sales_end_time &gt;= #{now}
+            ) AS on_sale_now,
+            COUNT(*) FILTER (
+                WHERE status = 'PUBLISHED'
+                  AND start_time &gt;= #{now}
+                  AND start_time &lt; #{startingSoonBefore}
+            ) AS starting_soon
+        FROM events
+    </select>
+
+    <select id="countOrdersByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM orders
+        WHERE status = #{status}
+    </select>
+
+    <select id="countTicketsByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM tickets
+        WHERE status = #{status}
+    </select>
+
+    <select id="findRevenueByCurrency" resultMap="RevenueResultMap">
+        SELECT
+            currency,
+            SUM(total_amount) AS amount,
+            COUNT(*) AS order_count
+        FROM orders
+        WHERE status = 'PAID'
+        GROUP BY currency
+        ORDER BY currency
+    </select>
+
+    <select id="findUpcomingEvents" resultMap="UpcomingEventResultMap">
+        SELECT
+            event.id AS event_id,
+            event.name,
+            venue.name AS venue_name,
+            event.start_time,
+            event.sales_end_time,
+            event.status,
+            COUNT(event_seat.id) AS seats_total,
+            COUNT(event_seat.id) FILTER (WHERE event_seat.permanent_status = 'SOLD') AS seats_sold
+        FROM events event
+        JOIN venues venue ON venue.id = event.venue_id
+        LEFT JOIN event_seats event_seat ON event_seat.event_id = event.id
+        WHERE event.start_time &gt;= #{now}
+          AND event.status IN ('DRAFT', 'PUBLISHED')
+        GROUP BY event.id, event.name, venue.name, event.start_time, event.sales_end_time, event.status
+        ORDER BY event.start_time ASC, event.id ASC
+        LIMIT #{limit}
+    </select>
+</mapper>

@@ -1,11 +1,15 @@
 package com.seatflow.admin;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -17,6 +21,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.seatflow.event.EventStatus;
 import com.seatflow.security.JwtConfig;
 import com.seatflow.security.JwtTokenService;
 import com.seatflow.security.SecurityConfig;
@@ -33,6 +38,7 @@ import com.seatflow.user.UserStatus;
 		JwtConfig.class,
 		JwtTokenService.class,
 		AdminService.class,
+		AdminDashboardService.class,
 		CurrentUserService.class
 })
 @TestPropertySource(properties = {
@@ -53,6 +59,9 @@ class AdminControllerSecurityTests {
 
 	@MockitoBean
 	private UserMapper userMapper;
+
+	@MockitoBean
+	private AdminDashboardMapper adminDashboardMapper;
 
 	@Test
 	void adminCanAccessAdminEndpoint() throws Exception {
@@ -75,6 +84,54 @@ class AdminControllerSecurityTests {
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(user)))
 				.andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Forbidden"));
+	}
+
+	@Test
+	void adminDashboardSummarisesVenuesEventsAndSales() throws Exception {
+		UserRecord admin = user(UserRole.ADMIN);
+		when(userMapper.findById(admin.id())).thenReturn(admin);
+		when(adminDashboardMapper.findVenueSummary())
+				.thenReturn(new AdminDashboardVenues(3, 2, 1, 5, 120));
+		when(adminDashboardMapper.findEventSummary(any(), any()))
+				.thenReturn(new AdminDashboardEvents(6, 2, 3, 1, 0, 2, 1));
+		when(adminDashboardMapper.countOrdersByStatus("PAID")).thenReturn(9L);
+		when(adminDashboardMapper.countOrdersByStatus("PENDING")).thenReturn(4L);
+		when(adminDashboardMapper.countTicketsByStatus("ACTIVE")).thenReturn(11L);
+		when(adminDashboardMapper.countTicketsByStatus("USED")).thenReturn(7L);
+		when(adminDashboardMapper.findRevenueByCurrency()).thenReturn(List.of(
+				new AdminDashboardRevenue("VND", new BigDecimal("1500000.00"), 9)));
+		when(adminDashboardMapper.findUpcomingEvents(any(), anyInt())).thenReturn(List.of(
+				new AdminDashboardUpcomingEvent(
+						UUID.randomUUID(),
+						"Season Opener",
+						"Main Hall",
+						NOW,
+						NOW,
+						EventStatus.PUBLISHED,
+						100,
+						42)));
+
+		mockMvc.perform(get("/api/v1/admin/dashboard")
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.venues.total").value(3))
+				.andExpect(jsonPath("$.venues.seats").value(120))
+				.andExpect(jsonPath("$.events.published").value(3))
+				.andExpect(jsonPath("$.events.onSaleNow").value(2))
+				.andExpect(jsonPath("$.sales.paidOrders").value(9))
+				.andExpect(jsonPath("$.sales.ticketsUsed").value(7))
+				.andExpect(jsonPath("$.sales.revenue[0].currency").value("VND"))
+				.andExpect(jsonPath("$.upcomingEvents[0].name").value("Season Opener"))
+				.andExpect(jsonPath("$.upcomingEvents[0].seatsSold").value(42))
+				.andExpect(jsonPath("$.generatedAt").isNotEmpty());
+	}
+
+	@Test
+	void normalUserReceivesForbiddenAtAdminDashboard() throws Exception {
+		mockMvc.perform(get("/api/v1/admin/dashboard")
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(user(UserRole.USER))))
+				.andExpect(status().isForbidden())
 				.andExpect(jsonPath("$.title").value("Forbidden"));
 	}
 
