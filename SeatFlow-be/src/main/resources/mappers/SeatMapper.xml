@@ -81,6 +81,12 @@
         </foreach>
     </insert>
 
+    <update id="updateAccessible">
+        UPDATE seats
+        SET accessible = #{accessible}
+        WHERE id = #{id}
+    </update>
+
     <select id="findById" resultMap="SeatRecordResultMap">
         SELECT
             <include refid="SeatColumns" />

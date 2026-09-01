@@ -63,6 +63,13 @@ public class AdminSeatingController {
 		return seatingService.createSeatsBulk(sectionId, request);
 	}
 
+	@PutMapping("/seats/{seatId}")
+	public SeatResponse updateSeat(
+			@PathVariable UUID seatId,
+			@Valid @RequestBody SeatUpdateRequest request) {
+		return seatingService.updateSeatAccessibility(seatId, request);
+	}
+
 	@GetMapping("/venues/{venueId}/seat-layout")
 	public SeatLayoutResponse seatLayout(@PathVariable UUID venueId) {
 		return seatingService.getSeatLayout(venueId);

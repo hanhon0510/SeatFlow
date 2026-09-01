@@ -9,5 +9,10 @@ public record SeatCreateRequest(
 		@NotBlank @Size(max = 32) String rowLabel,
 		@NotNull @Positive Integer seatNumber,
 		@NotBlank @Size(max = 64) String seatLabel,
-		boolean accessible) {
+		Boolean accessible) {
+
+	public SeatCreateRequest {
+		// Omitting the flag creates an accessible seat, matching the seats.accessible default.
+		accessible = accessible == null || accessible;
+	}
 }

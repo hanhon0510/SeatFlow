@@ -103,6 +103,16 @@ public class SeatingService {
 				.toList();
 	}
 
+	@Transactional
+	@PreAuthorize("hasRole('ADMIN')")
+	public SeatResponse updateSeatAccessibility(UUID seatId, SeatUpdateRequest request) {
+		int updatedRows = seatMapper.updateAccessible(seatId, request.accessible());
+		if (updatedRows != 1) {
+			throw new SeatNotFoundException();
+		}
+		return SeatResponse.from(findExistingSeat(seatId));
+	}
+
 	@PreAuthorize("hasRole('ADMIN')")
 	public SeatLayoutResponse getSeatLayout(UUID venueId) {
 		requireVenueExists(venueId);

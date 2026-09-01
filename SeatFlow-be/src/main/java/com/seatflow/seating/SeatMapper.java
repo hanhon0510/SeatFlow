@@ -13,6 +13,8 @@ public interface SeatMapper {
 
 	void insertBatch(@Param("seats") List<SeatRecord> seats);
 
+	int updateAccessible(@Param("id") UUID id, @Param("accessible") boolean accessible);
+
 	SeatRecord findById(@Param("id") UUID id);
 
 	List<SeatRecord> findBySectionId(@Param("sectionId") UUID sectionId);

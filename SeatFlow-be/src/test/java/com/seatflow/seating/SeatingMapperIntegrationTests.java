@@ -106,6 +106,44 @@ class SeatingMapperIntegrationTests extends PostgresTestContainerSupport {
 
 	@Test
 	@WithMockUser(roles = "ADMIN")
+	void accessibilityUpdateTouchesOnlyTheRequestedSeat() {
+		VenueSectionRecord section = insertSection(insertVenue().id(), "Orchestra", 1);
+		SeatRecord target = seat(section.id(), "A", 1, "A1", false);
+		SeatRecord neighbour = seat(section.id(), "A", 2, "A2", false);
+		seatMapper.insertBatch(List.of(target, neighbour));
+
+		SeatResponse updated = seatingService.updateSeatAccessibility(
+				target.id(),
+				new SeatUpdateRequest(true));
+
+		assertThat(updated.accessible()).isTrue();
+		assertThat(seatMapper.findById(target.id()).accessible()).isTrue();
+		assertThat(seatMapper.findById(neighbour.id()).accessible()).isFalse();
+	}
+
+	@Test
+	@WithMockUser(roles = "ADMIN")
+	void updatingAnUnknownSeatFails() {
+		assertThatThrownBy(() -> seatingService.updateSeatAccessibility(
+				UUID.randomUUID(),
+				new SeatUpdateRequest(false)))
+				.isInstanceOf(SeatNotFoundException.class);
+	}
+
+	@Test
+	@WithMockUser(roles = "ADMIN")
+	void seatsAreAccessibleByDefault() {
+		VenueSectionRecord section = insertSection(insertVenue().id(), "Orchestra", 1);
+
+		SeatResponse created = seatingService.createSeat(
+				section.id(),
+				new SeatCreateRequest("A", 1, "A1", null));
+
+		assertThat(created.accessible()).isTrue();
+	}
+
+	@Test
+	@WithMockUser(roles = "ADMIN")
 	void seatLayoutQueryIsGroupedWithStableSectionAndSeatOrdering() {
 		VenueRecord venue = insertVenue();
 		VenueSectionRecord balcony = insertSection(venue.id(), "Balcony", 2);

@@ -175,6 +175,68 @@ class AdminSeatingControllerSecurityTests {
 	}
 
 	@Test
+	void seatIsAccessibleWhenTheFlagIsOmitted() throws Exception {
+		UUID venueId = UUID.randomUUID();
+		UUID sectionId = UUID.randomUUID();
+		when(sectionMapper.findById(sectionId)).thenReturn(section(sectionId, venueId, "Orchestra", 1));
+		when(seatMapper.findById(any(UUID.class))).thenAnswer(invocation -> seat(
+				invocation.getArgument(0),
+				sectionId,
+				"A",
+				1,
+				"A1",
+				true));
+
+		mockMvc.perform(post("/api/v1/admin/sections/{sectionId}/seats", sectionId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{ "rowLabel": "A", "seatNumber": 1, "seatLabel": "A1" }
+								"""))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.accessible").value(true));
+
+		ArgumentCaptor<SeatRecord> insertedSeat = ArgumentCaptor.forClass(SeatRecord.class);
+		verify(seatMapper).insert(insertedSeat.capture());
+		assertThat(insertedSeat.getValue().accessible()).isTrue();
+	}
+
+	@Test
+	void adminCanUpdateSeatAccessibility() throws Exception {
+		UUID sectionId = UUID.randomUUID();
+		UUID seatId = UUID.randomUUID();
+		when(seatMapper.updateAccessible(seatId, false)).thenReturn(1);
+		when(seatMapper.findById(seatId)).thenReturn(seat(seatId, sectionId, "A", 1, "A1", false));
+
+		mockMvc.perform(put("/api/v1/admin/seats/{seatId}", seatId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{ "accessible": false }
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(seatId.toString()))
+				.andExpect(jsonPath("$.seatLabel").value("A1"))
+				.andExpect(jsonPath("$.accessible").value(false));
+
+		verify(seatMapper).updateAccessible(seatId, false);
+	}
+
+	@Test
+	void updatingAnUnknownSeatReturnsNotFound() throws Exception {
+		UUID seatId = UUID.randomUUID();
+		when(seatMapper.updateAccessible(seatId, true)).thenReturn(0);
+
+		mockMvc.perform(put("/api/v1/admin/seats/{seatId}", seatId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{ "accessible": true }
+								"""))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
 	void duplicateSeatLabelReturnsConflict() throws Exception {
 		UUID venueId = UUID.randomUUID();
 		UUID sectionId = UUID.randomUUID();
@@ -230,6 +292,14 @@ class AdminSeatingControllerSecurityTests {
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER))
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(seatJson("A", 1, "A1", false)))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(put("/api/v1/admin/seats/{seatId}", UUID.randomUUID())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{ "accessible": false }
+								"""))
 				.andExpect(status().isForbidden());
 	}
 
