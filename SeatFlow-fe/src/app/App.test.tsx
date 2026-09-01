@@ -15,6 +15,7 @@ import type {
   EventPublishResponse,
   EventSectionConfiguration,
 } from '../features/admin/events/types'
+import type { AdminDashboard } from '../features/admin/dashboard/types'
 import type { EventSeatLayout, PublicEvent, PublicEventPage } from '../features/events/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
 import type {
@@ -81,6 +82,39 @@ const event: Event = {
   status: 'DRAFT',
   createdAt: '2026-08-03T00:00:00Z',
   updatedAt: '2026-08-03T00:00:00Z',
+}
+
+const adminDashboard: AdminDashboard = {
+  venues: { total: 2, active: 2, archived: 0, sections: 5, seats: 150 },
+  events: {
+    total: 3,
+    draft: 1,
+    published: 2,
+    cancelled: 0,
+    completed: 0,
+    onSaleNow: 1,
+    startingSoon: 1,
+  },
+  sales: {
+    paidOrders: 9,
+    pendingOrders: 2,
+    ticketsIssued: 11,
+    ticketsUsed: 4,
+    revenue: [{ currency: 'VND', amount: 1500000, orderCount: 9 }],
+  },
+  upcomingEvents: [
+    {
+      eventId: '1a8d39c3-5639-491b-a9d8-b9b8fde28a65',
+      name: 'Countdown 2027',
+      venueName: 'Hoan Kiem Lake',
+      startTime: '2026-12-31T13:00:00.000Z',
+      salesEndTime: '2026-12-26T17:00:00.000Z',
+      status: 'PUBLISHED',
+      seatsTotal: 90,
+      seatsSold: 18,
+    },
+  ],
+  generatedAt: '2026-09-01T08:00:00.000Z',
 }
 
 const publishedEvent: PublicEvent = {
@@ -1336,6 +1370,84 @@ describe('App', () => {
     expect(await screen.findByText('403')).toBeInTheDocument()
     expect(screen.getByText('You are not authorized to access this page.')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Create venue' })).not.toBeInTheDocument()
+  })
+
+  it('shows the dashboard instead of the health page on the admin landing page', async () => {
+    window.history.pushState({}, '', ROUTES.home)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/dashboard') {
+        return response<AdminDashboard>(config, 200, adminDashboard)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(screen.getByText('5 sections, 150 seats')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Countdown 2027' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'SeatFlow frontend is running.' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps admins out of the seat booking flow', async () => {
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/dashboard') {
+        return response<AdminDashboard>(config, 200, adminDashboard)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(screen.queryByText('Select seats')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Events' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Tickets' })).not.toBeInTheDocument()
+  })
+
+  it('sends an admin away from the buyer ticket list', async () => {
+    window.history.pushState({}, '', ROUTES.tickets)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === 'GET /admin/dashboard') {
+        return response<AdminDashboard>(config, 200, adminDashboard)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Tickets' })).not.toBeInTheDocument()
   })
 
   it('shows admin navigation and route content to admins', async () => {

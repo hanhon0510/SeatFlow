@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   CalendarOutlined,
+  DashboardOutlined,
   DollarOutlined,
   HomeOutlined,
   LockOutlined,
@@ -26,12 +27,25 @@ type NavItem = {
   icon: ReactNode
 }
 
-const publicNavItems = [
-  { key: ROUTES.home, label: 'Health', icon: <HomeOutlined /> },
-  { key: ROUTES.events, label: 'Events', icon: <CalendarOutlined /> },
-] satisfies NavItem[]
+const homeNavItem = {
+  key: ROUTES.home,
+  label: 'Health',
+  icon: <HomeOutlined />,
+} satisfies NavItem
 
-const authenticatedNavItems = [
+const adminHomeNavItem = {
+  key: ROUTES.home,
+  label: 'Dashboard',
+  icon: <DashboardOutlined />,
+} satisfies NavItem
+
+const catalogNavItem = {
+  key: ROUTES.events,
+  label: 'Events',
+  icon: <CalendarOutlined />,
+} satisfies NavItem
+
+const customerNavItems = [
   { key: ROUTES.tickets, label: 'Tickets', icon: <QrcodeOutlined /> },
 ] satisfies NavItem[]
 
@@ -77,12 +91,13 @@ export function AppShell() {
   const navigate = useNavigate()
 
   const closeDrawer = () => setDrawerOpen(false)
-  const roleBasedNavItems = user?.role === 'ADMIN'
-    ? [...authenticatedNavItems, ...adminNavItems]
-    : authenticatedNavItems
+  // An admin does not buy, so the catalogue and their own ticket list are both left out.
+  const isAdmin = user?.role === 'ADMIN'
   const visibleNavItems = isAuthenticated
-    ? [...publicNavItems, ...roleBasedNavItems, logoutNavItem]
-    : [...publicNavItems, ...guestNavItems]
+    ? isAdmin
+      ? [adminHomeNavItem, ...adminNavItems, logoutNavItem]
+      : [homeNavItem, catalogNavItem, ...customerNavItems, logoutNavItem]
+    : [homeNavItem, catalogNavItem, ...guestNavItems]
 
   const handleLogout = async () => {
     closeDrawer()

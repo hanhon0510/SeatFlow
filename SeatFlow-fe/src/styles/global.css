@@ -414,6 +414,36 @@ body {
   margin-bottom: 0;
 }
 
+.admin-dashboard {
+  display: grid;
+  gap: 20px;
+}
+
+.admin-dashboard .admin-section-header {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.admin-dashboard .admin-section-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.dashboard-tiles {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.dashboard-tiles .ant-statistic-content {
+  font-size: 1.5rem;
+}
+
+.dashboard-upcoming .ant-table-wrapper {
+  overflow-x: auto;
+}
+
 .admin-form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
