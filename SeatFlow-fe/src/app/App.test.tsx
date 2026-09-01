@@ -597,7 +597,7 @@ describe('App', () => {
     expect(screen.getByText('Selected')).toBeInTheDocument()
     expect(screen.getByText('Sold')).toBeInTheDocument()
     expect(screen.getByText('Blocked')).toBeInTheDocument()
-    expect(screen.getByText('Accessible')).toBeInTheDocument()
+    expect(screen.getByText('Wheelchair accessible')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Seat A3, sold/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /Seat A4, blocked/i })).toBeDisabled()
   })
@@ -1561,7 +1561,7 @@ describe('App', () => {
     await user.type(screen.getByLabelText('Starting seat number'), '1')
     await user.clear(screen.getByLabelText('Seat count'))
     await user.type(screen.getByLabelText('Seat count'), '3')
-    await user.click(screen.getByLabelText('Accessible seats'))
+    // The accessibility switch is left untouched: new seats are accessible by default.
     await user.click(screen.getByRole('button', { name: /create seats/i }))
 
     await waitFor(() =>
@@ -1573,7 +1573,9 @@ describe('App', () => {
         ],
       }),
     )
-    expect(await screen.findByLabelText('Seat A1')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /Seat A1, wheelchair accessible/ }),
+    ).toBeInTheDocument()
   }, 10000)
 
   it('requires confirmation before archiving a venue', async () => {

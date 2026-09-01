@@ -12,6 +12,7 @@ import {
   createVenue,
   getSeatLayout,
   getVenue,
+  updateSeatAccessibility,
   updateVenue,
   venueQueryKeys,
 } from '../api/venuesApi'
@@ -20,6 +21,7 @@ import { SectionManagement } from '../components/SectionManagement'
 import { SeatLayoutPreview } from '../components/SeatLayoutPreview'
 import { VenueForm } from '../components/VenueForm'
 import type {
+  Seat,
   SeatCreateRequest,
   SeatLayoutSection,
   SectionFormValues,
@@ -36,6 +38,8 @@ export function VenueFormPage({ mode }: VenueFormPageProps) {
   const [sectionError, setSectionError] = useState<string | null>(null)
   const [bulkSeatError, setBulkSeatError] = useState<string | null>(null)
   const [bulkSeatSection, setBulkSeatSection] = useState<SeatLayoutSection | null>(null)
+  const [seatAccessibilityError, setSeatAccessibilityError] = useState<string | null>(null)
+  const [pendingSeatIds, setPendingSeatIds] = useState<string[]>([])
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { notification } = AntdApp.useApp()
@@ -102,6 +106,28 @@ export function VenueFormPage({ mode }: VenueFormPageProps) {
     },
     onError: (error) => {
       setBulkSeatError(apiErrorMessage(error, 'Could not create seats'))
+    },
+  })
+
+  const seatAccessibilityMutation = useMutation({
+    mutationFn: (seat: Seat) => updateSeatAccessibility(seat.id, !seat.accessible),
+    onMutate: (seat) => {
+      setPendingSeatIds((current) => [...current, seat.id])
+    },
+    onSuccess: async (seat) => {
+      setSeatAccessibilityError(null)
+      if (venueId) {
+        await queryClient.invalidateQueries({ queryKey: venueQueryKeys.layout(venueId) })
+      }
+      notification.success({
+        title: `Seat ${seat.seatLabel} is now ${seat.accessible ? 'wheelchair accessible' : 'standard'}`,
+      })
+    },
+    onError: (error) => {
+      setSeatAccessibilityError(apiErrorMessage(error, 'Could not update the seat'))
+    },
+    onSettled: (_seat, _error, seat) => {
+      setPendingSeatIds((current) => current.filter((seatId) => seatId !== seat.id))
     },
   })
 
@@ -200,10 +226,12 @@ export function VenueFormPage({ mode }: VenueFormPageProps) {
             error={
               layoutQuery.isError
                 ? apiErrorMessage(layoutQuery.error, 'Could not load seat layout')
-                : null
+                : seatAccessibilityError
             }
             layout={layoutQuery.data}
             loading={layoutQuery.isLoading}
+            pendingSeatIds={pendingSeatIds}
+            onToggleAccessible={(seat) => seatAccessibilityMutation.mutate(seat)}
           />
 
           <BulkSeatModal

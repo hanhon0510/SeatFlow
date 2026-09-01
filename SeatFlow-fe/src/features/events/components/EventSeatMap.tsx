@@ -288,7 +288,7 @@ function SeatLegend() {
       <Badge color="#0f766e" text="Held by you" />
       <Badge color="#b8c3d1" text="Sold" />
       <Badge color="#4b5563" text="Blocked" />
-      <Badge color="#16a34a" text="Accessible" />
+      <Badge color="#16a34a" text="Wheelchair accessible" />
     </div>
   )
 }
@@ -319,7 +319,7 @@ function availableEventSeatIds(layout: EventSeatLayout | undefined) {
 
 function seatAriaLabel(seat: EventSeatLayoutSeat, selected: boolean) {
   const state = selected ? 'selected' : statusLabel(seatStatus(seat)).toLowerCase()
-  const accessibility = seat.accessible ? 'accessible' : 'standard'
+  const accessibility = seat.accessible ? 'wheelchair accessible' : 'standard'
   return `Seat ${seat.seatLabel}, ${state}, ${formatPrice(seat.price)}, ${accessibility}`
 }
 

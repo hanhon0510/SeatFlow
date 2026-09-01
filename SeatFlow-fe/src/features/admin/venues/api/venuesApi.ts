@@ -60,3 +60,8 @@ export async function getSeatLayout(venueId: string) {
   const response = await apiClient.get<SeatLayout>(`/admin/venues/${venueId}/seat-layout`)
   return response.data
 }
+
+export async function updateSeatAccessibility(seatId: string, accessible: boolean) {
+  const response = await apiClient.put<Seat>(`/admin/seats/${seatId}`, { accessible })
+  return response.data
+}

@@ -528,6 +528,52 @@ body {
   color: #14532d;
 }
 
+/* The marker sits inside the chip: .seat-layout-rows scrolls on the x axis, which clips
+   anything drawn outside a chip's own box. */
+.seat-chip {
+  gap: 4px;
+  width: 52px;
+  min-width: 52px;
+  padding: 0 5px;
+  font-family: inherit;
+}
+
+.seat-chip-mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.seat-chip.interactive {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.seat-chip.interactive:hover:not(:disabled) {
+  box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.35);
+}
+
+.seat-chip.interactive:focus-visible {
+  outline: 2px solid #1f6feb;
+  outline-offset: 2px;
+}
+
+.seat-chip.interactive:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+.seat-layout-legend {
+  margin-bottom: 12px;
+}
+
+.seat-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+}
+
 .compact-empty {
   margin: 0;
 }

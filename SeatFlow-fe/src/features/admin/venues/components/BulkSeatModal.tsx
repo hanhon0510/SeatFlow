@@ -20,7 +20,7 @@ const defaultValues: BulkSeatFormValues = {
   rowLabel: '',
   startNumber: 1,
   quantity: 10,
-  accessible: false,
+  accessible: true,
 }
 
 export function BulkSeatModal({
@@ -120,8 +120,13 @@ export function BulkSeatModal({
           </Form.Item>
         </div>
 
-        <Form.Item label="Accessible seats" name="accessible" valuePropName="checked">
-          <Switch />
+        <Form.Item
+          extra="Applies to every seat in this batch. Ticket buyers see a wheelchair marker on the seat map; it does not change price or availability. You can change individual seats afterwards in the seat layout below."
+          label="Wheelchair accessible"
+          name="accessible"
+          valuePropName="checked"
+        >
+          <Switch checkedChildren="Accessible" unCheckedChildren="Standard" />
         </Form.Item>
       </Form>
     </Modal>
