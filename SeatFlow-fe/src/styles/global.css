@@ -457,6 +457,106 @@ body {
   overflow-x: auto;
 }
 
+.seat-heatmap {
+  display: grid;
+  gap: 20px;
+}
+
+.seat-heatmap-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.seat-heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-wrap: wrap;
+}
+
+.seat-heatmap-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.seat-heatmap-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(23, 32, 51, 0.16);
+}
+
+.seat-heatmap-section {
+  display: grid;
+  gap: 8px;
+}
+
+.seat-heatmap-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.seat-heatmap-grid {
+  display: flex;
+  flex-wrap: wrap;
+  /* 2px keeps the page showing between fills so adjacent cells stay separate marks. */
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.seat-heatmap-cell {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 4px;
+  /* The lightest steps sit close to the page, so a hairline keeps every cell readable. */
+  border: 1px solid rgba(23, 32, 51, 0.16);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+/* Blocked seats are a state, not a magnitude: they get a texture and a legend entry
+   rather than a step of the ramp, so the meaning never rests on color alone. */
+.seat-heatmap-cell.is-blocked,
+.seat-heatmap-swatch.is-blocked {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.92) 0,
+    rgba(255, 255, 255, 0.92) 2px,
+    transparent 2px,
+    transparent 6px
+  );
+  /* A corner wedge, not a full wash: stripes behind the label would swallow it on the
+     darker steps. The outline is the loud signal; the texture survives CVD and print. */
+  background-repeat: no-repeat;
+  background-size: 11px 11px;
+  background-position: top right;
+}
+
+/* Texture alone is easy to miss on a small cell, so the outline carries it too. */
+.seat-heatmap-cell.is-blocked {
+  border-color: #172033;
+}
+
+.seat-heatmap-swatch.is-blocked {
+  background-color: #6da7ec;
+  border-color: #172033;
+}
+
 .sales-trend {
   display: grid;
   gap: 6px;

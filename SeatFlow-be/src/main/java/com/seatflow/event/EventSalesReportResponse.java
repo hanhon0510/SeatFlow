@@ -10,12 +10,14 @@ public record EventSalesReportResponse(
 		EventSalesOrdersResponse orders,
 		EventSalesTicketsResponse tickets,
 		List<EventSalesSectionResponse> sections,
+		List<EventSalesHeatmapSectionResponse> heatmap,
 		List<EventSalesDailyPointResponse> dailySales,
 		Instant generatedAt) {
 
 	public EventSalesReportResponse {
 		revenue = List.copyOf(revenue);
 		sections = List.copyOf(sections);
+		heatmap = List.copyOf(heatmap);
 		dailySales = List.copyOf(dailySales);
 	}
 }

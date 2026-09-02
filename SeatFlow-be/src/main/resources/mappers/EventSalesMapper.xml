@@ -87,6 +87,19 @@
         </constructor>
     </resultMap>
 
+    <resultMap id="HeatmapResultMap" type="com.seatflow.event.EventSalesHeatmapRecord">
+        <constructor>
+            <idArg column="section_id" javaType="java.util.UUID" />
+            <arg column="section_name" javaType="java.lang.String" />
+            <arg column="display_order" javaType="_int" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="seats_total" javaType="_long" />
+            <arg column="seats_available" javaType="_long" />
+            <arg column="seats_sold" javaType="_long" />
+            <arg column="seats_blocked" javaType="_long" />
+        </constructor>
+    </resultMap>
+
     <resultMap id="DailyPointResultMap" type="com.seatflow.event.EventSalesDailyPointResponse">
         <constructor>
             <idArg column="sales_date" javaType="java.time.LocalDate" />
@@ -248,6 +261,28 @@
             event_section.price,
             event_section.sales_enabled
         ORDER BY section.display_order ASC, section.name ASC
+    </select>
+
+    <!--
+        Grouped by row rather than by seat: a heatmap cell is a row, and a whole-venue
+        seat-by-seat read is exactly the cost this aggregate exists to avoid.
+    -->
+    <select id="findHeatmapRows" resultMap="HeatmapResultMap">
+        SELECT
+            section.id AS section_id,
+            section.name AS section_name,
+            section.display_order,
+            seat.row_label,
+            COUNT(*) AS seats_total,
+            COUNT(*) FILTER (WHERE event_seat.permanent_status = 'AVAILABLE') AS seats_available,
+            COUNT(*) FILTER (WHERE event_seat.permanent_status = 'SOLD') AS seats_sold,
+            COUNT(*) FILTER (WHERE event_seat.permanent_status = 'BLOCKED') AS seats_blocked
+        FROM event_seats event_seat
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        JOIN venue_sections section ON section.id = seat.section_id
+        WHERE event_seat.event_id = #{eventId}
+        GROUP BY section.id, section.name, section.display_order, seat.row_label
+        ORDER BY section.display_order ASC, section.name ASC, seat.row_label ASC
     </select>
 
     <select id="findDailySales" resultMap="DailyPointResultMap">

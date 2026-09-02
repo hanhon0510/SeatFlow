@@ -387,6 +387,17 @@ const eventSalesReport: EventSalesReport = {
       soldValue: 4500000,
     },
   ],
+  heatmap: [
+    {
+      sectionId: '1f89f6d1-3bc4-4d46-8c85-24d6db537d87',
+      name: 'Orchestra',
+      rows: [
+        { rowLabel: 'A', seatsTotal: 20, seatsAvailable: 0, seatsSold: 20, seatsBlocked: 0 },
+        { rowLabel: 'B', seatsTotal: 20, seatsAvailable: 15, seatsSold: 5, seatsBlocked: 0 },
+        { rowLabel: 'C', seatsTotal: 20, seatsAvailable: 14, seatsSold: 1, seatsBlocked: 5 },
+      ],
+    },
+  ],
   dailySales: [{ date: '2026-08-30', paidOrders: 21, seatsSold: 45 }],
   generatedAt: '2026-09-01T08:00:00.000Z',
 }
@@ -1945,10 +1956,50 @@ describe('App', () => {
     expect(screen.getByText('of 120')).toBeInTheDocument()
     expect(screen.getByText('3 in checkout, 5 blocked')).toBeInTheDocument()
     expect(screen.getByText('5 checked in, 0 cancelled')).toBeInTheDocument()
-    expect(screen.getByText('Orchestra')).toBeInTheDocument()
+    // Scoped to the pricing table: the heatmap below names its sections too.
+    expect(screen.getByRole('cell', { name: 'Orchestra' })).toBeInTheDocument()
     expect(screen.getByText('buyer@example.com')).toBeInTheDocument()
     expect(screen.getByText('45 seats, 21 orders')).toBeInTheDocument()
   }, 10000)
+
+  it('maps sell-through per row and can switch the heatmap to a table', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}/sales`) {
+        return response<EventSalesReport>(config, 200, eventSalesReport)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Where the seats are selling')).toBeInTheDocument()
+    expect(screen.getByText('26 of 60 seats sold')).toBeInTheDocument()
+
+    // A cell carries its own numbers, so the reading never depends on the fill alone.
+    expect(
+      screen.getByLabelText('Orchestra row A: 20 of 20 sold (100%), 0 available'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('Orchestra row C: 1 of 20 sold (5%), 14 available, 5 blocked'),
+    ).toBeInTheDocument()
+
+    // The Segmented's real radio is visually hidden, so drive it the way a person does.
+    await user.click(screen.getByTitle('Table'))
+
+    expect(await screen.findByRole('columnheader', { name: 'Sold %' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '25%' })).toBeInTheDocument()
+  }, 15000)
 
   it('reports a failure to load the sales report', async () => {
     window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))

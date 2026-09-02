@@ -150,6 +150,20 @@ export type EventSalesSection = {
   soldValue: number
 }
 
+export type EventSalesHeatmapRow = {
+  rowLabel: string
+  seatsTotal: number
+  seatsAvailable: number
+  seatsSold: number
+  seatsBlocked: number
+}
+
+export type EventSalesHeatmapSection = {
+  sectionId: string
+  name: string
+  rows: EventSalesHeatmapRow[]
+}
+
 export type EventSalesDailyPoint = {
   date: string
   paidOrders: number
@@ -163,6 +177,7 @@ export type EventSalesReport = {
   orders: EventSalesOrders
   tickets: EventSalesTickets
   sections: EventSalesSection[]
+  heatmap: EventSalesHeatmapSection[]
   dailySales: EventSalesDailyPoint[]
   generatedAt: string
 }

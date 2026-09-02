@@ -23,6 +23,7 @@ import { eventQueryKeys, getEventSales } from '../api/eventsApi'
 import { EventSalesStatusTag } from '../components/EventSalesStatusTag'
 import { EventStatusTag } from '../components/EventStatusTag'
 import { SalesTrendChart } from '../components/SalesTrendChart'
+import { SeatSalesHeatmap } from '../components/SeatSalesHeatmap'
 import type { EventSalesRecentOrder, EventSalesSection } from '../types'
 
 const orderStatusColor: Record<EventSalesRecentOrder['status'], string> = {
@@ -72,7 +73,7 @@ export function AdminEventDetailPage() {
     )
   }
 
-  const { event, inventory, revenue, orders, tickets, sections, dailySales, generatedAt } =
+  const { event, inventory, revenue, orders, tickets, sections, heatmap, dailySales, generatedAt } =
     salesQuery.data
   const sellThrough = inventory.seatsTotal === 0 ? 0 : (inventory.seatsSold / inventory.seatsTotal) * 100
 
@@ -183,7 +184,7 @@ export function AdminEventDetailPage() {
             {formatAmount(inventory.inventoryValue)}
           </Descriptions.Item>
           <Descriptions.Item label="Sold value">{formatAmount(inventory.soldValue)}</Descriptions.Item>
-          <Descriptions.Item label="Orders" span={2}>
+          <Descriptions.Item label="Orders" span={{ xs: 1, md: 2 }}>
             <Space size={4} wrap>
               <Tag color="green">{orders.counts.paid} paid</Tag>
               <Tag color="gold">{orders.counts.pending} pending</Tag>
@@ -193,7 +194,7 @@ export function AdminEventDetailPage() {
             </Space>
           </Descriptions.Item>
           {event.description ? (
-            <Descriptions.Item label="Description" span={2}>
+            <Descriptions.Item label="Description" span={{ xs: 1, md: 2 }}>
               {event.description}
             </Descriptions.Item>
           ) : null}
@@ -212,6 +213,10 @@ export function AdminEventDetailPage() {
             size="middle"
           />
         )}
+      </Card>
+
+      <Card title="Where the seats are selling">
+        <SeatSalesHeatmap sections={heatmap} />
       </Card>
 
       <Card title="Paid demand, last 30 days">

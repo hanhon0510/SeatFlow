@@ -454,6 +454,9 @@ class AdminEventControllerSecurityTests {
 				3L,
 				1L,
 				new BigDecimal("300.00"))));
+		when(eventSalesMapper.findHeatmapRows(eventId)).thenReturn(List.of(
+				new EventSalesHeatmapRecord(sectionId, "Orchestra", 1, "A", 5L, 2L, 3L, 0L),
+				new EventSalesHeatmapRecord(sectionId, "Orchestra", 1, "B", 5L, 4L, 0L, 1L)));
 		when(eventSalesMapper.findDailySales(eq(eventId), any(Instant.class)))
 				.thenReturn(List.of(new EventSalesDailyPointResponse(LocalDate.parse("2026-08-01"), 3L, 3L)));
 
@@ -472,6 +475,11 @@ class AdminEventControllerSecurityTests {
 				.andExpect(jsonPath("$.orders.recent[0].buyerEmail").value("buyer@example.com"))
 				.andExpect(jsonPath("$.tickets.issued").value(3))
 				.andExpect(jsonPath("$.sections[0].name").value("Orchestra"))
+				.andExpect(jsonPath("$.heatmap[0].sectionId").value(sectionId.toString()))
+				.andExpect(jsonPath("$.heatmap[0].name").value("Orchestra"))
+				.andExpect(jsonPath("$.heatmap[0].rows[0].rowLabel").value("A"))
+				.andExpect(jsonPath("$.heatmap[0].rows[0].seatsSold").value(3))
+				.andExpect(jsonPath("$.heatmap[0].rows[1].seatsBlocked").value(1))
 				.andExpect(jsonPath("$.dailySales[0].date").value("2026-08-01"))
 				.andExpect(jsonPath("$.generatedAt").isNotEmpty());
 	}

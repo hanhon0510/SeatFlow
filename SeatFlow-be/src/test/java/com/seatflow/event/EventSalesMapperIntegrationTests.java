@@ -261,6 +261,42 @@ class EventSalesMapperIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	@Test
+	void heatmapRowsSplitSeatsByRowWithinEachSectionInDisplayOrder() {
+		UUID venue = insertVenue("Main Hall");
+		UUID orchestra = insertSection(venue, "Orchestra", 1);
+		UUID balcony = insertSection(venue, "Balcony", 2);
+		UUID event = insertEvent(venue, "Opening Night", EventStatus.PUBLISHED);
+		insertEventSeat(event, insertSeat(orchestra, "A", 1), EventSeatStatus.SOLD, "100.00");
+		insertEventSeat(event, insertSeat(orchestra, "A", 2), EventSeatStatus.SOLD, "100.00");
+		insertEventSeat(event, insertSeat(orchestra, "B", 1), EventSeatStatus.AVAILABLE, "100.00");
+		insertEventSeat(event, insertSeat(orchestra, "B", 2), EventSeatStatus.BLOCKED, "100.00");
+		insertEventSeat(event, insertSeat(balcony, "C", 1), EventSeatStatus.AVAILABLE, "80.00");
+
+		List<EventSalesHeatmapRecord> rows = eventSalesMapper.findHeatmapRows(event);
+
+		assertThat(rows).hasSize(3);
+		assertThat(rows.get(0).sectionName()).isEqualTo("Orchestra");
+		assertThat(rows.get(0).rowLabel()).isEqualTo("A");
+		assertThat(rows.get(0).seatsTotal()).isEqualTo(2);
+		assertThat(rows.get(0).seatsSold()).isEqualTo(2);
+		assertThat(rows.get(1).rowLabel()).isEqualTo("B");
+		assertThat(rows.get(1).seatsAvailable()).isEqualTo(1);
+		assertThat(rows.get(1).seatsBlocked()).isEqualTo(1);
+		assertThat(rows.get(1).seatsSold()).isZero();
+		// Display order decides which section comes first, not the row label.
+		assertThat(rows.get(2).sectionName()).isEqualTo("Balcony");
+		assertThat(rows.get(2).rowLabel()).isEqualTo("C");
+	}
+
+	@Test
+	void heatmapRowsAreEmptyForAnEventWithoutInventory() {
+		UUID venue = insertVenue("Main Hall");
+		UUID event = insertEvent(venue, "Not Published Yet", EventStatus.DRAFT);
+
+		assertThat(eventSalesMapper.findHeatmapRows(event)).isEmpty();
+	}
+
+	@Test
 	void dailySalesGroupPaidOrdersByUtcDayAndIgnoreAnythingOlderThanTheWindow() {
 		UUID venue = insertVenue("Main Hall");
 		UUID section = insertSection(venue, "Orchestra", 1);
