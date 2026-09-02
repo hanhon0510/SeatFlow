@@ -431,7 +431,7 @@ function flattenEventSeats(layout: EventSeatLayout) {
   )
 }
 
-function seedNamespace() {
+export function seedNamespace() {
   return slug(envValue('E2E_SEED_NAMESPACE', 'sf046'))
 }
 
@@ -440,7 +440,7 @@ function generatedE2ePassword(namespace: string, role: string, title: string) {
   return `E2e-${base}-A1!`
 }
 
-function envValue(key: string, fallback: string) {
+export function envValue(key: string, fallback: string) {
   return process.env[key] ?? rootEnv()[key] ?? fallback
 }
 

@@ -41,6 +41,25 @@ E2E_ADMIN_PASSWORD=ChangeMeStrong123!
 
 The seed namespace keeps test data deterministic. Use a different namespace for isolated CI runs. Generated test users use deterministic per-test passwords by default; set `E2E_USER_PASSWORD` only when a fixed override is required.
 
+## Seed Cleanup
+
+Every seeded venue, event and account is named after the seed namespace, so a run can delete
+exactly its own rows. `globalSetup` purges leftovers from an interrupted earlier run and
+`globalTeardown` purges what this run created, both regardless of whether the tests passed.
+
+The API has no delete endpoint for events or users, so the purge runs SQL directly: first
+`psql` on `PATH` using the root `.env` connection values, then `docker exec` into the compose
+container. A purge that cannot reach either prints a warning with both failures and leaves the
+run's result untouched - the tests already ran, and the rows are still there to inspect.
+
+```properties
+E2E_DB_HOST=localhost
+E2E_DB_CONTAINER=seatflow-postgres
+E2E_SKIP_CLEANUP=false
+```
+
+Set `E2E_SKIP_CLEANUP=true` to keep the seeded rows for debugging.
+
 Failure artifacts are retained in ignored folders:
 
 - `SeatFlow-fe/test-results/`
