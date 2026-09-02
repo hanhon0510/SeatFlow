@@ -26,6 +26,7 @@ import com.seatflow.ticket.TicketStatus;
 class EventSalesMapperIntegrationTests extends PostgresTestContainerSupport {
 
 	private static final String BUYER_EMAIL = "buyer@example.com";
+	private static final String OTHER_BUYER_EMAIL = "second-buyer@example.com";
 	private static final Instant NOW = Instant.parse("2026-09-01T00:00:00Z");
 	private static final Instant EVENT_START = NOW.plus(Duration.ofDays(10));
 	private static final Instant SALES_START = NOW.minus(Duration.ofDays(5));
@@ -49,8 +50,8 @@ class EventSalesMapperIntegrationTests extends PostgresTestContainerSupport {
 		jdbcTemplate.update("DELETE FROM seats");
 		jdbcTemplate.update("DELETE FROM venue_sections");
 		jdbcTemplate.update("DELETE FROM venues");
-		// Only the buyer this class creates: the shared container also holds the seeded local admin.
-		jdbcTemplate.update("DELETE FROM users WHERE email = ?", BUYER_EMAIL);
+		// Only the buyers this class creates: the shared container also holds the seeded local admin.
+		jdbcTemplate.update("DELETE FROM users WHERE email IN (?, ?)", BUYER_EMAIL, OTHER_BUYER_EMAIL);
 	}
 
 	@Test
@@ -261,39 +262,57 @@ class EventSalesMapperIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	@Test
-	void heatmapRowsSplitSeatsByRowWithinEachSectionInDisplayOrder() {
+	void seatOrdersNameTheBuyerBehindEachOrderedSeat() {
 		UUID venue = insertVenue("Main Hall");
-		UUID orchestra = insertSection(venue, "Orchestra", 1);
-		UUID balcony = insertSection(venue, "Balcony", 2);
+		UUID section = insertSection(venue, "Orchestra", 1);
 		UUID event = insertEvent(venue, "Opening Night", EventStatus.PUBLISHED);
-		insertEventSeat(event, insertSeat(orchestra, "A", 1), EventSeatStatus.SOLD, "100.00");
-		insertEventSeat(event, insertSeat(orchestra, "A", 2), EventSeatStatus.SOLD, "100.00");
-		insertEventSeat(event, insertSeat(orchestra, "B", 1), EventSeatStatus.AVAILABLE, "100.00");
-		insertEventSeat(event, insertSeat(orchestra, "B", 2), EventSeatStatus.BLOCKED, "100.00");
-		insertEventSeat(event, insertSeat(balcony, "C", 1), EventSeatStatus.AVAILABLE, "80.00");
+		UUID sold = insertEventSeat(event, insertSeat(section, "A", 1), EventSeatStatus.SOLD, "100.00");
+		// An untouched seat has no order at all, so it must not appear.
+		insertEventSeat(event, insertSeat(section, "A", 2), EventSeatStatus.AVAILABLE, "100.00");
+		UUID buyer = insertUser(BUYER_EMAIL);
+		UUID reservation = insertReservation(buyer, event, "CONFIRMED", NOW.plus(Duration.ofMinutes(5)));
+		insertReservationItem(reservation, sold, "100.00");
+		insertOrder(reservation, buyer, OrderStatus.PAID, "100.00", "VND", NOW);
 
-		List<EventSalesHeatmapRecord> rows = eventSalesMapper.findHeatmapRows(event);
+		List<AdminSeatOrderResponse> orders = eventSalesMapper.findSeatOrders(event);
 
-		assertThat(rows).hasSize(3);
-		assertThat(rows.get(0).sectionName()).isEqualTo("Orchestra");
-		assertThat(rows.get(0).rowLabel()).isEqualTo("A");
-		assertThat(rows.get(0).seatsTotal()).isEqualTo(2);
-		assertThat(rows.get(0).seatsSold()).isEqualTo(2);
-		assertThat(rows.get(1).rowLabel()).isEqualTo("B");
-		assertThat(rows.get(1).seatsAvailable()).isEqualTo(1);
-		assertThat(rows.get(1).seatsBlocked()).isEqualTo(1);
-		assertThat(rows.get(1).seatsSold()).isZero();
-		// Display order decides which section comes first, not the row label.
-		assertThat(rows.get(2).sectionName()).isEqualTo("Balcony");
-		assertThat(rows.get(2).rowLabel()).isEqualTo("C");
+		assertThat(orders).hasSize(1);
+		assertThat(orders.getFirst().eventSeatId()).isEqualTo(sold);
+		assertThat(orders.getFirst().buyerEmail()).isEqualTo(BUYER_EMAIL);
+		assertThat(orders.getFirst().orderStatus()).isEqualTo(OrderStatus.PAID);
 	}
 
 	@Test
-	void heatmapRowsAreEmptyForAnEventWithoutInventory() {
+	void seatOrdersKeepOnlyTheNewestOrderForASeatSoldTwice() {
+		UUID venue = insertVenue("Main Hall");
+		UUID section = insertSection(venue, "Orchestra", 1);
+		UUID event = insertEvent(venue, "Opening Night", EventStatus.PUBLISHED);
+		UUID seat = insertEventSeat(event, insertSeat(section, "A", 1), EventSeatStatus.SOLD, "100.00");
+		UUID firstBuyer = insertUser(BUYER_EMAIL);
+		UUID secondBuyer = insertUser(OTHER_BUYER_EMAIL);
+
+		// The first attempt failed and released the seat; the second buyer holds it now.
+		UUID abandoned = insertReservation(firstBuyer, event, "CANCELLED", NOW.plus(Duration.ofMinutes(5)));
+		insertReservationItem(abandoned, seat, "100.00");
+		insertOrder(abandoned, firstBuyer, OrderStatus.FAILED, "100.00", "VND", NOW.minus(Duration.ofDays(2)));
+
+		UUID current = insertReservation(secondBuyer, event, "CONFIRMED", NOW.plus(Duration.ofMinutes(5)));
+		insertReservationItem(current, seat, "100.00");
+		insertOrder(current, secondBuyer, OrderStatus.PAID, "100.00", "VND", NOW);
+
+		List<AdminSeatOrderResponse> orders = eventSalesMapper.findSeatOrders(event);
+
+		assertThat(orders).hasSize(1);
+		assertThat(orders.getFirst().buyerEmail()).isEqualTo(OTHER_BUYER_EMAIL);
+		assertThat(orders.getFirst().orderStatus()).isEqualTo(OrderStatus.PAID);
+	}
+
+	@Test
+	void seatOrdersAreEmptyForAnEventNobodyHasOrdered() {
 		UUID venue = insertVenue("Main Hall");
 		UUID event = insertEvent(venue, "Not Published Yet", EventStatus.DRAFT);
 
-		assertThat(eventSalesMapper.findHeatmapRows(event)).isEmpty();
+		assertThat(eventSalesMapper.findSeatOrders(event)).isEmpty();
 	}
 
 	@Test

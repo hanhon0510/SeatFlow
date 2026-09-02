@@ -23,16 +23,19 @@ public class AdminEventController {
 	private final EventSectionPricingService eventSectionPricingService;
 	private final EventPublishService eventPublishService;
 	private final EventSalesReportService eventSalesReportService;
+	private final AdminSeatMapService adminSeatMapService;
 
 	public AdminEventController(
 			EventService eventService,
 			EventSectionPricingService eventSectionPricingService,
 			EventPublishService eventPublishService,
-			EventSalesReportService eventSalesReportService) {
+			EventSalesReportService eventSalesReportService,
+			AdminSeatMapService adminSeatMapService) {
 		this.eventService = eventService;
 		this.eventSectionPricingService = eventSectionPricingService;
 		this.eventPublishService = eventPublishService;
 		this.eventSalesReportService = eventSalesReportService;
+		this.adminSeatMapService = adminSeatMapService;
 	}
 
 	@PostMapping
@@ -61,6 +64,13 @@ public class AdminEventController {
 	@GetMapping("/{eventId}/sales")
 	public EventSalesReportResponse sales(@PathVariable UUID eventId) {
 		return eventSalesReportService.getSalesReport(eventId);
+	}
+
+	@GetMapping("/{eventId}/seat-map")
+	public AdminSeatMapResponse seatMap(
+			@PathVariable UUID eventId,
+			@RequestParam(required = false) UUID sectionId) {
+		return adminSeatMapService.getSeatMap(eventId, sectionId);
 	}
 
 	@PutMapping("/{eventId}/sections")

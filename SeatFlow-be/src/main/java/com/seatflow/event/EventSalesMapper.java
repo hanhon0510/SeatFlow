@@ -26,8 +26,8 @@ public interface EventSalesMapper {
 
 	List<EventSalesSectionResponse> findSections(@Param("eventId") UUID eventId);
 
-	/** Flat section/row aggregates, ordered by section then row, for the seat heatmap. */
-	List<EventSalesHeatmapRecord> findHeatmapRows(@Param("eventId") UUID eventId);
+	/** The latest order behind each seat of the event, for the admin seat map. */
+	List<AdminSeatOrderResponse> findSeatOrders(@Param("eventId") UUID eventId);
 
 	List<EventSalesDailyPointResponse> findDailySales(
 			@Param("eventId") UUID eventId,

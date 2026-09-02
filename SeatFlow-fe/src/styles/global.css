@@ -457,12 +457,12 @@ body {
   overflow-x: auto;
 }
 
-.seat-heatmap {
+.admin-seat-map {
   display: grid;
-  gap: 20px;
+  gap: 16px;
 }
 
-.seat-heatmap-toolbar {
+.admin-seat-map-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -470,93 +470,69 @@ body {
   flex-wrap: wrap;
 }
 
-.seat-heatmap-legend {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  flex-wrap: wrap;
-}
-
-.seat-heatmap-legend li {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.seat-heatmap-swatch {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  border: 1px solid rgba(23, 32, 51, 0.16);
-}
-
-.seat-heatmap-section {
+.admin-seat-map-layout {
   display: grid;
-  gap: 8px;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 
-.seat-heatmap-section-header {
+.admin-seat-map-row {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
 }
 
-.seat-heatmap-grid {
+.admin-seat-map-grid {
   display: flex;
-  flex-wrap: wrap;
-  /* 2px keeps the page showing between fills so adjacent cells stay separate marks. */
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  gap: 4px;
 }
 
-.seat-heatmap-cell {
+/* Same status colours as the buyer map, so the two screens read the same way. */
+.admin-seat {
   display: grid;
   place-items: center;
-  min-width: 34px;
-  height: 30px;
-  padding: 0 6px;
+  width: 44px;
+  min-width: 44px;
+  height: 34px;
+  border: 1px solid #b8c3d1;
   border-radius: 4px;
-  /* The lightest steps sit close to the page, so a hairline keeps every cell readable. */
-  border: 1px solid rgba(23, 32, 51, 0.16);
+  background: #ffffff;
+  color: #172033;
   font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
+  font-weight: 700;
   cursor: default;
 }
 
-/* Blocked seats are a state, not a magnitude: they get a texture and a legend entry
-   rather than a step of the ramp, so the meaning never rests on color alone. */
-.seat-heatmap-cell.is-blocked,
-.seat-heatmap-swatch.is-blocked {
-  background-image: repeating-linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.92) 0,
-    rgba(255, 255, 255, 0.92) 2px,
-    transparent 2px,
-    transparent 6px
-  );
-  /* A corner wedge, not a full wash: stripes behind the label would swallow it on the
-     darker steps. The outline is the loud signal; the texture survives CVD and print. */
-  background-repeat: no-repeat;
-  background-size: 11px 11px;
-  background-position: top right;
+/* Buyer-map fills kept exactly; only the ink differs. White on this amber is 3.19:1 and on
+   the sold grey 1.78:1, so the seat labels would not have been readable. */
+.admin-seat.state-held {
+  border-color: #b06105;
+  background: #d97706;
+  color: #172033;
 }
 
-/* Texture alone is easy to miss on a small cell, so the outline carries it too. */
-.seat-heatmap-cell.is-blocked {
-  border-color: #172033;
+.admin-seat.state-held-by-you {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
 }
 
-.seat-heatmap-swatch.is-blocked {
-  background-color: #6da7ec;
-  border-color: #172033;
+.admin-seat.state-sold {
+  border-color: #8fa0b5;
+  background: #b8c3d1;
+  color: #172033;
 }
 
+.admin-seat.state-blocked {
+  border-color: #4b5563;
+  background: #4b5563;
+  color: #ffffff;
+}
+
+.admin-seat.accessible {
+  box-shadow: inset 0 -4px 0 #16a34a;
+}
 .sales-trend {
   display: grid;
   gap: 6px;

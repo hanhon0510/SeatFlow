@@ -28,6 +28,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.seatflow.hold.SeatHoldStore;
 import com.seatflow.order.OrderStatus;
 import com.seatflow.security.JwtConfig;
 import com.seatflow.security.JwtTokenService;
@@ -50,7 +51,9 @@ import com.seatflow.venue.VenueStatus;
 		EventService.class,
 		EventSectionPricingService.class,
 		EventPublishService.class,
-		EventSalesReportService.class
+		EventSalesReportService.class,
+		EventSeatLayoutService.class,
+		AdminSeatMapService.class
 })
 @TestPropertySource(properties = {
 		"server.port=8080",
@@ -85,6 +88,9 @@ class AdminEventControllerSecurityTests {
 
 	@MockitoBean
 	private EventSalesMapper eventSalesMapper;
+
+	@MockitoBean
+	private SeatHoldStore seatHoldStore;
 
 	@Test
 	void adminCanCreateDraftEvent() throws Exception {
@@ -454,9 +460,6 @@ class AdminEventControllerSecurityTests {
 				3L,
 				1L,
 				new BigDecimal("300.00"))));
-		when(eventSalesMapper.findHeatmapRows(eventId)).thenReturn(List.of(
-				new EventSalesHeatmapRecord(sectionId, "Orchestra", 1, "A", 5L, 2L, 3L, 0L),
-				new EventSalesHeatmapRecord(sectionId, "Orchestra", 1, "B", 5L, 4L, 0L, 1L)));
 		when(eventSalesMapper.findDailySales(eq(eventId), any(Instant.class)))
 				.thenReturn(List.of(new EventSalesDailyPointResponse(LocalDate.parse("2026-08-01"), 3L, 3L)));
 
@@ -475,13 +478,57 @@ class AdminEventControllerSecurityTests {
 				.andExpect(jsonPath("$.orders.recent[0].buyerEmail").value("buyer@example.com"))
 				.andExpect(jsonPath("$.tickets.issued").value(3))
 				.andExpect(jsonPath("$.sections[0].name").value("Orchestra"))
-				.andExpect(jsonPath("$.heatmap[0].sectionId").value(sectionId.toString()))
-				.andExpect(jsonPath("$.heatmap[0].name").value("Orchestra"))
-				.andExpect(jsonPath("$.heatmap[0].rows[0].rowLabel").value("A"))
-				.andExpect(jsonPath("$.heatmap[0].rows[0].seatsSold").value(3))
-				.andExpect(jsonPath("$.heatmap[0].rows[1].seatsBlocked").value(1))
 				.andExpect(jsonPath("$.dailySales[0].date").value("2026-08-01"))
 				.andExpect(jsonPath("$.generatedAt").isNotEmpty());
+	}
+
+	@Test
+	void adminCanReadTheSeatMapWithTheOrderBehindEachSeat() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID sectionId = UUID.randomUUID();
+		UUID eventSeatId = UUID.randomUUID();
+		UUID orderId = UUID.randomUUID();
+		when(eventSeatMapper.findPublishedLayoutByEventId(eventId, null)).thenReturn(List.of(
+				new EventSeatLayoutRow(
+						sectionId,
+						"Orchestra",
+						1,
+						"A",
+						eventSeatId,
+						"A1",
+						1,
+						new BigDecimal("100.00"),
+						EventSeatStatus.SOLD,
+						false)));
+		when(eventSalesMapper.findSeatOrders(eventId)).thenReturn(List.of(new AdminSeatOrderResponse(
+				eventSeatId,
+				orderId,
+				"buyer@example.com",
+				OrderStatus.PAID,
+				NOW)));
+
+		mockMvc.perform(get("/api/v1/admin/events/{eventId}/seat-map", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.eventId").value(eventId.toString()))
+				.andExpect(jsonPath("$.sections[0].name").value("Orchestra"))
+				.andExpect(jsonPath("$.sections[0].rows[0].rowLabel").value("A"))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].seatLabel").value("A1"))
+				.andExpect(jsonPath("$.sections[0].rows[0].seats[0].status").value("SOLD"))
+				.andExpect(jsonPath("$.orders[0].eventSeatId").value(eventSeatId.toString()))
+				.andExpect(jsonPath("$.orders[0].buyerEmail").value("buyer@example.com"))
+				.andExpect(jsonPath("$.orders[0].orderStatus").value("PAID"));
+	}
+
+	@Test
+	void seatMapForUnknownEventReturnsNotFound() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		when(eventSeatMapper.findPublishedLayoutByEventId(eventId, null)).thenReturn(List.of());
+
+		mockMvc.perform(get("/api/v1/admin/events/{eventId}/seat-map", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.title").value("Event not found"));
 	}
 
 	@Test
@@ -533,6 +580,10 @@ class AdminEventControllerSecurityTests {
 				.andExpect(status().isForbidden());
 
 		mockMvc.perform(get("/api/v1/admin/events/{eventId}/sales", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(get("/api/v1/admin/events/{eventId}/seat-map", eventId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
 				.andExpect(status().isForbidden());
 	}

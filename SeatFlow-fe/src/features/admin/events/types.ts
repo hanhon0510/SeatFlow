@@ -1,7 +1,7 @@
 import type { Dayjs } from 'dayjs'
 
 import type { OrderStatus } from '../../checkout/types'
-import type { EventSalesStatus } from '../../events/types'
+import type { EventSalesStatus, EventSeatLayoutSection } from '../../events/types'
 
 export type EventStatus = 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED'
 
@@ -150,18 +150,19 @@ export type EventSalesSection = {
   soldValue: number
 }
 
-export type EventSalesHeatmapRow = {
-  rowLabel: string
-  seatsTotal: number
-  seatsAvailable: number
-  seatsSold: number
-  seatsBlocked: number
+export type AdminSeatOrder = {
+  eventSeatId: string
+  orderId: string
+  buyerEmail: string
+  orderStatus: OrderStatus
+  orderedAt: string
 }
 
-export type EventSalesHeatmapSection = {
-  sectionId: string
-  name: string
-  rows: EventSalesHeatmapRow[]
+export type AdminSeatMap = {
+  eventId: string
+  sections: EventSeatLayoutSection[]
+  orders: AdminSeatOrder[]
+  generatedAt: string
 }
 
 export type EventSalesDailyPoint = {
@@ -177,7 +178,6 @@ export type EventSalesReport = {
   orders: EventSalesOrders
   tickets: EventSalesTickets
   sections: EventSalesSection[]
-  heatmap: EventSalesHeatmapSection[]
   dailySales: EventSalesDailyPoint[]
   generatedAt: string
 }

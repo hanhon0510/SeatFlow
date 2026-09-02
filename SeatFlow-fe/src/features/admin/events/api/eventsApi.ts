@@ -7,6 +7,7 @@ import type {
   EventRequest,
   EventSectionConfiguration,
   EventSectionPriceRequest,
+  AdminSeatMap,
   EventSalesReport,
   EventSectionReplaceRequest,
 } from '../types'
@@ -18,6 +19,7 @@ export const eventQueryKeys = {
   detail: (eventId: string) => [...eventQueryKeys.all, 'detail', eventId] as const,
   sections: (eventId: string) => [...eventQueryKeys.all, 'sections', eventId] as const,
   sales: (eventId: string) => [...eventQueryKeys.all, 'sales', eventId] as const,
+  seatMap: (eventId: string) => [...eventQueryKeys.all, 'seat-map', eventId] as const,
 }
 
 export async function listEvents(page: number, size: number) {
@@ -44,6 +46,11 @@ export async function updateEvent(eventId: string, values: EventFormValues) {
 
 export async function getEventSales(eventId: string) {
   const response = await apiClient.get<EventSalesReport>(`/admin/events/${eventId}/sales`)
+  return response.data
+}
+
+export async function getEventSeatMap(eventId: string) {
+  const response = await apiClient.get<AdminSeatMap>(`/admin/events/${eventId}/seat-map`)
   return response.data
 }
 

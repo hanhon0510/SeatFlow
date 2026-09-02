@@ -87,16 +87,13 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="HeatmapResultMap" type="com.seatflow.event.EventSalesHeatmapRecord">
+    <resultMap id="SeatOrderResultMap" type="com.seatflow.event.AdminSeatOrderResponse">
         <constructor>
-            <idArg column="section_id" javaType="java.util.UUID" />
-            <arg column="section_name" javaType="java.lang.String" />
-            <arg column="display_order" javaType="_int" />
-            <arg column="row_label" javaType="java.lang.String" />
-            <arg column="seats_total" javaType="_long" />
-            <arg column="seats_available" javaType="_long" />
-            <arg column="seats_sold" javaType="_long" />
-            <arg column="seats_blocked" javaType="_long" />
+            <idArg column="event_seat_id" javaType="java.util.UUID" />
+            <arg column="order_id" javaType="java.util.UUID" />
+            <arg column="buyer_email" javaType="java.lang.String" />
+            <arg column="order_status" javaType="com.seatflow.order.OrderStatus" />
+            <arg column="ordered_at" javaType="java.time.Instant" />
         </constructor>
     </resultMap>
 
@@ -264,25 +261,23 @@
     </select>
 
     <!--
-        Grouped by row rather than by seat: a heatmap cell is a row, and a whole-venue
-        seat-by-seat read is exactly the cost this aggregate exists to avoid.
+        One row per seat that has ever been ordered, newest order winning: a seat released by a
+        failed or cancelled order can be sold again, and the admin map should name whoever holds
+        it now rather than whoever tried first.
     -->
-    <select id="findHeatmapRows" resultMap="HeatmapResultMap">
-        SELECT
-            section.id AS section_id,
-            section.name AS section_name,
-            section.display_order,
-            seat.row_label,
-            COUNT(*) AS seats_total,
-            COUNT(*) FILTER (WHERE event_seat.permanent_status = 'AVAILABLE') AS seats_available,
-            COUNT(*) FILTER (WHERE event_seat.permanent_status = 'SOLD') AS seats_sold,
-            COUNT(*) FILTER (WHERE event_seat.permanent_status = 'BLOCKED') AS seats_blocked
-        FROM event_seats event_seat
-        JOIN seats seat ON seat.id = event_seat.seat_id
-        JOIN venue_sections section ON section.id = seat.section_id
-        WHERE event_seat.event_id = #{eventId}
-        GROUP BY section.id, section.name, section.display_order, seat.row_label
-        ORDER BY section.display_order ASC, section.name ASC, seat.row_label ASC
+    <select id="findSeatOrders" resultMap="SeatOrderResultMap">
+        SELECT DISTINCT ON (item.event_seat_id)
+            item.event_seat_id,
+            purchase_order.id AS order_id,
+            buyer.email AS buyer_email,
+            purchase_order.status AS order_status,
+            purchase_order.created_at AS ordered_at
+        FROM reservation_items item
+        JOIN reservations reservation ON reservation.id = item.reservation_id
+        JOIN orders purchase_order ON purchase_order.reservation_id = reservation.id
+        JOIN users buyer ON buyer.id = purchase_order.user_id
+        WHERE reservation.event_id = #{eventId}
+        ORDER BY item.event_seat_id, purchase_order.created_at DESC, purchase_order.id DESC
     </select>
 
     <select id="findDailySales" resultMap="DailyPointResultMap">

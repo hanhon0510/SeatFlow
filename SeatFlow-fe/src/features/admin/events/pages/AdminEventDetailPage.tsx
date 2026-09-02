@@ -22,8 +22,8 @@ import { ROUTES } from '../../../../shared/constants/routes'
 import { eventQueryKeys, getEventSales } from '../api/eventsApi'
 import { EventSalesStatusTag } from '../components/EventSalesStatusTag'
 import { EventStatusTag } from '../components/EventStatusTag'
+import { AdminSeatMap } from '../components/AdminSeatMap'
 import { SalesTrendChart } from '../components/SalesTrendChart'
-import { SeatSalesHeatmap } from '../components/SeatSalesHeatmap'
 import type { EventSalesRecentOrder, EventSalesSection } from '../types'
 
 const orderStatusColor: Record<EventSalesRecentOrder['status'], string> = {
@@ -73,7 +73,7 @@ export function AdminEventDetailPage() {
     )
   }
 
-  const { event, inventory, revenue, orders, tickets, sections, heatmap, dailySales, generatedAt } =
+  const { event, inventory, revenue, orders, tickets, sections, dailySales, generatedAt } =
     salesQuery.data
   const sellThrough = inventory.seatsTotal === 0 ? 0 : (inventory.seatsSold / inventory.seatsTotal) * 100
 
@@ -215,8 +215,8 @@ export function AdminEventDetailPage() {
         )}
       </Card>
 
-      <Card title="Where the seats are selling">
-        <SeatSalesHeatmap sections={heatmap} />
+      <Card title="Seat map">
+        <AdminSeatMap eventId={event.id} />
       </Card>
 
       <Card title="Paid demand, last 30 days">

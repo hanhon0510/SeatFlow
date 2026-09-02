@@ -11,6 +11,7 @@ import type {
   VenuePage,
 } from '../features/admin/venues/types'
 import type {
+  AdminSeatMap,
   Event,
   EventPublishResponse,
   EventSalesReport,
@@ -387,18 +388,71 @@ const eventSalesReport: EventSalesReport = {
       soldValue: 4500000,
     },
   ],
-  heatmap: [
+  dailySales: [{ date: '2026-08-30', paidOrders: 21, seatsSold: 45 }],
+  generatedAt: '2026-09-01T08:00:00.000Z',
+}
+
+const adminSeatMap: AdminSeatMap = {
+  eventId: event.id,
+  sections: [
     {
-      sectionId: '1f89f6d1-3bc4-4d46-8c85-24d6db537d87',
+      id: '1f89f6d1-3bc4-4d46-8c85-24d6db537d87',
       name: 'Orchestra',
+      displayOrder: 1,
       rows: [
-        { rowLabel: 'A', seatsTotal: 20, seatsAvailable: 0, seatsSold: 20, seatsBlocked: 0 },
-        { rowLabel: 'B', seatsTotal: 20, seatsAvailable: 15, seatsSold: 5, seatsBlocked: 0 },
-        { rowLabel: 'C', seatsTotal: 20, seatsAvailable: 14, seatsSold: 1, seatsBlocked: 5 },
+        {
+          rowLabel: 'A',
+          seats: [
+            {
+              eventSeatId: 'a7ff2e1f-0d1c-4c2a-9c6f-1c2c1d9a0001',
+              seatLabel: 'A1',
+              seatNumber: 1,
+              price: 100000,
+              permanentStatus: 'SOLD',
+              status: 'SOLD',
+              accessible: false,
+            },
+            {
+              eventSeatId: 'a7ff2e1f-0d1c-4c2a-9c6f-1c2c1d9a0002',
+              seatLabel: 'A2',
+              seatNumber: 2,
+              price: 100000,
+              permanentStatus: 'AVAILABLE',
+              status: 'HELD',
+              accessible: false,
+            },
+            {
+              eventSeatId: 'a7ff2e1f-0d1c-4c2a-9c6f-1c2c1d9a0003',
+              seatLabel: 'A3',
+              seatNumber: 3,
+              price: 100000,
+              permanentStatus: 'AVAILABLE',
+              status: 'AVAILABLE',
+              accessible: true,
+            },
+            {
+              eventSeatId: 'a7ff2e1f-0d1c-4c2a-9c6f-1c2c1d9a0004',
+              seatLabel: 'A4',
+              seatNumber: 4,
+              price: 100000,
+              permanentStatus: 'BLOCKED',
+              status: 'BLOCKED',
+              accessible: false,
+            },
+          ],
+        },
       ],
     },
   ],
-  dailySales: [{ date: '2026-08-30', paidOrders: 21, seatsSold: 45 }],
+  orders: [
+    {
+      eventSeatId: 'a7ff2e1f-0d1c-4c2a-9c6f-1c2c1d9a0001',
+      orderId: 'cbe8dcf4-2b0a-4c4b-9d3e-8b3e0f2a1f10',
+      buyerEmail: 'buyer@example.com',
+      orderStatus: 'PAID',
+      orderedAt: '2026-08-30T10:00:00.000Z',
+    },
+  ],
   generatedAt: '2026-09-01T08:00:00.000Z',
 }
 
@@ -1945,6 +1999,10 @@ describe('App', () => {
         return response<EventSalesReport>(config, 200, eventSalesReport)
       }
 
+      if (endpoint(config) === `GET /admin/events/${event.id}/seat-map`) {
+        return response<AdminSeatMap>(config, 200, adminSeatMap)
+      }
+
       return rejectedResponse(config, 500, 'Unexpected request')
     })
 
@@ -1956,14 +2014,13 @@ describe('App', () => {
     expect(screen.getByText('of 120')).toBeInTheDocument()
     expect(screen.getByText('3 in checkout, 5 blocked')).toBeInTheDocument()
     expect(screen.getByText('5 checked in, 0 cancelled')).toBeInTheDocument()
-    // Scoped to the pricing table: the heatmap below names its sections too.
+    // Scoped to the pricing table: the seat map below names its sections too.
     expect(screen.getByRole('cell', { name: 'Orchestra' })).toBeInTheDocument()
     expect(screen.getByText('buyer@example.com')).toBeInTheDocument()
     expect(screen.getByText('45 seats, 21 orders')).toBeInTheDocument()
   }, 10000)
 
-  it('maps sell-through per row and can switch the heatmap to a table', async () => {
-    const user = userEvent.setup()
+  it('shows the status of every seat and who ordered it', async () => {
     window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
     installApiMock((config) => {
       if (endpoint(config) === 'POST /auth/refresh') {
@@ -1978,27 +2035,55 @@ describe('App', () => {
         return response<EventSalesReport>(config, 200, eventSalesReport)
       }
 
+      if (endpoint(config) === `GET /admin/events/${event.id}/seat-map`) {
+        return response<AdminSeatMap>(config, 200, adminSeatMap)
+      }
+
       return rejectedResponse(config, 500, 'Unexpected request')
     })
 
     render(<App />)
 
-    expect(await screen.findByText('Where the seats are selling')).toBeInTheDocument()
-    expect(screen.getByText('26 of 60 seats sold')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Orchestra seat map')).toBeInTheDocument()
 
-    // A cell carries its own numbers, so the reading never depends on the fill alone.
+    // Each seat spells out its own status, so the reading never rests on the fill alone.
     expect(
-      screen.getByLabelText('Orchestra row A: 20 of 20 sold (100%), 0 available'),
+      screen.getByLabelText('Seat A1 - Sold - 100,000 - buyer@example.com (order paid)'),
     ).toBeInTheDocument()
+    expect(screen.getByLabelText('Seat A2 - In checkout - 100,000')).toBeInTheDocument()
     expect(
-      screen.getByLabelText('Orchestra row C: 1 of 20 sold (5%), 14 available, 5 blocked'),
+      screen.getByLabelText('Seat A3 - Available - 100,000 - wheelchair accessible'),
     ).toBeInTheDocument()
+    expect(screen.getByLabelText('Seat A4 - Blocked - 100,000')).toBeInTheDocument()
 
-    // The Segmented's real radio is visually hidden, so drive it the way a person does.
-    await user.click(screen.getByTitle('Table'))
+    expect(screen.getByText('Sold 1')).toBeInTheDocument()
+    expect(screen.getByText('In checkout 1')).toBeInTheDocument()
+    expect(screen.getByText('Blocked 1')).toBeInTheDocument()
+  }, 15000)
 
-    expect(await screen.findByRole('columnheader', { name: 'Sold %' })).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: '25%' })).toBeInTheDocument()
+  it('reports a failure to load the seat map without breaking the rest of the report', async () => {
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}/sales`) {
+        return response<EventSalesReport>(config, 200, eventSalesReport)
+      }
+
+      return rejectedResponse(config, 500, 'Seat map is unavailable')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Seat map is unavailable')).toBeInTheDocument()
+    // The surrounding report still renders.
+    expect(screen.getByRole('heading', { name: event.name })).toBeInTheDocument()
   }, 15000)
 
   it('reports a failure to load the sales report', async () => {
