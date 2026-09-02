@@ -4,7 +4,6 @@ import {
   CalendarOutlined,
   DashboardOutlined,
   DollarOutlined,
-  HomeOutlined,
   LockOutlined,
   LoginOutlined,
   LogoutOutlined,
@@ -26,12 +25,6 @@ type NavItem = {
   label: string
   icon: ReactNode
 }
-
-const homeNavItem = {
-  key: ROUTES.home,
-  label: 'Health',
-  icon: <HomeOutlined />,
-} satisfies NavItem
 
 const adminHomeNavItem = {
   key: ROUTES.home,
@@ -96,8 +89,8 @@ export function AppShell() {
   const visibleNavItems = isAuthenticated
     ? isAdmin
       ? [adminHomeNavItem, ...adminNavItems, logoutNavItem]
-      : [homeNavItem, catalogNavItem, ...customerNavItems, logoutNavItem]
-    : [homeNavItem, catalogNavItem, ...guestNavItems]
+      : [catalogNavItem, ...customerNavItems, logoutNavItem]
+    : [catalogNavItem, ...guestNavItems]
 
   const handleLogout = async () => {
     closeDrawer()

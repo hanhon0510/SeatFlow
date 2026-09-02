@@ -509,10 +509,24 @@ function installCheckoutMock({
 }
 
 describe('App', () => {
-  it('renders the health page', () => {
+  it('sends a signed-out visitor from the landing page to the catalogue', async () => {
+    window.history.pushState({}, '', ROUTES.home)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === 'GET /events') {
+        return publicEventsResponse(config)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: 'SeatFlow frontend is running.' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Events' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe(ROUTES.events)
   })
 
   it('navigates between public routes', async () => {
@@ -1372,7 +1386,7 @@ describe('App', () => {
     expect(screen.queryByRole('heading', { name: 'Create venue' })).not.toBeInTheDocument()
   })
 
-  it('shows the dashboard instead of the health page on the admin landing page', async () => {
+  it('shows the dashboard on the admin landing page', async () => {
     window.history.pushState({}, '', ROUTES.home)
     installApiMock((config) => {
       if (endpoint(config) === 'POST /auth/refresh') {
@@ -1395,9 +1409,8 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
     expect(screen.getByText('5 sections, 150 seats')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Countdown 2027' })).toBeInTheDocument()
-    expect(
-      screen.queryByRole('heading', { name: 'SeatFlow frontend is running.' }),
-    ).not.toBeInTheDocument()
+    // The catalogue redirect for everyone else must not catch an admin.
+    expect(window.location.pathname).toBe(ROUTES.home)
   })
 
   it('keeps admins out of the seat booking flow', async () => {
