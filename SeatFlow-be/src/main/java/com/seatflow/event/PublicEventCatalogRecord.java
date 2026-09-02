@@ -17,5 +17,6 @@ public record PublicEventCatalogRecord(
 		Instant startTime,
 		Instant salesStartTime,
 		Instant salesEndTime,
-		BigDecimal minimumPrice) {
+		BigDecimal minimumPrice,
+		EventSalesStatus salesStatus) {
 }

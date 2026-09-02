@@ -1,5 +1,6 @@
 package com.seatflow.event;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -37,10 +38,11 @@ public class PublicEventController {
 			@RequestParam(required = false) UUID venueId,
 			@RequestParam(required = false) String startDate,
 			@RequestParam(required = false) String endDate,
+			@RequestParam(required = false) List<String> status,
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "" + PublicEventCatalogService.DEFAULT_PAGE_SIZE) int size,
 			@RequestParam(required = false) String sort) {
-		return eventCatalogService.listEvents(search, venueId, startDate, endDate, page, size, sort);
+		return eventCatalogService.listEvents(search, venueId, startDate, endDate, status, page, size, sort);
 	}
 
 	@GetMapping("/{eventId}")

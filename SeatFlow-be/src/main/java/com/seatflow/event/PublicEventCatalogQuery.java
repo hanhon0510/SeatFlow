@@ -1,6 +1,7 @@
 package com.seatflow.event;
 
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 
 public record PublicEventCatalogQuery(
@@ -9,6 +10,8 @@ public record PublicEventCatalogQuery(
 		Instant startDate,
 		Instant endDate,
 		String sort,
+		Instant now,
+		Set<EventSalesStatus> statuses,
 		int limit,
 		long offset) {
 }

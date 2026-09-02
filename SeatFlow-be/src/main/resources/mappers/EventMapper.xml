@@ -33,6 +33,7 @@
             <arg column="sales_start_time" javaType="java.time.Instant" />
             <arg column="sales_end_time" javaType="java.time.Instant" />
             <arg column="minimum_price" javaType="java.math.BigDecimal" />
+            <arg column="sales_status" javaType="com.seatflow.event.EventSalesStatus" />
         </constructor>
     </resultMap>
 
@@ -62,7 +63,23 @@
         e.start_time,
         e.sales_start_time,
         e.sales_end_time,
-        MIN(CASE WHEN event_seat.permanent_status = 'AVAILABLE' THEN event_seat.price END) AS minimum_price
+        MIN(CASE WHEN event_seat.permanent_status = 'AVAILABLE' THEN event_seat.price END) AS minimum_price,
+        COUNT(*) FILTER (WHERE event_seat.permanent_status = 'AVAILABLE') AS available_seats
+    </sql>
+
+    <!--
+        The buyer-facing status of an event is a function of the request time, so it is derived
+        here instead of being stored: no scheduled job can keep a column true to the minute.
+        Order matters - a started event is ENDED whatever its sales window says.
+    -->
+    <sql id="PublicEventSalesStatus">
+        CASE
+            WHEN grouped.start_time &lt;= #{now} THEN 'ENDED'
+            WHEN grouped.sales_start_time &gt; #{now} THEN 'UPCOMING'
+            WHEN grouped.sales_end_time &lt; #{now} THEN 'SALES_CLOSED'
+            WHEN grouped.available_seats = 0 THEN 'SOLD_OUT'
+            ELSE 'ON_SALE'
+        END AS sales_status
     </sql>
 
     <sql id="PublicEventCatalogGroupBy">
@@ -101,6 +118,31 @@
                 AND e.start_time &lt;= #{query.endDate}
             </if>
         </where>
+    </sql>
+
+    <sql id="PublishedCatalogClassified">
+        SELECT
+            grouped.*,
+            <include refid="PublicEventSalesStatus" />
+        FROM (
+            SELECT
+                <include refid="PublicEventCatalogColumns" />
+            FROM events e
+            JOIN venues v ON v.id = e.venue_id
+            LEFT JOIN event_seats event_seat ON event_seat.event_id = e.id
+            <include refid="PublishedCatalogFilters" />
+            GROUP BY
+                <include refid="PublicEventCatalogGroupBy" />
+        ) grouped
+    </sql>
+
+    <sql id="PublishedCatalogStatusFilter">
+        <if test="query.statuses != null and !query.statuses.isEmpty()">
+            WHERE classified.sales_status IN
+            <foreach collection="query.statuses" item="status" open="(" separator="," close=")">
+                #{status}
+            </foreach>
+        </if>
     </sql>
 
     <insert id="insert" parameterType="com.seatflow.event.EventRecord">
@@ -177,26 +219,39 @@
     </select>
 
     <select id="findPublishedCatalogPage" resultMap="PublicEventCatalogRecordResultMap">
+        <bind name="now" value="query.now" />
         SELECT
-            <include refid="PublicEventCatalogColumns" />
-        FROM events e
-        JOIN venues v ON v.id = e.venue_id
-        LEFT JOIN event_seats event_seat ON event_seat.event_id = e.id
-        <include refid="PublishedCatalogFilters" />
-        GROUP BY
-            <include refid="PublicEventCatalogGroupBy" />
+            classified.*
+        FROM (
+            <include refid="PublishedCatalogClassified" />
+        ) classified
+        <include refid="PublishedCatalogStatusFilter" />
         <choose>
             <when test="query.sort == 'START_DESC'">
-                ORDER BY e.start_time DESC, e.name ASC, e.id ASC
+                ORDER BY classified.start_time DESC, classified.name ASC, classified.id ASC
             </when>
             <when test="query.sort == 'PRICE_ASC'">
-                ORDER BY minimum_price ASC NULLS LAST, e.start_time ASC, e.id ASC
+                ORDER BY classified.minimum_price ASC NULLS LAST, classified.start_time ASC, classified.id ASC
             </when>
             <when test="query.sort == 'PRICE_DESC'">
-                ORDER BY minimum_price DESC NULLS LAST, e.start_time ASC, e.id ASC
+                ORDER BY classified.minimum_price DESC NULLS LAST, classified.start_time ASC, classified.id ASC
+            </when>
+            <when test="query.sort == 'START_ASC'">
+                ORDER BY classified.start_time ASC, classified.name ASC, classified.id ASC
             </when>
             <otherwise>
-                ORDER BY e.start_time ASC, e.name ASC, e.id ASC
+                <!-- What a buyer can act on comes first, and the soonest of those first of all. -->
+                ORDER BY
+                    CASE classified.sales_status
+                        WHEN 'ON_SALE' THEN 0
+                        WHEN 'UPCOMING' THEN 1
+                        WHEN 'SOLD_OUT' THEN 2
+                        WHEN 'SALES_CLOSED' THEN 3
+                        ELSE 4
+                    END ASC,
+                    classified.start_time ASC,
+                    classified.name ASC,
+                    classified.id ASC
             </otherwise>
         </choose>
         LIMIT #{query.limit}
@@ -204,21 +259,28 @@
     </select>
 
     <select id="countPublishedCatalog" resultType="long">
+        <bind name="now" value="query.now" />
         SELECT COUNT(*)
-        FROM events e
-        JOIN venues v ON v.id = e.venue_id
-        <include refid="PublishedCatalogFilters" />
+        FROM (
+            <include refid="PublishedCatalogClassified" />
+        ) classified
+        <include refid="PublishedCatalogStatusFilter" />
     </select>
 
     <select id="findPublishedCatalogById" resultMap="PublicEventCatalogRecordResultMap">
         SELECT
-            <include refid="PublicEventCatalogColumns" />
-        FROM events e
-        JOIN venues v ON v.id = e.venue_id
-        LEFT JOIN event_seats event_seat ON event_seat.event_id = e.id
-        WHERE e.id = #{id}
-          AND e.status = 'PUBLISHED'
-        GROUP BY
-            <include refid="PublicEventCatalogGroupBy" />
+            grouped.*,
+            <include refid="PublicEventSalesStatus" />
+        FROM (
+            SELECT
+                <include refid="PublicEventCatalogColumns" />
+            FROM events e
+            JOIN venues v ON v.id = e.venue_id
+            LEFT JOIN event_seats event_seat ON event_seat.event_id = e.id
+            WHERE e.id = #{id}
+              AND e.status = 'PUBLISHED'
+            GROUP BY
+                <include refid="PublicEventCatalogGroupBy" />
+        ) grouped
     </select>
 </mapper>

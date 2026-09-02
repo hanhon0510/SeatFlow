@@ -10,8 +10,11 @@ export const publicEventQueryKeys = {
 }
 
 export async function listPublicEvents(filters: EventCatalogFilters) {
+  const { statuses, ...rest } = filters
   const response = await apiClient.get<PublicEventPage>('/events', {
-    params: cleanParams(filters),
+    // Comma separated rather than repeated: Spring binds either, and axios would otherwise
+    // serialise the array as status[]=..., which the controller does not read.
+    params: cleanParams({ ...rest, status: statuses.join(',') }),
   })
   return response.data
 }
@@ -26,7 +29,7 @@ export async function getEventSeatLayout(eventId: string) {
   return response.data
 }
 
-function cleanParams(filters: EventCatalogFilters) {
+function cleanParams(filters: Record<string, unknown>) {
   return Object.fromEntries(
     Object.entries(filters).filter(([, value]) => value !== undefined && value !== ''),
   )

@@ -1,5 +1,6 @@
 package com.seatflow.event;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,5 +28,5 @@ public interface EventMapper {
 
 	long countPublishedCatalog(@Param("query") PublicEventCatalogQuery query);
 
-	PublicEventCatalogRecord findPublishedCatalogById(@Param("id") UUID id);
+	PublicEventCatalogRecord findPublishedCatalogById(@Param("id") UUID id, @Param("now") Instant now);
 }

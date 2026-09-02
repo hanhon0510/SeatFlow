@@ -3,9 +3,13 @@ package com.seatflow.event;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +33,7 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 	private static final Instant EVENT_START = Instant.parse("2026-09-01T19:00:00Z");
 	private static final Instant SALES_START = Instant.parse("2026-08-01T00:00:00Z");
 	private static final Instant SALES_END = Instant.parse("2026-09-01T18:00:00Z");
+	private static final Instant NOW = Instant.parse("2026-08-15T00:00:00Z");
 
 	@Autowired
 	private VenueMapper venueMapper;
@@ -234,11 +239,13 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 				EVENT_START.minusSeconds(60),
 				EVENT_START.plusSeconds(60),
 				"START_ASC",
+				NOW,
+				null,
 				10,
 				0);
 
 		List<PublicEventCatalogRecord> events = eventMapper.findPublishedCatalogPage(query);
-		PublicEventCatalogRecord detail = eventMapper.findPublishedCatalogById(opening.id());
+		PublicEventCatalogRecord detail = eventMapper.findPublishedCatalogById(opening.id(), NOW);
 
 		assertThat(eventMapper.countPublishedCatalog(query)).isEqualTo(1);
 		assertThat(events).extracting(PublicEventCatalogRecord::id).containsExactly(opening.id());
@@ -248,7 +255,7 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 		assertThat(detail).isNotNull();
 		assertThat(detail.id()).isEqualTo(opening.id());
 		assertThat(detail.minimumPrice()).isEqualByComparingTo("50000.00");
-		assertThat(eventMapper.findPublishedCatalogById(draft.id())).isNull();
+		assertThat(eventMapper.findPublishedCatalogById(draft.id(), NOW)).isNull();
 	}
 
 	@Test
@@ -265,6 +272,8 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 				null,
 				null,
 				"START_ASC",
+				NOW,
+				null,
 				2,
 				0);
 		PublicEventCatalogQuery secondPageQuery = new PublicEventCatalogQuery(
@@ -273,6 +282,8 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 				null,
 				null,
 				"START_ASC",
+				NOW,
+				null,
 				2,
 				2);
 
@@ -284,6 +295,122 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 				.containsExactly("Alpha Event", "Bravo Event");
 		assertThat(secondPage).extracting(PublicEventCatalogRecord::name)
 				.containsExactly("Charlie Event");
+	}
+
+	@Test
+	void publicCatalogDerivesSalesStatusAndPutsSellingEventsFirst() {
+		VenueRecord venue = insertVenue("Main Hall");
+		VenueSectionRecord section = insertSection(venue, "Orchestra");
+		insertSeat(section, "A", 1);
+		BigDecimal price = new BigDecimal("50000.00");
+		insertPublishedEvent(
+				venue,
+				section,
+				"On Sale",
+				NOW.plus(Duration.ofDays(30)),
+				NOW.minus(Duration.ofDays(5)),
+				NOW.plus(Duration.ofDays(29)),
+				price);
+		EventRecord soldOut = insertPublishedEvent(
+				venue,
+				section,
+				"Sold Out",
+				NOW.plus(Duration.ofDays(20)),
+				NOW.minus(Duration.ofDays(5)),
+				NOW.plus(Duration.ofDays(19)),
+				price);
+		sellEverySeat(soldOut);
+		insertPublishedEvent(
+				venue,
+				section,
+				"Upcoming",
+				NOW.plus(Duration.ofDays(60)),
+				NOW.plus(Duration.ofDays(10)),
+				NOW.plus(Duration.ofDays(59)),
+				price);
+		insertPublishedEvent(
+				venue,
+				section,
+				"Sales Closed",
+				NOW.plus(Duration.ofDays(10)),
+				NOW.minus(Duration.ofDays(20)),
+				NOW.minus(Duration.ofDays(1)),
+				price);
+		EventRecord ended = insertPublishedEvent(
+				venue,
+				section,
+				"Ended",
+				NOW.minus(Duration.ofDays(1)),
+				NOW.minus(Duration.ofDays(20)),
+				NOW.minus(Duration.ofDays(2)),
+				price);
+
+		List<PublicEventCatalogRecord> ranked = eventMapper.findPublishedCatalogPage(catalogQuery(null, 10));
+
+		assertThat(ranked).extracting(PublicEventCatalogRecord::name)
+				.containsExactly("On Sale", "Upcoming", "Sold Out", "Sales Closed", "Ended");
+		assertThat(ranked.stream().collect(Collectors.toMap(
+				PublicEventCatalogRecord::name,
+				PublicEventCatalogRecord::salesStatus)))
+				.containsExactlyInAnyOrderEntriesOf(Map.of(
+						"On Sale", EventSalesStatus.ON_SALE,
+						"Upcoming", EventSalesStatus.UPCOMING,
+						"Sold Out", EventSalesStatus.SOLD_OUT,
+						"Sales Closed", EventSalesStatus.SALES_CLOSED,
+						"Ended", EventSalesStatus.ENDED));
+	}
+
+	@Test
+	void publicCatalogNarrowsToTheRequestedSalesStatuses() {
+		VenueRecord venue = insertVenue("Main Hall");
+		VenueSectionRecord section = insertSection(venue, "Orchestra");
+		insertSeat(section, "A", 1);
+		BigDecimal price = new BigDecimal("50000.00");
+		insertPublishedEvent(
+				venue,
+				section,
+				"On Sale",
+				NOW.plus(Duration.ofDays(30)),
+				NOW.minus(Duration.ofDays(5)),
+				NOW.plus(Duration.ofDays(29)),
+				price);
+		EventRecord ended = insertPublishedEvent(
+				venue,
+				section,
+				"Ended",
+				NOW.minus(Duration.ofDays(1)),
+				NOW.minus(Duration.ofDays(20)),
+				NOW.minus(Duration.ofDays(2)),
+				price);
+
+		PublicEventCatalogQuery currentOnly = catalogQuery(
+				Set.of(
+						EventSalesStatus.ON_SALE,
+						EventSalesStatus.UPCOMING,
+						EventSalesStatus.SOLD_OUT,
+						EventSalesStatus.SALES_CLOSED),
+				10);
+		PublicEventCatalogQuery endedOnly = catalogQuery(Set.of(EventSalesStatus.ENDED), 10);
+
+		assertThat(eventMapper.findPublishedCatalogPage(currentOnly))
+				.extracting(PublicEventCatalogRecord::name)
+				.containsExactly("On Sale");
+		assertThat(eventMapper.countPublishedCatalog(currentOnly)).isEqualTo(1);
+		assertThat(eventMapper.findPublishedCatalogPage(endedOnly))
+				.extracting(PublicEventCatalogRecord::name)
+				.containsExactly("Ended");
+		assertThat(eventMapper.countPublishedCatalog(endedOnly)).isEqualTo(1);
+		// A past event stays readable by id so a ticket holder can still open it.
+		assertThat(eventMapper.findPublishedCatalogById(ended.id(), NOW).salesStatus())
+				.isEqualTo(EventSalesStatus.ENDED);
+	}
+
+	private static PublicEventCatalogQuery catalogQuery(Set<EventSalesStatus> statuses, int limit) {
+		return new PublicEventCatalogQuery(null, null, null, null, "RECOMMENDED", NOW, statuses, limit, 0);
+	}
+
+	private void sellEverySeat(EventRecord event) {
+		jdbcTemplate.update("UPDATE event_seats SET permanent_status = 'SOLD' WHERE event_id = ?", event.id());
 	}
 
 	private VenueRecord insertVenue(String name) {
@@ -322,7 +449,25 @@ class EventMapperIntegrationTests extends PostgresTestContainerSupport {
 			String name,
 			Instant startTime,
 			BigDecimal price) {
-		EventRecord event = event(venue.id(), name, startTime);
+		return insertPublishedEvent(venue, section, name, startTime, SALES_START, SALES_END, price);
+	}
+
+	private EventRecord insertPublishedEvent(
+			VenueRecord venue,
+			VenueSectionRecord section,
+			String name,
+			Instant startTime,
+			Instant salesStartTime,
+			Instant salesEndTime,
+			BigDecimal price) {
+		EventRecord event = EventRecord.forInsert(
+				UUID.randomUUID(),
+				venue.id(),
+				name,
+				"Season opener",
+				startTime,
+				salesStartTime,
+				salesEndTime);
 		eventMapper.insert(event);
 		eventSectionMapper.insertForDraftEvent(EventSectionRecord.forInsert(
 				UUID.randomUUID(),

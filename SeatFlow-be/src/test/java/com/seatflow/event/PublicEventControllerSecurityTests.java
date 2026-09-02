@@ -94,6 +94,7 @@ class PublicEventControllerSecurityTests {
 				.andExpect(jsonPath("$.items[0].venueName").value("Main Hall"))
 				.andExpect(jsonPath("$.items[0].venueTimezone").value("Asia/Ho_Chi_Minh"))
 				.andExpect(jsonPath("$.items[0].minimumPrice").value(50000.00))
+				.andExpect(jsonPath("$.items[0].salesStatus").value("ON_SALE"))
 				.andExpect(jsonPath("$.totalItems").value(1));
 
 		ArgumentCaptor<PublicEventCatalogQuery> query = ArgumentCaptor.forClass(PublicEventCatalogQuery.class);
@@ -101,13 +102,53 @@ class PublicEventControllerSecurityTests {
 		assertThat(query.getValue().search()).isEqualTo("opening");
 		assertThat(query.getValue().venueId()).isEqualTo(venueId);
 		assertThat(query.getValue().sort()).isEqualTo("PRICE_ASC");
+		assertThat(query.getValue().statuses()).containsExactlyInAnyOrder(
+				EventSalesStatus.ON_SALE,
+				EventSalesStatus.UPCOMING,
+				EventSalesStatus.SOLD_OUT,
+				EventSalesStatus.SALES_CLOSED);
+	}
+
+	@Test
+	void catalogueDefaultsToTheRecommendedSortAndHidesEndedEvents() throws Exception {
+		when(eventMapper.countPublishedCatalog(any(PublicEventCatalogQuery.class))).thenReturn(0L);
+		when(eventMapper.findPublishedCatalogPage(any(PublicEventCatalogQuery.class))).thenReturn(List.of());
+
+		mockMvc.perform(get("/api/v1/events")).andExpect(status().isOk());
+
+		ArgumentCaptor<PublicEventCatalogQuery> query = ArgumentCaptor.forClass(PublicEventCatalogQuery.class);
+		org.mockito.Mockito.verify(eventMapper).countPublishedCatalog(query.capture());
+		assertThat(query.getValue().sort()).isEqualTo("RECOMMENDED");
+		assertThat(query.getValue().statuses()).doesNotContain(EventSalesStatus.ENDED);
+	}
+
+	@Test
+	void catalogueNarrowsToTheRequestedSalesStatuses() throws Exception {
+		when(eventMapper.countPublishedCatalog(any(PublicEventCatalogQuery.class))).thenReturn(0L);
+		when(eventMapper.findPublishedCatalogPage(any(PublicEventCatalogQuery.class))).thenReturn(List.of());
+
+		mockMvc.perform(get("/api/v1/events").param("status", "ended,on_sale"))
+				.andExpect(status().isOk());
+
+		ArgumentCaptor<PublicEventCatalogQuery> query = ArgumentCaptor.forClass(PublicEventCatalogQuery.class);
+		org.mockito.Mockito.verify(eventMapper).countPublishedCatalog(query.capture());
+		assertThat(query.getValue().statuses())
+				.containsExactlyInAnyOrder(EventSalesStatus.ENDED, EventSalesStatus.ON_SALE);
+	}
+
+	@Test
+	void unknownSalesStatusReturnsBadRequest() throws Exception {
+		mockMvc.perform(get("/api/v1/events").param("status", "half_price"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.title").value("Invalid event catalog query"));
 	}
 
 	@Test
 	void unauthenticatedUserCanReadPublishedEventDetail() throws Exception {
 		UUID eventId = UUID.randomUUID();
 		UUID venueId = UUID.randomUUID();
-		when(eventMapper.findPublishedCatalogById(eventId)).thenReturn(publicEvent(eventId, venueId));
+		when(eventMapper.findPublishedCatalogById(eq(eventId), any(Instant.class)))
+				.thenReturn(publicEvent(eventId, venueId));
 
 		mockMvc.perform(get("/api/v1/events/{eventId}", eventId))
 				.andExpect(status().isOk())
@@ -207,7 +248,8 @@ class PublicEventControllerSecurityTests {
 				EVENT_START,
 				SALES_START,
 				SALES_END,
-				new BigDecimal("50000.00"));
+				new BigDecimal("50000.00"),
+				EventSalesStatus.ON_SALE);
 	}
 
 	private static EventSeatLayoutRow eventSeatRow(

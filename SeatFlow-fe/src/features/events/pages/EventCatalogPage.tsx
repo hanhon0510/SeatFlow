@@ -7,8 +7,9 @@ import { NavLink } from 'react-router-dom'
 import { apiErrorMessage } from '../../../shared/api/apiError'
 import { ROUTES } from '../../../shared/constants/routes'
 import { listPublicEvents, publicEventQueryKeys } from '../api/eventsApi'
-import type { EventCatalogFilters, EventCatalogSort, PublicEvent } from '../types'
+import type { EventCatalogFilters, EventCatalogSort, EventSalesStatus, PublicEvent } from '../types'
 import { formatDateTime, formatMinimumPrice } from '../utils/eventFormatters'
+import { salesStatusOptions, salesStatusPresentation } from '../utils/salesStatus'
 
 const { RangePicker } = DatePicker
 const pageSize = 12
@@ -20,7 +21,8 @@ export function EventCatalogPage() {
   const [search, setSearch] = useState('')
   const [venueId, setVenueId] = useState<string>()
   const [dateRange, setDateRange] = useState<DateRangeValue>(null)
-  const [sort, setSort] = useState<EventCatalogSort>('startAsc')
+  const [statuses, setStatuses] = useState<EventSalesStatus[]>([])
+  const [sort, setSort] = useState<EventCatalogSort>('recommended')
   const [page, setPage] = useState(0)
 
   const filters = useMemo<EventCatalogFilters>(() => ({
@@ -28,10 +30,13 @@ export function EventCatalogPage() {
     venueId,
     startDate: dateRange?.[0]?.startOf('day').toDate().toISOString(),
     endDate: dateRange?.[1]?.endOf('day').toDate().toISOString(),
+    // Left empty the server keeps events a buyer can still act on and drops the ones that
+    // have already happened.
+    statuses,
     page,
     size: pageSize,
     sort,
-  }), [dateRange, page, search, sort, venueId])
+  }), [dateRange, page, search, sort, statuses, venueId])
 
   const eventQuery = useQuery({
     queryKey: publicEventQueryKeys.list(filters),
@@ -42,6 +47,7 @@ export function EventCatalogPage() {
     queryKey: publicEventQueryKeys.venueOptions(),
     queryFn: () =>
       listPublicEvents({
+        statuses: [],
         page: 0,
         size: 100,
         sort: 'startAsc',
@@ -114,8 +120,21 @@ export function EventCatalogPage() {
           }}
         />
         <Select
+          allowClear
+          aria-label="Sales status"
+          mode="multiple"
+          options={salesStatusOptions}
+          placeholder="Any current status"
+          value={statuses}
+          onChange={(value: EventSalesStatus[]) => {
+            setStatuses(value)
+            setPage(0)
+          }}
+        />
+        <Select
           aria-label="Sort events"
           options={[
+            { value: 'recommended', label: 'Recommended' },
             { value: 'startAsc', label: 'Soonest' },
             { value: 'startDesc', label: 'Latest' },
             { value: 'priceAsc', label: 'Lowest price' },
@@ -142,7 +161,7 @@ export function EventCatalogPage() {
           <Spin />
         </div>
       ) : events.length === 0 ? (
-        <Empty description="No published events" />
+        <Empty description="No events match these filters" />
       ) : (
         <>
           <List
@@ -168,9 +187,12 @@ export function EventCatalogPage() {
 }
 
 function EventCard({ event }: { event: PublicEvent }) {
+  const status = salesStatusPresentation(event.salesStatus)
+
   return (
     <Card
       className="event-card"
+      extra={<Tag color={status.color}>{status.label}</Tag>}
       title={<NavLink to={ROUTES.eventDetail(event.id)}>{event.name}</NavLink>}
     >
       <Space orientation="vertical" size={10}>

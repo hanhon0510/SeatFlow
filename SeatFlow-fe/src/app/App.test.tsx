@@ -131,6 +131,7 @@ const publishedEvent: PublicEvent = {
   salesStartTime: '2026-08-01T00:00:00.000Z',
   salesEndTime: '2026-09-01T18:00:00.000Z',
   minimumPrice: 50000,
+  salesStatus: 'ON_SALE',
 }
 
 const publicSeatLayout: EventSeatLayout = {
@@ -618,6 +619,89 @@ describe('App', () => {
     expect(screen.getByText(venue.timezone)).toBeInTheDocument()
     expect(screen.getByText(/From 50,000/)).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: /Seat A1, available/i })).toBeInTheDocument()
+  })
+
+  it('tags the sales status on catalogue cards and filters by it', async () => {
+    const user = userEvent.setup()
+    const listParams: unknown[] = []
+    window.history.pushState({}, '', ROUTES.events)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === 'GET /events') {
+        listParams.push(config.params)
+        return publicEventsResponse(config, [publishedEvent])
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('On sale')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(listParams).toContainEqual(expect.objectContaining({ sort: 'recommended' })),
+    )
+    // No status selected: the server applies its own default and drops events that have ended.
+    expect(listParams.every((params) => !(params as { status?: string }).status)).toBe(true)
+
+    await user.click(screen.getByRole('combobox', { name: 'Sales status' }))
+    await user.click(await screen.findByTitle('Ended'))
+
+    await waitFor(() =>
+      expect(listParams).toContainEqual(expect.objectContaining({ status: 'ENDED' })),
+    )
+  }, 10000)
+
+  it('replaces the seat map with a notice once an event has ended', async () => {
+    const seatSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, { ...publishedEvent, salesStatus: 'ENDED' })
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}/seats`) {
+        seatSpy()
+        return response<EventSeatLayout>(config, 200, publicSeatLayout)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: publishedEvent.name })).toBeInTheDocument()
+    expect(screen.getByText('Ended')).toBeInTheDocument()
+    expect(screen.getByText('This event has already taken place.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Seat A1/i })).not.toBeInTheDocument()
+    expect(seatSpy).not.toHaveBeenCalled()
+  })
+
+  it('withholds seat selection until sales open', async () => {
+    window.history.pushState({}, '', ROUTES.eventDetail(publishedEvent.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === `GET /events/${publishedEvent.id}`) {
+        return response<PublicEvent>(config, 200, { ...publishedEvent, salesStatus: 'UPCOMING' })
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Coming soon')).toBeInTheDocument()
+    expect(screen.getByText(/Seat selection opens when sales start on/)).toBeInTheDocument()
   })
 
   it('renders seat states and prevents sold or blocked seat selection', async () => {

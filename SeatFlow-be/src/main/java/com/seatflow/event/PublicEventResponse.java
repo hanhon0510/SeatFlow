@@ -17,7 +17,8 @@ public record PublicEventResponse(
 		Instant startTime,
 		Instant salesStartTime,
 		Instant salesEndTime,
-		BigDecimal minimumPrice) {
+		BigDecimal minimumPrice,
+		EventSalesStatus salesStatus) {
 
 	public static PublicEventResponse from(PublicEventCatalogRecord event) {
 		return new PublicEventResponse(
@@ -33,6 +34,7 @@ public record PublicEventResponse(
 				event.startTime(),
 				event.salesStartTime(),
 				event.salesEndTime(),
-				event.minimumPrice());
+				event.minimumPrice(),
+				event.salesStatus());
 	}
 }

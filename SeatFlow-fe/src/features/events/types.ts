@@ -12,7 +12,16 @@ export type PublicEvent = {
   salesStartTime: string
   salesEndTime: string
   minimumPrice: number | null
+  salesStatus: EventSalesStatus
 }
+
+/** What a buyer can do with the event right now. Derived server-side from the request clock. */
+export type EventSalesStatus =
+  | 'ON_SALE'
+  | 'UPCOMING'
+  | 'SOLD_OUT'
+  | 'SALES_CLOSED'
+  | 'ENDED'
 
 export type PublicEventPage = {
   items: PublicEvent[]
@@ -27,12 +36,13 @@ export type EventCatalogFilters = {
   venueId?: string
   startDate?: string
   endDate?: string
+  statuses: EventSalesStatus[]
   page: number
   size: number
   sort: EventCatalogSort
 }
 
-export type EventCatalogSort = 'startAsc' | 'startDesc' | 'priceAsc' | 'priceDesc'
+export type EventCatalogSort = 'recommended' | 'startAsc' | 'startDesc' | 'priceAsc' | 'priceDesc'
 
 export type EventSeatPermanentStatus = 'AVAILABLE' | 'SOLD' | 'BLOCKED'
 export type EventSeatLayoutStatus = EventSeatPermanentStatus | 'HELD' | 'HELD_BY_YOU'

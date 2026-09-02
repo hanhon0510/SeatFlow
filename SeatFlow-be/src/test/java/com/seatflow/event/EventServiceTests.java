@@ -257,7 +257,7 @@ class EventServiceTests {
 		}
 
 		@Override
-		public PublicEventCatalogRecord findPublishedCatalogById(UUID id) {
+		public PublicEventCatalogRecord findPublishedCatalogById(UUID id, Instant now) {
 			return null;
 		}
 

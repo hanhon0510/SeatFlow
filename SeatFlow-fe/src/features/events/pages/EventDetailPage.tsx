@@ -7,7 +7,9 @@ import { apiErrorMessage } from '../../../shared/api/apiError'
 import { ROUTES } from '../../../shared/constants/routes'
 import { getPublicEvent, publicEventQueryKeys } from '../api/eventsApi'
 import { EventSeatMap } from '../components/EventSeatMap'
+import type { PublicEvent } from '../types'
 import { formatDateTime, formatMinimumPrice } from '../utils/eventFormatters'
+import { isSeatSelectionOpen, salesStatusPresentation } from '../utils/salesStatus'
 
 export function EventDetailPage() {
   const { eventId } = useParams()
@@ -55,6 +57,8 @@ export function EventDetailPage() {
     )
   }
 
+  const status = salesStatusPresentation(event.salesStatus)
+
   return (
     <section className="page-surface event-detail-page">
       <Button icon={<ArrowLeftOutlined />} type="link" onClick={() => navigate(ROUTES.events)}>
@@ -65,6 +69,7 @@ export function EventDetailPage() {
         <Space orientation="vertical" size={8}>
           <Typography.Title level={1}>{event.name}</Typography.Title>
           <Space wrap>
+            <Tag color={status.color}>{status.label}</Tag>
             <Tag>{event.venueTimezone}</Tag>
             <Tag color="blue">{formatMinimumPrice(event.minimumPrice)}</Tag>
           </Space>
@@ -92,7 +97,25 @@ export function EventDetailPage() {
         ) : null}
       </Card>
 
-      <EventSeatMap key={event.id} eventId={event.id} />
+      {isSeatSelectionOpen(event.salesStatus) ? (
+        <EventSeatMap key={event.id} eventId={event.id} />
+      ) : (
+        <Alert showIcon type="info" message={closedSalesMessage(event)} />
+      )}
     </section>
   )
+}
+
+/**
+ * The API rejects a hold outside the sales window, so the seat map is withheld rather than
+ * letting a visitor pick seats that can never be held.
+ */
+function closedSalesMessage(event: PublicEvent) {
+  if (event.salesStatus === 'UPCOMING') {
+    return `Seat selection opens when sales start on ${formatDateTime(event.salesStartTime, event.venueTimezone)}.`
+  }
+  if (event.salesStatus === 'SALES_CLOSED') {
+    return `Sales closed on ${formatDateTime(event.salesEndTime, event.venueTimezone)}.`
+  }
+  return 'This event has already taken place.'
 }
