@@ -22,14 +22,17 @@ public class AdminEventController {
 	private final EventService eventService;
 	private final EventSectionPricingService eventSectionPricingService;
 	private final EventPublishService eventPublishService;
+	private final EventSalesReportService eventSalesReportService;
 
 	public AdminEventController(
 			EventService eventService,
 			EventSectionPricingService eventSectionPricingService,
-			EventPublishService eventPublishService) {
+			EventPublishService eventPublishService,
+			EventSalesReportService eventSalesReportService) {
 		this.eventService = eventService;
 		this.eventSectionPricingService = eventSectionPricingService;
 		this.eventPublishService = eventPublishService;
+		this.eventSalesReportService = eventSalesReportService;
 	}
 
 	@PostMapping
@@ -53,6 +56,11 @@ public class AdminEventController {
 	@PutMapping("/{eventId}")
 	public EventResponse update(@PathVariable UUID eventId, @Valid @RequestBody EventUpdateRequest request) {
 		return eventService.updateEvent(eventId, request);
+	}
+
+	@GetMapping("/{eventId}/sales")
+	public EventSalesReportResponse sales(@PathVariable UUID eventId) {
+		return eventSalesReportService.getSalesReport(eventId);
 	}
 
 	@PutMapping("/{eventId}/sections")

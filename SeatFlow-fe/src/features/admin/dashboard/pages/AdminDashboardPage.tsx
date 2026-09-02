@@ -146,7 +146,7 @@ const upcomingColumns: ColumnsType<DashboardUpcomingEvent> = [
     key: 'name',
     render: (_, event) => (
       <Space orientation="vertical" size={0}>
-        <Link to={ROUTES.adminEventEdit(event.eventId)}>{event.name}</Link>
+        <Link to={ROUTES.adminEventDetail(event.eventId)}>{event.name}</Link>
         <Typography.Text type="secondary">{event.venueName}</Typography.Text>
       </Space>
     ),

@@ -8,6 +8,7 @@ import { LoginPage } from '../../features/auth/pages/LoginPage'
 import { RegisterPage } from '../../features/auth/pages/RegisterPage'
 import { VenueFormPage } from '../../features/admin/venues/pages/VenueFormPage'
 import { VenueListPage } from '../../features/admin/venues/pages/VenueListPage'
+import { AdminEventDetailPage } from '../../features/admin/events/pages/AdminEventDetailPage'
 import { EventFormPage } from '../../features/admin/events/pages/EventFormPage'
 import { EventListPage } from '../../features/admin/events/pages/EventListPage'
 import { NotFoundPage } from '../../features/not-found/pages/NotFoundPage'
@@ -43,6 +44,10 @@ export function AppRouter() {
             <Route
               path={ROUTES.adminEventNew}
               element={<EventFormPage mode="create" />}
+            />
+            <Route
+              path={ROUTES.adminEventDetailPattern}
+              element={<AdminEventDetailPage />}
             />
             <Route
               path={ROUTES.adminEventEditPattern}

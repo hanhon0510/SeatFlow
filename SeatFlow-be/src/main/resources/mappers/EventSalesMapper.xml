@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.event.EventSalesMapper">
+    <resultMap id="EventResultMap" type="com.seatflow.event.EventSalesEventResponse">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="venue_id" javaType="java.util.UUID" />
+            <arg column="venue_name" javaType="java.lang.String" />
+            <arg column="venue_timezone" javaType="java.lang.String" />
+            <arg column="name" javaType="java.lang.String" />
+            <arg column="description" javaType="java.lang.String" />
+            <arg column="start_time" javaType="java.time.Instant" />
+            <arg column="sales_start_time" javaType="java.time.Instant" />
+            <arg column="sales_end_time" javaType="java.time.Instant" />
+            <arg column="status" javaType="com.seatflow.event.EventStatus" />
+            <arg column="sales_status" javaType="com.seatflow.event.EventSalesStatus" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="InventoryResultMap" type="com.seatflow.event.EventSalesInventoryResponse">
+        <constructor>
+            <arg column="seats_total" javaType="_long" />
+            <arg column="seats_available" javaType="_long" />
+            <arg column="seats_sold" javaType="_long" />
+            <arg column="seats_blocked" javaType="_long" />
+            <arg column="seats_in_checkout" javaType="_long" />
+            <arg column="inventory_value" javaType="java.math.BigDecimal" />
+            <arg column="sold_value" javaType="java.math.BigDecimal" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="RevenueResultMap" type="com.seatflow.event.EventSalesRevenueResponse">
+        <constructor>
+            <idArg column="currency" javaType="java.lang.String" />
+            <arg column="paid_amount" javaType="java.math.BigDecimal" />
+            <arg column="paid_orders" javaType="_long" />
+            <arg column="pending_amount" javaType="java.math.BigDecimal" />
+            <arg column="pending_orders" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="OrderCountsResultMap" type="com.seatflow.event.EventSalesOrderCounts">
+        <constructor>
+            <arg column="total" javaType="_long" />
+            <arg column="paid" javaType="_long" />
+            <arg column="pending" javaType="_long" />
+            <arg column="failed" javaType="_long" />
+            <arg column="cancelled" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="RecentOrderResultMap" type="com.seatflow.event.EventSalesRecentOrderResponse">
+        <constructor>
+            <idArg column="order_id" javaType="java.util.UUID" />
+            <arg column="buyer_email" javaType="java.lang.String" />
+            <arg column="status" javaType="com.seatflow.order.OrderStatus" />
+            <arg column="total_amount" javaType="java.math.BigDecimal" />
+            <arg column="currency" javaType="java.lang.String" />
+            <arg column="seat_count" javaType="_long" />
+            <arg column="created_at" javaType="java.time.Instant" />
+            <arg column="updated_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="TicketCountsResultMap" type="com.seatflow.event.EventSalesTicketsResponse">
+        <constructor>
+            <arg column="issued" javaType="_long" />
+            <arg column="active" javaType="_long" />
+            <arg column="used" javaType="_long" />
+            <arg column="cancelled" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="SectionResultMap" type="com.seatflow.event.EventSalesSectionResponse">
+        <constructor>
+            <idArg column="venue_section_id" javaType="java.util.UUID" />
+            <arg column="name" javaType="java.lang.String" />
+            <arg column="price" javaType="java.math.BigDecimal" />
+            <arg column="sales_enabled" javaType="_boolean" />
+            <arg column="seats_total" javaType="_long" />
+            <arg column="seats_available" javaType="_long" />
+            <arg column="seats_sold" javaType="_long" />
+            <arg column="seats_blocked" javaType="_long" />
+            <arg column="sold_value" javaType="java.math.BigDecimal" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="DailyPointResultMap" type="com.seatflow.event.EventSalesDailyPointResponse">
+        <constructor>
+            <idArg column="sales_date" javaType="java.time.LocalDate" />
+            <arg column="paid_orders" javaType="_long" />
+            <arg column="seats_sold" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <!--
+        The sales status is derived from the request time the same way the public catalogue
+        derives it, so an admin reads exactly what a buyer sees. An event that is not published
+        has no sales status at all: no window makes a draft buyable.
+    -->
+    <select id="findEvent" resultMap="EventResultMap">
+        SELECT
+            event.id,
+            event.venue_id,
+            venue.name AS venue_name,
+            venue.timezone AS venue_timezone,
+            event.name,
+            event.description,
+            event.start_time,
+            event.sales_start_time,
+            event.sales_end_time,
+            event.status,
+            CASE
+                WHEN event.status &lt;&gt; 'PUBLISHED' THEN NULL
+                WHEN event.start_time &lt;= #{now} THEN 'ENDED'
+                WHEN event.sales_start_time &gt; #{now} THEN 'UPCOMING'
+                WHEN event.sales_end_time &lt; #{now} THEN 'SALES_CLOSED'
+                WHEN COUNT(event_seat.id) FILTER (WHERE event_seat.permanent_status = 'AVAILABLE') = 0
+                    THEN 'SOLD_OUT'
+                ELSE 'ON_SALE'
+            END AS sales_status
+        FROM events event
+        JOIN venues venue ON venue.id = event.venue_id
+        LEFT JOIN event_seats event_seat ON event_seat.event_id = event.id
+        WHERE event.id = #{eventId}
+        GROUP BY
+            event.id,
+            event.venue_id,
+            venue.name,
+            venue.timezone,
+            event.name,
+            event.description,
+            event.start_time,
+            event.sales_start_time,
+            event.sales_end_time,
+            event.status
+    </select>
+
+    <select id="findInventory" resultMap="InventoryResultMap">
+        SELECT
+            COUNT(event_seat.id) AS seats_total,
+            COUNT(event_seat.id) FILTER (WHERE event_seat.permanent_status = 'AVAILABLE') AS seats_available,
+            COUNT(event_seat.id) FILTER (WHERE event_seat.permanent_status = 'SOLD') AS seats_sold,
+            COUNT(event_seat.id) FILTER (WHERE event_seat.permanent_status = 'BLOCKED') AS seats_blocked,
+            COALESCE(SUM(event_seat.price), 0) AS inventory_value,
+            COALESCE(SUM(event_seat.price) FILTER (WHERE event_seat.permanent_status = 'SOLD'), 0) AS sold_value,
+            (
+                SELECT COUNT(*)
+                FROM reservation_items item
+                JOIN reservations reservation ON reservation.id = item.reservation_id
+                WHERE reservation.event_id = #{eventId}
+                  AND reservation.status = 'PENDING_PAYMENT'
+                  AND reservation.expires_at &gt; #{now}
+            ) AS seats_in_checkout
+        FROM event_seats event_seat
+        WHERE event_seat.event_id = #{eventId}
+    </select>
+
+    <select id="findRevenueByCurrency" resultMap="RevenueResultMap">
+        SELECT
+            purchase_order.currency,
+            COALESCE(SUM(purchase_order.total_amount) FILTER (WHERE purchase_order.status = 'PAID'), 0) AS paid_amount,
+            COUNT(*) FILTER (WHERE purchase_order.status = 'PAID') AS paid_orders,
+            COALESCE(SUM(purchase_order.total_amount) FILTER (WHERE purchase_order.status = 'PENDING'), 0) AS pending_amount,
+            COUNT(*) FILTER (WHERE purchase_order.status = 'PENDING') AS pending_orders
+        FROM orders purchase_order
+        JOIN reservations reservation ON reservation.id = purchase_order.reservation_id
+        WHERE reservation.event_id = #{eventId}
+        GROUP BY purchase_order.currency
+        HAVING COUNT(*) FILTER (WHERE purchase_order.status IN ('PAID', 'PENDING')) &gt; 0
+        ORDER BY purchase_order.currency
+    </select>
+
+    <select id="findOrderCounts" resultMap="OrderCountsResultMap">
+        SELECT
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE purchase_order.status = 'PAID') AS paid,
+            COUNT(*) FILTER (WHERE purchase_order.status = 'PENDING') AS pending,
+            COUNT(*) FILTER (WHERE purchase_order.status = 'FAILED') AS failed,
+            COUNT(*) FILTER (WHERE purchase_order.status = 'CANCELLED') AS cancelled
+        FROM orders purchase_order
+        JOIN reservations reservation ON reservation.id = purchase_order.reservation_id
+        WHERE reservation.event_id = #{eventId}
+    </select>
+
+    <select id="findRecentOrders" resultMap="RecentOrderResultMap">
+        SELECT
+            purchase_order.id AS order_id,
+            buyer.email AS buyer_email,
+            purchase_order.status,
+            purchase_order.total_amount,
+            purchase_order.currency,
+            COUNT(item.id) AS seat_count,
+            purchase_order.created_at,
+            purchase_order.updated_at
+        FROM orders purchase_order
+        JOIN reservations reservation ON reservation.id = purchase_order.reservation_id
+        JOIN users buyer ON buyer.id = purchase_order.user_id
+        LEFT JOIN reservation_items item ON item.reservation_id = reservation.id
+        WHERE reservation.event_id = #{eventId}
+        GROUP BY
+            purchase_order.id,
+            buyer.email,
+            purchase_order.status,
+            purchase_order.total_amount,
+            purchase_order.currency,
+            purchase_order.created_at,
+            purchase_order.updated_at
+        ORDER BY purchase_order.created_at DESC, purchase_order.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findTicketCounts" resultMap="TicketCountsResultMap">
+        SELECT
+            COUNT(*) AS issued,
+            COUNT(*) FILTER (WHERE ticket.status = 'ACTIVE') AS active,
+            COUNT(*) FILTER (WHERE ticket.status = 'USED') AS used,
+            COUNT(*) FILTER (WHERE ticket.status = 'CANCELLED') AS cancelled
+        FROM tickets ticket
+        JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
+        WHERE event_seat.event_id = #{eventId}
+    </select>
+
+    <select id="findSections" resultMap="SectionResultMap">
+        SELECT
+            section.id AS venue_section_id,
+            section.name,
+            event_section.price,
+            event_section.sales_enabled,
+            COUNT(event_seat.id) AS seats_total,
+            COUNT(event_seat.id) FILTER (WHERE event_seat.permanent_status = 'AVAILABLE') AS seats_available,
+            COUNT(event_seat.id) FILTER (WHERE event_seat.permanent_status = 'SOLD') AS seats_sold,
+            COUNT(event_seat.id) FILTER (WHERE event_seat.permanent_status = 'BLOCKED') AS seats_blocked,
+            COALESCE(SUM(event_seat.price) FILTER (WHERE event_seat.permanent_status = 'SOLD'), 0) AS sold_value
+        FROM event_sections event_section
+        JOIN venue_sections section ON section.id = event_section.venue_section_id
+        LEFT JOIN seats seat ON seat.section_id = section.id
+        LEFT JOIN event_seats event_seat
+            ON event_seat.seat_id = seat.id
+            AND event_seat.event_id = event_section.event_id
+        WHERE event_section.event_id = #{eventId}
+        GROUP BY
+            section.id,
+            section.name,
+            section.display_order,
+            event_section.price,
+            event_section.sales_enabled
+        ORDER BY section.display_order ASC, section.name ASC
+    </select>
+
+    <select id="findDailySales" resultMap="DailyPointResultMap">
+        SELECT
+            (purchase_order.created_at AT TIME ZONE 'UTC')::date AS sales_date,
+            COUNT(DISTINCT purchase_order.id) AS paid_orders,
+            COUNT(item.id) AS seats_sold
+        FROM orders purchase_order
+        JOIN reservations reservation ON reservation.id = purchase_order.reservation_id
+        LEFT JOIN reservation_items item ON item.reservation_id = reservation.id
+        WHERE reservation.event_id = #{eventId}
+          AND purchase_order.status = 'PAID'
+          AND purchase_order.created_at &gt;= #{from}
+        GROUP BY (purchase_order.created_at AT TIME ZONE 'UTC')::date
+        ORDER BY (purchase_order.created_at AT TIME ZONE 'UTC')::date ASC
+    </select>
+</mapper>

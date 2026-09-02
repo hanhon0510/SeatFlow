@@ -13,6 +13,7 @@ import type {
 import type {
   Event,
   EventPublishResponse,
+  EventSalesReport,
   EventSectionConfiguration,
 } from '../features/admin/events/types'
 import type { AdminDashboard } from '../features/admin/dashboard/types'
@@ -329,6 +330,65 @@ const layoutWithSection: SeatLayout = {
 const emptyEventSections: EventSectionConfiguration = {
   eventId: event.id,
   sections: [],
+}
+
+const eventSalesReport: EventSalesReport = {
+  event: {
+    id: event.id,
+    venueId: venue.id,
+    venueName: venue.name,
+    venueTimezone: venue.timezone,
+    name: event.name,
+    description: event.description,
+    startTime: event.startTime,
+    salesStartTime: event.salesStartTime,
+    salesEndTime: event.salesEndTime,
+    status: 'PUBLISHED',
+    salesStatus: 'ON_SALE',
+  },
+  inventory: {
+    seatsTotal: 120,
+    seatsAvailable: 70,
+    seatsSold: 45,
+    seatsBlocked: 5,
+    seatsInCheckout: 3,
+    inventoryValue: 12000000,
+    soldValue: 4500000,
+  },
+  revenue: [
+    { currency: 'VND', paidAmount: 4500000, paidOrders: 21, pendingAmount: 300000, pendingOrders: 2 },
+  ],
+  orders: {
+    counts: { total: 25, paid: 21, pending: 2, failed: 1, cancelled: 1 },
+    recent: [
+      {
+        orderId: 'cbe8dcf4-2b0a-4c4b-9d3e-8b3e0f2a1f10',
+        buyerEmail: 'buyer@example.com',
+        status: 'PAID',
+        totalAmount: 200000,
+        currency: 'VND',
+        seatCount: 2,
+        createdAt: '2026-08-30T10:00:00.000Z',
+        updatedAt: '2026-08-30T10:05:00.000Z',
+      },
+    ],
+  },
+  tickets: { issued: 45, active: 40, used: 5, cancelled: 0 },
+  sections: [
+    {
+      venueSectionId: '1f89f6d1-3bc4-4d46-8c85-24d6db537d87',
+      name: 'Orchestra',
+      price: 100000,
+      salesEnabled: true,
+      seatsTotal: 120,
+      seatsAvailable: 70,
+      seatsSold: 45,
+      seatsBlocked: 5,
+      soldValue: 4500000,
+    },
+  ],
+  dailySales: [{ date: '2026-08-30', paidOrders: 21, seatsSold: 45 }],
+  generatedAt: '2026-09-01T08:00:00.000Z',
 }
 
 type ApiHandler = (
@@ -1858,6 +1918,56 @@ describe('App', () => {
     expect(screen.getByText('Sales start is required')).toBeInTheDocument()
     expect(screen.getByText('Sales end is required')).toBeInTheDocument()
   })
+
+  it('shows how a single event is selling on its admin detail screen', async () => {
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      if (endpoint(config) === `GET /admin/events/${event.id}/sales`) {
+        return response<EventSalesReport>(config, 200, eventSalesReport)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: event.name })).toBeInTheDocument()
+    expect(screen.getByText('On sale')).toBeInTheDocument()
+    expect(screen.getByText('Seats sold')).toBeInTheDocument()
+    expect(screen.getByText('of 120')).toBeInTheDocument()
+    expect(screen.getByText('3 in checkout, 5 blocked')).toBeInTheDocument()
+    expect(screen.getByText('5 checked in, 0 cancelled')).toBeInTheDocument()
+    expect(screen.getByText('Orchestra')).toBeInTheDocument()
+    expect(screen.getByText('buyer@example.com')).toBeInTheDocument()
+    expect(screen.getByText('45 seats, 21 orders')).toBeInTheDocument()
+  }, 10000)
+
+  it('reports a failure to load the sales report', async () => {
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      return rejectedResponse(config, 500, 'Sales report is unavailable')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('Sales report is unavailable')).toBeInTheDocument()
+  }, 10000)
 
   it('creates an event with UTC schedule values', async () => {
     const user = userEvent.setup()

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { EditOutlined, LineChartOutlined, PlusOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { Alert, Button, Empty, Space, Spin, Table, Typography } from 'antd'
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table'
@@ -39,7 +39,7 @@ export function EventListPage() {
       key: 'name',
       render: (name, event) => (
         <Space orientation="vertical" size={0}>
-          <Typography.Text strong>{name}</Typography.Text>
+          <Link to={ROUTES.adminEventDetail(event.id)}>{name}</Link>
           <Typography.Text type="secondary">
             {event.description ?? 'No description'}
           </Typography.Text>
@@ -81,11 +81,16 @@ export function EventListPage() {
       title: 'Actions',
       key: 'actions',
       align: 'right',
-      width: 120,
+      width: 200,
       render: (_, event) => (
-        <Button icon={<EditOutlined />}>
-          <Link to={ROUTES.adminEventEdit(event.id)}>Edit</Link>
-        </Button>
+        <Space size={8}>
+          <Button icon={<LineChartOutlined />}>
+            <Link to={ROUTES.adminEventDetail(event.id)}>Sales</Link>
+          </Button>
+          <Button icon={<EditOutlined />}>
+            <Link to={ROUTES.adminEventEdit(event.id)}>Edit</Link>
+          </Button>
+        </Space>
       ),
     },
   ]

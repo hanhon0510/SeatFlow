@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, LineChartOutlined, SendOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App as AntdApp, Button, Modal, Space, Spin, Typography } from 'antd'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
@@ -166,6 +166,11 @@ export function EventFormPage({ mode }: EventFormPageProps) {
               }}
             >
               Publish event
+            </Button>
+          ) : null}
+          {isEditMode && eventId ? (
+            <Button icon={<LineChartOutlined />}>
+              <Link to={ROUTES.adminEventDetail(eventId)}>Sales report</Link>
             </Button>
           ) : null}
           <Button icon={<ArrowLeftOutlined />}>

@@ -1,6 +1,8 @@
 package com.seatflow.event;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -11,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,6 +28,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.seatflow.order.OrderStatus;
 import com.seatflow.security.JwtConfig;
 import com.seatflow.security.JwtTokenService;
 import com.seatflow.security.SecurityConfig;
@@ -45,7 +49,8 @@ import com.seatflow.venue.VenueStatus;
 		VenueService.class,
 		EventService.class,
 		EventSectionPricingService.class,
-		EventPublishService.class
+		EventPublishService.class,
+		EventSalesReportService.class
 })
 @TestPropertySource(properties = {
 		"server.port=8080",
@@ -77,6 +82,9 @@ class AdminEventControllerSecurityTests {
 
 	@MockitoBean
 	private EventSeatMapper eventSeatMapper;
+
+	@MockitoBean
+	private EventSalesMapper eventSalesMapper;
 
 	@Test
 	void adminCanCreateDraftEvent() throws Exception {
@@ -391,6 +399,96 @@ class AdminEventControllerSecurityTests {
 	}
 
 	@Test
+	void adminCanReadEventSalesReport() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		UUID venueId = UUID.randomUUID();
+		UUID sectionId = UUID.randomUUID();
+		when(eventSalesMapper.findEvent(eq(eventId), any(Instant.class))).thenReturn(new EventSalesEventResponse(
+				eventId,
+				venueId,
+				"Main Hall",
+				"Asia/Ho_Chi_Minh",
+				"Opening Night",
+				"Season opener",
+				EVENT_START,
+				SALES_START,
+				SALES_END,
+				EventStatus.PUBLISHED,
+				EventSalesStatus.ON_SALE));
+		when(eventSalesMapper.findInventory(eq(eventId), any(Instant.class)))
+				.thenReturn(new EventSalesInventoryResponse(
+						10L,
+						6L,
+						3L,
+						1L,
+						2L,
+						new BigDecimal("1000.00"),
+						new BigDecimal("300.00")));
+		when(eventSalesMapper.findRevenueByCurrency(eventId)).thenReturn(List.of(new EventSalesRevenueResponse(
+				"VND",
+				new BigDecimal("300.00"),
+				3L,
+				new BigDecimal("100.00"),
+				1L)));
+		when(eventSalesMapper.findOrderCounts(eventId))
+				.thenReturn(new EventSalesOrderCounts(5L, 3L, 1L, 1L, 0L));
+		when(eventSalesMapper.findRecentOrders(eq(eventId), anyInt()))
+				.thenReturn(List.of(new EventSalesRecentOrderResponse(
+						UUID.randomUUID(),
+						"buyer@example.com",
+						OrderStatus.PAID,
+						new BigDecimal("100.00"),
+						"VND",
+						2L,
+						NOW,
+						NOW)));
+		when(eventSalesMapper.findTicketCounts(eventId))
+				.thenReturn(new EventSalesTicketsResponse(3L, 2L, 1L, 0L));
+		when(eventSalesMapper.findSections(eventId)).thenReturn(List.of(new EventSalesSectionResponse(
+				sectionId,
+				"Orchestra",
+				new BigDecimal("100.00"),
+				true,
+				10L,
+				6L,
+				3L,
+				1L,
+				new BigDecimal("300.00"))));
+		when(eventSalesMapper.findDailySales(eq(eventId), any(Instant.class)))
+				.thenReturn(List.of(new EventSalesDailyPointResponse(LocalDate.parse("2026-08-01"), 3L, 3L)));
+
+		mockMvc.perform(get("/api/v1/admin/events/{eventId}/sales", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.event.id").value(eventId.toString()))
+				.andExpect(jsonPath("$.event.venueName").value("Main Hall"))
+				.andExpect(jsonPath("$.event.salesStatus").value("ON_SALE"))
+				.andExpect(jsonPath("$.inventory.seatsTotal").value(10))
+				.andExpect(jsonPath("$.inventory.seatsSold").value(3))
+				.andExpect(jsonPath("$.inventory.seatsInCheckout").value(2))
+				.andExpect(jsonPath("$.revenue[0].currency").value("VND"))
+				.andExpect(jsonPath("$.revenue[0].paidAmount").value(300.00))
+				.andExpect(jsonPath("$.orders.counts.paid").value(3))
+				.andExpect(jsonPath("$.orders.recent[0].buyerEmail").value("buyer@example.com"))
+				.andExpect(jsonPath("$.tickets.issued").value(3))
+				.andExpect(jsonPath("$.sections[0].name").value("Orchestra"))
+				.andExpect(jsonPath("$.dailySales[0].date").value("2026-08-01"))
+				.andExpect(jsonPath("$.generatedAt").isNotEmpty());
+	}
+
+	@Test
+	void salesReportForUnknownEventReturnsNotFound() throws Exception {
+		UUID eventId = UUID.randomUUID();
+		when(eventSalesMapper.findEvent(eq(eventId), any(Instant.class))).thenReturn(null);
+
+		mockMvc.perform(get("/api/v1/admin/events/{eventId}/sales", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.ADMIN)))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.correlationId").isNotEmpty())
+				.andExpect(jsonPath("$.title").value("Event not found"));
+	}
+
+	@Test
 	void normalUserCannotManageEvents() throws Exception {
 		UUID eventId = UUID.randomUUID();
 		UUID venueId = UUID.randomUUID();
@@ -423,6 +521,10 @@ class AdminEventControllerSecurityTests {
 				.andExpect(status().isForbidden());
 
 		mockMvc.perform(post("/api/v1/admin/events/{eventId}/publish", eventId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(get("/api/v1/admin/events/{eventId}/sales", eventId)
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(UserRole.USER)))
 				.andExpect(status().isForbidden());
 	}
