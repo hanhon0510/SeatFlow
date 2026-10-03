@@ -8,6 +8,7 @@ import { LoginPage } from '../../features/auth/pages/LoginPage'
 import { RegisterPage } from '../../features/auth/pages/RegisterPage'
 import { VenueFormPage } from '../../features/admin/venues/pages/VenueFormPage'
 import { VenueListPage } from '../../features/admin/venues/pages/VenueListPage'
+import { PromoCodeGeneratorPage } from '../../features/admin/promo-codes/pages/PromoCodeGeneratorPage'
 import { AdminEventDetailPage } from '../../features/admin/events/pages/AdminEventDetailPage'
 import { EventFormPage } from '../../features/admin/events/pages/EventFormPage'
 import { EventListPage } from '../../features/admin/events/pages/EventListPage'
@@ -41,6 +42,7 @@ export function AppRouter() {
           <Route element={<AdminRoute />}>
             <Route path={ROUTES.admin} element={<VenueListPage />} />
             <Route path={ROUTES.adminEvents} element={<EventListPage />} />
+			<Route path={ROUTES.adminPromoCodes} element={<PromoCodeGeneratorPage />} />
             <Route
               path={ROUTES.adminEventNew}
               element={<EventFormPage mode="create" />}

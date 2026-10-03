@@ -14,6 +14,7 @@ export const ROUTES = {
   ticketDetail: (ticketId: string) => `/tickets/${ticketId}`,
   admin: '/admin',
   adminEvents: '/admin/events',
+	adminPromoCodes: '/admin/promo-codes',
   adminEventNew: '/admin/events/new',
   adminEventDetailPattern: '/admin/events/:eventId',
   adminEventDetail: (eventId: string) => `/admin/events/${eventId}`,

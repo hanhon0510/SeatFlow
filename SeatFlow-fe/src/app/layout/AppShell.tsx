@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   CalendarOutlined,
+  GiftOutlined,
   DashboardOutlined,
   DollarOutlined,
   LockOutlined,
@@ -45,6 +46,7 @@ const customerNavItems = [
 const adminNavItems = [
   { key: ROUTES.admin, label: 'Admin', icon: <LockOutlined /> },
   { key: ROUTES.adminEvents, label: 'Event setup', icon: <DollarOutlined /> },
+	{ key: ROUTES.adminPromoCodes, label: 'Promo codes', icon: <GiftOutlined /> },
 ] satisfies NavItem[]
 
 const guestNavItems = [
