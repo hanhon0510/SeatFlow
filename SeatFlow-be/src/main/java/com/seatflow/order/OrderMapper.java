@@ -1,5 +1,6 @@
 package com.seatflow.order;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -15,6 +16,9 @@ public interface OrderMapper {
 			@Param("reservationId") UUID reservationId,
 			@Param("userId") UUID userId,
 			@Param("currency") String currency,
+			@Param("promoCodeId") UUID promoCodeId,
+			@Param("promoCode") String promoCode,
+			@Param("discountAmount") BigDecimal discountAmount,
 			@Param("now") Instant now);
 
 	OrderRecord findActiveByReservationAndUser(

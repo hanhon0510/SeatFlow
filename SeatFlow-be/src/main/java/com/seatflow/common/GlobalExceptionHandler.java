@@ -49,6 +49,11 @@ import com.seatflow.order.OrderConflictException;
 import com.seatflow.order.OrderNotFoundException;
 import com.seatflow.payment.InvalidPaymentTokenException;
 import com.seatflow.payment.PaymentConflictException;
+import com.seatflow.promo.DuplicatePromoCodeException;
+import com.seatflow.promo.InvalidPromoCodePaginationException;
+import com.seatflow.promo.InvalidPromoCodeRequestException;
+import com.seatflow.promo.PromoCodeNotFoundException;
+import com.seatflow.promo.PromoCodeRejectedException;
 import com.seatflow.ratelimit.RateLimitExceededException;
 import com.seatflow.ratelimit.RateLimitResult;
 import com.seatflow.ratelimit.RateLimitStorageException;
@@ -165,7 +170,8 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler({
 			InvalidVenuePaginationException.class,
 			InvalidEventPaginationException.class,
-			InvalidOrderPaginationException.class
+			InvalidOrderPaginationException.class,
+			InvalidPromoCodePaginationException.class
 	})
 	public ResponseEntity<ApiErrorResponse> handleInvalidPagination(Exception ex, HttpServletRequest request) {
 		return error(request, ApiErrorCode.INVALID_PAGINATION, ex);
@@ -287,6 +293,34 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(OrderNotFoundException.class)
 	public ResponseEntity<ApiErrorResponse> handleOrderNotFound(OrderNotFoundException ex, HttpServletRequest request) {
 		return error(request, ApiErrorCode.ORDER_NOT_FOUND, ex);
+	}
+
+	@ExceptionHandler(PromoCodeRejectedException.class)
+	public ResponseEntity<ApiErrorResponse> handlePromoCodeRejected(
+			PromoCodeRejectedException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.PROMO_CODE_REJECTED, ex);
+	}
+
+	@ExceptionHandler(PromoCodeNotFoundException.class)
+	public ResponseEntity<ApiErrorResponse> handlePromoCodeNotFound(
+			PromoCodeNotFoundException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.PROMO_CODE_NOT_FOUND, ex);
+	}
+
+	@ExceptionHandler(DuplicatePromoCodeException.class)
+	public ResponseEntity<ApiErrorResponse> handleDuplicatePromoCode(
+			DuplicatePromoCodeException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.DUPLICATE_PROMO_CODE, ex);
+	}
+
+	@ExceptionHandler(InvalidPromoCodeRequestException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidPromoCodeRequest(
+			InvalidPromoCodeRequestException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_PROMO_CODE_REQUEST, ex);
 	}
 
 	@ExceptionHandler(OrderConflictException.class)
@@ -520,6 +554,7 @@ public class GlobalExceptionHandler {
 			case "event_sections_event_section_uq" -> ApiErrorCode.DUPLICATE_EVENT_SECTION;
 			case "tickets_order_event_seat_uq" -> ApiErrorCode.TICKET_ALREADY_ISSUED;
 			case "idempotency_records_scope_uq" -> ApiErrorCode.IDEMPOTENCY_KEY_CONFLICT;
+			case "promo_codes_code_uq" -> ApiErrorCode.DUPLICATE_PROMO_CODE;
 			default -> ApiErrorCode.CONSTRAINT_CONFLICT;
 		};
 	}

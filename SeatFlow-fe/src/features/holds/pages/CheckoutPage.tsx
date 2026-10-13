@@ -1,4 +1,4 @@
-import { ArrowLeftOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, TagOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   App as AntdApp,
@@ -6,6 +6,7 @@ import {
   Button,
   Card,
   Descriptions,
+  Input,
   Radio,
   Result,
   Space,
@@ -19,8 +20,17 @@ import { isAxiosError } from 'axios'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { createOrder, createPayment, createReservation } from '../../checkout/api/checkoutApi'
-import type { CheckoutPaymentResult, PaymentToken } from '../../checkout/types'
+import {
+  createOrder,
+  createPayment,
+  createReservation,
+  validatePromoCode,
+} from '../../checkout/api/checkoutApi'
+import type {
+  CheckoutPaymentResult,
+  PaymentToken,
+  PromoCodeValidationResponse,
+} from '../../checkout/types'
 import {
   getCheckoutDraft,
   getPaymentResult,
@@ -64,6 +74,9 @@ export function CheckoutPage() {
   const [selectedToken, setSelectedToken] = useState<PaymentToken>('tok_success')
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [expiredHold, setExpiredHold] = useState<{ holdId: string; expiresAt: string } | null>(null)
+  const [promoInput, setPromoInput] = useState('')
+  const [appliedPromo, setAppliedPromo] = useState<PromoCodeValidationResponse | null>(null)
+  const [promoError, setPromoError] = useState<string | null>(null)
 
   const holdQuery = useQuery({
     queryKey: holdId ? seatHoldQueryKeys.detail(holdId) : seatHoldQueryKeys.detail(''),
@@ -107,6 +120,20 @@ export function CheckoutPage() {
   }, [hold?.eventSeatIds, seatLayoutQuery.data])
   const totalPrice = selectedSeats.reduce((total, seat) => total + seat.price, 0)
   const restoredResult = hold ? getPaymentResult(hold.holdId) : null
+  const discountAmount = appliedPromo?.discountAmount ?? 0
+  const payableTotal = Math.max(totalPrice - discountAmount, 0)
+
+  const promoMutation = useMutation({
+    mutationFn: validatePromoCode,
+    onSuccess: (result) => {
+      setAppliedPromo(result)
+      setPromoError(null)
+    },
+    onError: (error) => {
+      setAppliedPromo(null)
+      setPromoError(apiErrorMessage(error, 'This promo code cannot be applied'))
+    },
+  })
 
   const paymentMutation = useMutation({
     mutationFn: async (token: PaymentToken): Promise<CheckoutPaymentResult> => {
@@ -116,7 +143,7 @@ export function CheckoutPage() {
       const draft = getCheckoutDraft(hold.holdId)
       const reservation = await createReservation(hold.holdId)
       saveCheckoutDraft({ ...draft, reservationId: reservation.id })
-      const order = await createOrder(reservation.id)
+      const order = await createOrder(reservation.id, appliedPromo?.code)
       saveCheckoutDraft({ ...draft, reservationId: reservation.id, orderId: order.id })
       const payment = await createPayment(order.id, token, draft.idempotencyKey)
 
@@ -220,6 +247,15 @@ export function CheckoutPage() {
       okButtonProps: { danger: true },
       onOk: () => releaseMutation.mutateAsync(hold.holdId),
     })
+  }
+
+  const applyPromo = () => {
+    const code = promoInput.trim()
+    if (!code || selectedSeats.length === 0 || promoMutation.isPending) {
+      return
+    }
+    setPromoError(null)
+    promoMutation.mutate({ code, eventId: hold.eventId, subtotal: totalPrice })
   }
 
   const startPayment = () => {
@@ -327,11 +363,59 @@ export function CheckoutPage() {
                   })}
                 </div>
               </Descriptions.Item>
+              {appliedPromo ? (
+                <>
+                  <Descriptions.Item label="Subtotal">{formatPrice(totalPrice)}</Descriptions.Item>
+                  <Descriptions.Item label={`Promo ${appliedPromo.code}`}>
+                    -{formatPrice(discountAmount)}
+                  </Descriptions.Item>
+                </>
+              ) : null}
               <Descriptions.Item label="Total">
-                {selectedSeats.length > 0 ? formatPrice(totalPrice) : 'Pending'}
+                {selectedSeats.length > 0 ? formatPrice(payableTotal) : 'Pending'}
               </Descriptions.Item>
             </Descriptions>
           )}
+        </Card>
+
+        <Card className="checkout-section-card" title="Promo code">
+          <Space.Compact block>
+            <Input
+              aria-label="Promo code"
+              autoComplete="off"
+              disabled={paymentDisabled || Boolean(restoredResult)}
+              maxLength={32}
+              placeholder="Enter a promo code"
+              prefix={<TagOutlined />}
+              value={promoInput}
+              onChange={(event) => {
+                setPromoInput(event.target.value)
+                setAppliedPromo(null)
+                setPromoError(null)
+              }}
+              onPressEnter={() => applyPromo()}
+            />
+            <Button
+              disabled={
+                paymentDisabled
+                || Boolean(restoredResult)
+                || !promoInput.trim()
+                || selectedSeats.length === 0
+              }
+              loading={promoMutation.isPending}
+              onClick={applyPromo}
+            >
+              Apply
+            </Button>
+          </Space.Compact>
+          {appliedPromo ? (
+            <Alert
+              showIcon
+              type="success"
+              message={`${appliedPromo.code} applied, you save ${formatPrice(discountAmount)}`}
+            />
+          ) : null}
+          {promoError ? <Alert showIcon type="error" message={promoError} /> : null}
         </Card>
 
         <Card className="checkout-section-card" title="Payment simulator">

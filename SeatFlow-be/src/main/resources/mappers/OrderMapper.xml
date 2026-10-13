@@ -13,6 +13,8 @@
             <arg column="currency" javaType="java.lang.String" />
             <arg column="created_at" javaType="java.time.Instant" />
             <arg column="updated_at" javaType="java.time.Instant" />
+            <arg column="discount_amount" javaType="java.math.BigDecimal" />
+            <arg column="promo_code" javaType="java.lang.String" />
         </constructor>
     </resultMap>
 
@@ -24,7 +26,9 @@
         total_amount,
         currency,
         created_at,
-        updated_at
+        updated_at,
+        discount_amount,
+        promo_code
     </sql>
 
     <insert id="insertPending">
@@ -36,7 +40,10 @@
             total_amount,
             currency,
             created_at,
-            updated_at
+            updated_at,
+            promo_code_id,
+            promo_code,
+            discount_amount
         )
         SELECT
             #{id},
@@ -49,10 +56,17 @@
                 total is itself derived from them. Both are computed from the same rows in the
                 same transaction, so they cannot diverge without a bug elsewhere.
             -->
-            SUM(reservation_item.price),
+            <!--
+                The caller decides the discount from the same reservation; it is clamped here so an
+                oversized value can never push the charge below zero.
+            -->
+            GREATEST(SUM(reservation_item.price) - CAST(#{discountAmount} AS NUMERIC), 0),
             #{currency},
             #{now},
-            #{now}
+            #{now},
+            CAST(#{promoCodeId} AS UUID),
+            CAST(#{promoCode} AS VARCHAR),
+            LEAST(CAST(#{discountAmount} AS NUMERIC), SUM(reservation_item.price))
         FROM reservations reservation
         JOIN reservation_items reservation_item
           ON reservation_item.reservation_id = reservation.id

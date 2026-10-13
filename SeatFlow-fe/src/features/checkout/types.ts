@@ -34,6 +34,8 @@ export type OrderResponse = {
   status: OrderStatus
   totalAmount: number
   currency: string
+  discountAmount?: number
+  promoCode?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -59,4 +61,18 @@ export type CheckoutPaymentResult = {
   order: OrderResponse
   payment: PaymentResponse
   completedAt: string
+}
+
+export type PromoCodeValidationRequest = {
+  code: string
+  eventId: string
+  subtotal: number
+}
+
+export type PromoCodeValidationResponse = {
+  code: string
+  discountType: 'PERCENT' | 'FIXED'
+  discountValue: number
+  discountAmount: number
+  total: number
 }

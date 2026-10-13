@@ -12,7 +12,9 @@ public record OrderResponse(
 		BigDecimal totalAmount,
 		String currency,
 		Instant createdAt,
-		Instant updatedAt) {
+		Instant updatedAt,
+		BigDecimal discountAmount,
+		String promoCode) {
 
 	public static OrderResponse from(OrderRecord order) {
 		return new OrderResponse(
@@ -23,6 +25,8 @@ public record OrderResponse(
 				order.totalAmount(),
 				order.currency(),
 				order.createdAt(),
-				order.updatedAt());
+				order.updatedAt(),
+				order.discountAmount(),
+				order.promoCode());
 	}
 }

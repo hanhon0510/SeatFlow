@@ -22,6 +22,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
 
+import com.seatflow.promo.PromoCodeRecord;
+import com.seatflow.promo.PromoCodeRejectedException;
+import com.seatflow.promo.PromoCodeService;
+import com.seatflow.promo.PromoDiscountType;
+import com.seatflow.reservation.ReservationItemMapper;
+import com.seatflow.reservation.ReservationItemRecord;
 import com.seatflow.reservation.ReservationMapper;
 import com.seatflow.reservation.ReservationNotFoundException;
 import com.seatflow.reservation.ReservationRecord;
@@ -34,6 +40,7 @@ class OrderServiceTests {
 	private static final UUID USER_ID = UUID.fromString("0a8b70f9-cbe7-4a57-bd34-b4a2f133779e");
 	private static final UUID OTHER_USER_ID = UUID.fromString("7ca3110b-513f-4445-a52d-dc96b1c2da8f");
 	private static final UUID RESERVATION_ID = UUID.fromString("4c26148f-0a53-4f64-b115-72dfbb1849d4");
+	private static final UUID PROMO_ID = UUID.fromString("3f1d6a52-27b4-4a9e-8f0c-5c7e2d1b9a10");
 	private static final UUID ORDER_ID = UUID.fromString("e969ef46-1ed2-488f-8723-4833a1c0abca");
 
 	@Mock
@@ -42,6 +49,12 @@ class OrderServiceTests {
 	@Mock
 	private ReservationMapper reservationMapper;
 
+	@Mock
+	private PromoCodeService promoCodeService;
+
+	@Mock
+	private ReservationItemMapper reservationItemMapper;
+
 	private OrderService orderService;
 
 	@BeforeEach
@@ -49,6 +62,8 @@ class OrderServiceTests {
 		orderService = new OrderService(
 				orderMapper,
 				reservationMapper,
+				reservationItemMapper,
+				promoCodeService,
 				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
@@ -59,7 +74,7 @@ class OrderServiceTests {
 		when(orderMapper.findActiveByReservationAndUser(RESERVATION_ID, USER_ID))
 				.thenReturn(null, created);
 		when(reservationMapper.findByIdAndUser(RESERVATION_ID, USER_ID)).thenReturn(reservation);
-		when(orderMapper.insertPending(any(), eq(RESERVATION_ID), eq(USER_ID), eq("VND"), eq(NOW)))
+		when(orderMapper.insertPending(any(), eq(RESERVATION_ID), eq(USER_ID), eq("VND"), any(), any(), any(), eq(NOW)))
 				.thenReturn(1);
 
 		OrderResponse response = orderService.createOrder(USER_ID, new OrderCreateRequest(RESERVATION_ID));
@@ -72,6 +87,49 @@ class OrderServiceTests {
 	}
 
 	@Test
+	void promoCodeIsLockedForTheReservationEventAndItsDiscountIsStored() {
+		ReservationRecord reservation = reservation(ReservationStatus.PENDING_PAYMENT, NOW.plusSeconds(300));
+		PromoCodeRecord promo = new PromoCodeRecord(
+				PROMO_ID, "SAVE10", PromoDiscountType.FIXED, new BigDecimal("1"), null, null, null, true, 0, NOW, NOW);
+		when(orderMapper.findActiveByReservationAndUser(RESERVATION_ID, USER_ID))
+				.thenReturn(null, order(USER_ID, NOW));
+		when(reservationMapper.findByIdAndUser(RESERVATION_ID, USER_ID)).thenReturn(reservation);
+		when(promoCodeService.lockForRedemption("save10", reservation.eventId())).thenReturn(promo);
+		when(reservationItemMapper.findByReservationId(RESERVATION_ID)).thenReturn(List.of(
+				new ReservationItemRecord(UUID.randomUUID(), RESERVATION_ID, UUID.randomUUID(), new BigDecimal("100"), NOW)));
+		when(orderMapper.insertPending(any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(1);
+
+		orderService.createOrder(USER_ID, new OrderCreateRequest(RESERVATION_ID, "save10"));
+
+		verify(orderMapper).insertPending(
+				any(), eq(RESERVATION_ID), eq(USER_ID), eq("VND"),
+				eq(PROMO_ID), eq("SAVE10"), eq(new BigDecimal("1")), eq(NOW));
+	}
+
+	@Test
+	void rejectedPromoCodeCreatesNoOrder() {
+		ReservationRecord reservation = reservation(ReservationStatus.PENDING_PAYMENT, NOW.plusSeconds(300));
+		when(reservationMapper.findByIdAndUser(RESERVATION_ID, USER_ID)).thenReturn(reservation);
+		when(promoCodeService.lockForRedemption("NOPE", reservation.eventId()))
+				.thenThrow(new PromoCodeRejectedException(PromoCodeRejectedException.Reason.UNKNOWN));
+
+		assertThatThrownBy(() -> orderService.createOrder(USER_ID, new OrderCreateRequest(RESERVATION_ID, "NOPE")))
+				.isInstanceOf(PromoCodeRejectedException.class);
+
+		verify(orderMapper, never()).insertPending(any(), any(), any(), any(), any(), any(), any(), any());
+	}
+
+	@Test
+	void retryOfAnExistingOrderDoesNotRedeemThePromoCodeAgain() {
+		when(orderMapper.findActiveByReservationAndUser(RESERVATION_ID, USER_ID))
+				.thenReturn(order(USER_ID, NOW.minusSeconds(10)));
+
+		orderService.createOrder(USER_ID, new OrderCreateRequest(RESERVATION_ID, "SAVE10"));
+
+		verify(promoCodeService, never()).lockForRedemption(any(), any());
+	}
+
+	@Test
 	void duplicateRequestReturnsExistingOrderWithoutRevalidatingReservation() {
 		OrderRecord existing = order(USER_ID, NOW.minusSeconds(10));
 		when(orderMapper.findActiveByReservationAndUser(RESERVATION_ID, USER_ID)).thenReturn(existing);
@@ -80,7 +138,7 @@ class OrderServiceTests {
 
 		assertThat(response.id()).isEqualTo(existing.id());
 		verify(reservationMapper, never()).findByIdAndUser(any(), any());
-		verify(orderMapper, never()).insertPending(any(), any(), any(), any(), any());
+		verify(orderMapper, never()).insertPending(any(), any(), any(), any(), any(), any(), any(), any());
 	}
 
 	@Test
@@ -90,7 +148,7 @@ class OrderServiceTests {
 				new OrderCreateRequest(RESERVATION_ID)))
 				.isInstanceOf(ReservationNotFoundException.class);
 
-		verify(orderMapper, never()).insertPending(any(), any(), any(), any(), any());
+		verify(orderMapper, never()).insertPending(any(), any(), any(), any(), any(), any(), any(), any());
 	}
 
 	@Test
@@ -106,7 +164,7 @@ class OrderServiceTests {
 
 		assertThatThrownBy(() -> orderService.createOrder(USER_ID, new OrderCreateRequest(RESERVATION_ID)))
 				.isInstanceOf(OrderConflictException.class);
-		verify(orderMapper, never()).insertPending(any(), any(), any(), any(), any());
+		verify(orderMapper, never()).insertPending(any(), any(), any(), any(), any(), any(), any(), any());
 	}
 
 	@Test

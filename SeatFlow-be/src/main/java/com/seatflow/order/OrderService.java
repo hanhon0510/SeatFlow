@@ -1,5 +1,6 @@
 package com.seatflow.order;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -9,6 +10,10 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.seatflow.promo.PromoCodeRecord;
+import com.seatflow.promo.PromoCodeService;
+import com.seatflow.reservation.ReservationItemMapper;
+import com.seatflow.reservation.ReservationItemRecord;
 import com.seatflow.reservation.ReservationMapper;
 import com.seatflow.reservation.ReservationNotFoundException;
 import com.seatflow.reservation.ReservationRecord;
@@ -24,11 +29,20 @@ public class OrderService {
 
 	private final OrderMapper orderMapper;
 	private final ReservationMapper reservationMapper;
+	private final ReservationItemMapper reservationItemMapper;
+	private final PromoCodeService promoCodeService;
 	private final Clock clock;
 
-	public OrderService(OrderMapper orderMapper, ReservationMapper reservationMapper, Clock clock) {
+	public OrderService(
+			OrderMapper orderMapper,
+			ReservationMapper reservationMapper,
+			ReservationItemMapper reservationItemMapper,
+			PromoCodeService promoCodeService,
+			Clock clock) {
 		this.orderMapper = orderMapper;
 		this.reservationMapper = reservationMapper;
+		this.reservationItemMapper = reservationItemMapper;
+		this.promoCodeService = promoCodeService;
 		this.clock = clock;
 	}
 
@@ -50,11 +64,27 @@ public class OrderService {
 			throw new OrderConflictException();
 		}
 
+		// An order that already exists is returned above untouched, so retrying a checkout never
+		// redeems the code twice. Only a brand-new order claims a use.
+		PromoCodeRecord promo = null;
+		BigDecimal discount = BigDecimal.ZERO;
+		if (request.hasPromoCode()) {
+			promo = promoCodeService.lockForRedemption(request.promoCode(), reservation.eventId());
+			// Priced from the line items, like the order total itself (see OrderMapper.insertPending).
+			BigDecimal subtotal = reservationItemMapper.findByReservationId(reservation.id()).stream()
+					.map(ReservationItemRecord::price)
+					.reduce(BigDecimal.ZERO, BigDecimal::add);
+			discount = promo.discountFor(subtotal);
+		}
+
 		int insertedRows = orderMapper.insertPending(
 				UUID.randomUUID(),
 				reservation.id(),
 				userId,
 				CURRENCY,
+				promo == null ? null : promo.id(),
+				promo == null ? null : promo.code(),
+				discount,
 				now);
 		OrderRecord order = orderMapper.findActiveByReservationAndUser(reservation.id(), userId);
 		if (order == null || (insertedRows != 0 && insertedRows != 1)) {

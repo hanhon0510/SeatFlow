@@ -3,6 +3,8 @@ import type {
   OrderResponse,
   PaymentResponse,
   PaymentToken,
+  PromoCodeValidationRequest,
+  PromoCodeValidationResponse,
   ReservationResponse,
 } from '../types'
 
@@ -11,8 +13,8 @@ export async function createReservation(holdId: string) {
   return response.data
 }
 
-export async function createOrder(reservationId: string) {
-  const response = await apiClient.post<OrderResponse>('/orders', { reservationId })
+export async function createOrder(reservationId: string, promoCode?: string) {
+  const response = await apiClient.post<OrderResponse>('/orders', { reservationId, promoCode })
   return response.data
 }
 
@@ -26,5 +28,10 @@ export async function createPayment(orderId: string, token: PaymentToken, idempo
       },
     },
   )
+  return response.data
+}
+
+export async function validatePromoCode(request: PromoCodeValidationRequest) {
+  const response = await apiClient.post<PromoCodeValidationResponse>('/promo-codes/validate', request)
   return response.data
 }

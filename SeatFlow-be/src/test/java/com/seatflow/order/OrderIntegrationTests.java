@@ -38,6 +38,10 @@ import com.seatflow.event.EventSeatMapper;
 import com.seatflow.event.EventSeatRecord;
 import com.seatflow.event.EventSectionMapper;
 import com.seatflow.event.EventSectionRecord;
+import com.seatflow.promo.PromoCodeCreateRequest;
+import com.seatflow.promo.PromoCodeRejectedException;
+import com.seatflow.promo.PromoCodeService;
+import com.seatflow.promo.PromoDiscountType;
 import com.seatflow.reservation.ReservationItemMapper;
 import com.seatflow.reservation.ReservationItemRecord;
 import com.seatflow.reservation.ReservationMapper;
@@ -74,6 +78,9 @@ class OrderIntegrationTests extends PostgresTestContainerSupport {
 
 	@Autowired
 	private OrderService orderService;
+
+	@Autowired
+	private PromoCodeService promoCodeService;
 
 	@Autowired
 	private OrderMapper orderMapper;
@@ -284,6 +291,113 @@ class OrderIntegrationTests extends PostgresTestContainerSupport {
 		}
 	}
 
+	@Test
+	void promoCodeDiscountsTheOrderAndReplayDoesNotConsumeASecondUse() {
+		EventInventory inventory = insertEventInventory(2);
+		UserRecord user = insertUser("promo@example.com");
+		promoCodeService.create(new PromoCodeCreateRequest(
+				"save10", PromoDiscountType.PERCENT, new BigDecimal("10"), null, null, 1));
+		ReservationRecord reservation = insertReservation(
+				inventory,
+				user,
+				ReservationStatus.PENDING_PAYMENT,
+				Instant.now().plusSeconds(60),
+				List.of(new BigDecimal("125000"), new BigDecimal("75000")));
+
+		OrderResponse first = orderService.createOrder(user.id(), new OrderCreateRequest(reservation.id(), " save10 "));
+		OrderResponse replay = orderService.createOrder(user.id(), new OrderCreateRequest(reservation.id(), "SAVE10"));
+
+		assertThat(first.promoCode()).isEqualTo("SAVE10");
+		assertThat(first.discountAmount()).isEqualByComparingTo("20000");
+		assertThat(first.totalAmount()).isEqualByComparingTo("180000");
+		assertThat(replay.id()).isEqualTo(first.id());
+		assertThat(jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM orders WHERE promo_code_id IS NOT NULL", Long.class)).isEqualTo(1L);
+	}
+
+	@Test
+	void exhaustedPromoCodeIsRejectedAndFreedWhenTheOrderIsCancelled() {
+		EventInventory inventory = insertEventInventory(2);
+		UserRecord first = insertUser("first@example.com");
+		UserRecord second = insertUser("second@example.com");
+		promoCodeService.create(new PromoCodeCreateRequest(
+				"ONCE1", PromoDiscountType.FIXED, new BigDecimal("5000"), null, null, 1));
+		ReservationRecord firstReservation = insertReservation(inventory, first, ReservationStatus.PENDING_PAYMENT,
+				Instant.now().plusSeconds(60), List.of(new BigDecimal("100000")));
+		ReservationRecord secondReservation = insertReservation(inventory, second, ReservationStatus.PENDING_PAYMENT,
+				Instant.now().plusSeconds(60), List.of(new BigDecimal("100000")));
+
+		OrderResponse firstOrder = orderService.createOrder(first.id(), new OrderCreateRequest(firstReservation.id(), "ONCE1"));
+
+		assertThat(firstOrder.totalAmount()).isEqualByComparingTo("95000");
+		assertThatPromoRejected(second, secondReservation);
+
+		jdbcTemplate.update("UPDATE orders SET status = 'CANCELLED' WHERE id = ?", firstOrder.id());
+
+		OrderResponse secondOrder = orderService.createOrder(second.id(), new OrderCreateRequest(secondReservation.id(), "ONCE1"));
+		assertThat(secondOrder.discountAmount()).isEqualByComparingTo("5000");
+	}
+
+	@Test
+	void concurrentCheckoutsCannotOverspendALimitedPromoCode() throws Exception {
+		EventInventory inventory = insertEventInventory(3);
+		promoCodeService.create(new PromoCodeCreateRequest(
+				"RACE1", PromoDiscountType.FIXED, new BigDecimal("1000"), null, null, 1));
+		int buyers = 3;
+		List<UserRecord> users = new java.util.ArrayList<>();
+		List<ReservationRecord> reservations = new java.util.ArrayList<>();
+		for (int index = 0; index < buyers; index++) {
+			UserRecord user = insertUser("racer%d@example.com".formatted(index));
+			users.add(user);
+			reservations.add(insertReservation(inventory, user, ReservationStatus.PENDING_PAYMENT,
+					Instant.now().plusSeconds(60), List.of(new BigDecimal("50000"))));
+		}
+		CountDownLatch ready = new CountDownLatch(buyers);
+		CountDownLatch start = new CountDownLatch(1);
+		ExecutorService executor = Executors.newFixedThreadPool(buyers);
+
+		try {
+			List<Future<Boolean>> results = new java.util.ArrayList<>();
+			for (int index = 0; index < buyers; index++) {
+				UserRecord user = users.get(index);
+				ReservationRecord reservation = reservations.get(index);
+				results.add(executor.submit(() -> {
+					ready.countDown();
+					start.await();
+					try {
+						orderService.createOrder(user.id(), new OrderCreateRequest(reservation.id(), "RACE1"));
+						return true;
+					}
+					catch (PromoCodeRejectedException ex) {
+						return false;
+					}
+				}));
+			}
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+
+			long succeeded = 0;
+			for (Future<Boolean> result : results) {
+				if (result.get(15, TimeUnit.SECONDS)) {
+					succeeded++;
+				}
+			}
+			assertThat(succeeded).isEqualTo(1);
+			assertThat(jdbcTemplate.queryForObject(
+					"SELECT COUNT(*) FROM orders WHERE promo_code_id IS NOT NULL", Long.class)).isEqualTo(1L);
+		}
+		finally {
+			start.countDown();
+			executor.shutdownNow();
+		}
+	}
+
+	private void assertThatPromoRejected(UserRecord user, ReservationRecord reservation) {
+		org.assertj.core.api.Assertions.assertThatThrownBy(
+				() -> orderService.createOrder(user.id(), new OrderCreateRequest(reservation.id(), "ONCE1")))
+				.isInstanceOf(PromoCodeRejectedException.class);
+	}
+
 	private MvcResult createOrder(UUID reservationId, UserRecord user) throws Exception {
 		return mockMvc.perform(post("/api/v1/orders")
 						.header(HttpHeaders.AUTHORIZATION, bearerToken(user))
@@ -389,6 +503,7 @@ class OrderIntegrationTests extends PostgresTestContainerSupport {
 		jdbcTemplate.update("DELETE FROM outbox_events");
 		jdbcTemplate.update("DELETE FROM payments");
 		jdbcTemplate.update("DELETE FROM orders");
+		jdbcTemplate.update("DELETE FROM promo_codes");
 		jdbcTemplate.update("DELETE FROM reservation_items");
 		jdbcTemplate.update("DELETE FROM reservations");
 		jdbcTemplate.update("DELETE FROM refresh_tokens");
