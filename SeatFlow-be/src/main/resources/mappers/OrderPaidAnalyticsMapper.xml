@@ -33,4 +33,11 @@
             #{createdAt}
         )
     </insert>
+
+    <update id="markRefunded">
+        UPDATE order_paid_analytics
+        SET refunded_at = #{refundedAt}
+        WHERE order_id = #{orderId}
+          AND refunded_at IS NULL
+    </update>
 </mapper>

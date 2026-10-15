@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.Instant;
 import java.util.Map;
@@ -35,13 +36,16 @@ class OrderPaidAnalyticsKafkaListenerTests {
 	@Mock
 	private OrderPaidAnalyticsConsumer consumer;
 
+	@Mock
+	private OrderRefundedAnalyticsConsumer refundedConsumer;
+
 	private SimpleMeterRegistry meterRegistry;
 	private OrderPaidAnalyticsKafkaListener listener;
 
 	@BeforeEach
 	void setUp() {
 		meterRegistry = new SimpleMeterRegistry();
-		listener = new OrderPaidAnalyticsKafkaListener(consumer, new BusinessMetrics(meterRegistry));
+		listener = new OrderPaidAnalyticsKafkaListener(consumer, refundedConsumer, new BusinessMetrics(meterRegistry));
 	}
 
 	@Test
@@ -53,5 +57,25 @@ class OrderPaidAnalyticsKafkaListenerTests {
 
 		verify(consumer).process(EVENT);
 		assertThat(meterRegistry.get("kafka_consumer_failure").counter().count()).isEqualTo(1);
+	}
+
+	@Test
+	void refundEventsGoToTheRefundConsumerOnly() {
+		EventEnvelope<Map<String, Object>> refunded = new EventEnvelope<>(
+				EVENT.eventId(), "OrderRefunded", 1, EVENT.aggregateId(),
+				EVENT.correlationId(), EVENT.occurredAt(), Map.of());
+
+		listener.handle(refunded);
+
+		verify(refundedConsumer).process(refunded);
+		verifyNoInteractions(consumer);
+	}
+
+	@Test
+	void everyOtherTypeStillReachesThePaidConsumerSoUnknownOnesDeadLetter() {
+		listener.handle(EVENT);
+
+		verify(consumer).process(EVENT);
+		verifyNoInteractions(refundedConsumer);
 	}
 }
