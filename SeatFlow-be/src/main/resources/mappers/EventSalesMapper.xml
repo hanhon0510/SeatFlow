@@ -38,6 +38,8 @@
             <arg column="paid_orders" javaType="_long" />
             <arg column="pending_amount" javaType="java.math.BigDecimal" />
             <arg column="pending_orders" javaType="_long" />
+            <arg column="refunded_amount" javaType="java.math.BigDecimal" />
+            <arg column="refunded_orders" javaType="_long" />
         </constructor>
     </resultMap>
 
@@ -48,6 +50,7 @@
             <arg column="pending" javaType="_long" />
             <arg column="failed" javaType="_long" />
             <arg column="cancelled" javaType="_long" />
+            <arg column="refunded" javaType="_long" />
         </constructor>
     </resultMap>
 
@@ -174,12 +177,14 @@
             COALESCE(SUM(purchase_order.total_amount) FILTER (WHERE purchase_order.status = 'PAID'), 0) AS paid_amount,
             COUNT(*) FILTER (WHERE purchase_order.status = 'PAID') AS paid_orders,
             COALESCE(SUM(purchase_order.total_amount) FILTER (WHERE purchase_order.status = 'PENDING'), 0) AS pending_amount,
-            COUNT(*) FILTER (WHERE purchase_order.status = 'PENDING') AS pending_orders
+            COUNT(*) FILTER (WHERE purchase_order.status = 'PENDING') AS pending_orders,
+            COALESCE(SUM(purchase_order.total_amount) FILTER (WHERE purchase_order.status = 'REFUNDED'), 0) AS refunded_amount,
+            COUNT(*) FILTER (WHERE purchase_order.status = 'REFUNDED') AS refunded_orders
         FROM orders purchase_order
         JOIN reservations reservation ON reservation.id = purchase_order.reservation_id
         WHERE reservation.event_id = #{eventId}
         GROUP BY purchase_order.currency
-        HAVING COUNT(*) FILTER (WHERE purchase_order.status IN ('PAID', 'PENDING')) &gt; 0
+        HAVING COUNT(*) FILTER (WHERE purchase_order.status IN ('PAID', 'PENDING', 'REFUNDED')) &gt; 0
         ORDER BY purchase_order.currency
     </select>
 
@@ -189,7 +194,8 @@
             COUNT(*) FILTER (WHERE purchase_order.status = 'PAID') AS paid,
             COUNT(*) FILTER (WHERE purchase_order.status = 'PENDING') AS pending,
             COUNT(*) FILTER (WHERE purchase_order.status = 'FAILED') AS failed,
-            COUNT(*) FILTER (WHERE purchase_order.status = 'CANCELLED') AS cancelled
+            COUNT(*) FILTER (WHERE purchase_order.status = 'CANCELLED') AS cancelled,
+            COUNT(*) FILTER (WHERE purchase_order.status = 'REFUNDED') AS refunded
         FROM orders purchase_order
         JOIN reservations reservation ON reservation.id = purchase_order.reservation_id
         WHERE reservation.event_id = #{eventId}

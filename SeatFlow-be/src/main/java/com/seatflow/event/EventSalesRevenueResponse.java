@@ -8,5 +8,7 @@ public record EventSalesRevenueResponse(
 		BigDecimal paidAmount,
 		long paidOrders,
 		BigDecimal pendingAmount,
-		long pendingOrders) {
+		long pendingOrders,
+		BigDecimal refundedAmount,
+		long refundedOrders) {
 }

@@ -5,5 +5,6 @@ public record EventSalesOrderCounts(
 		long paid,
 		long pending,
 		long failed,
-		long cancelled) {
+		long cancelled,
+		long refunded) {
 }

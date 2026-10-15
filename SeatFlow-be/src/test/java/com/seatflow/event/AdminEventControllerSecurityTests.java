@@ -435,9 +435,11 @@ class AdminEventControllerSecurityTests {
 				new BigDecimal("300.00"),
 				3L,
 				new BigDecimal("100.00"),
-				1L)));
+				1L,
+				BigDecimal.ZERO,
+				0L)));
 		when(eventSalesMapper.findOrderCounts(eventId))
-				.thenReturn(new EventSalesOrderCounts(5L, 3L, 1L, 1L, 0L));
+				.thenReturn(new EventSalesOrderCounts(5L, 3L, 1L, 1L, 0L, 0L));
 		when(eventSalesMapper.findRecentOrders(eq(eventId), anyInt()))
 				.thenReturn(List.of(new EventSalesRecentOrderResponse(
 						UUID.randomUUID(),
