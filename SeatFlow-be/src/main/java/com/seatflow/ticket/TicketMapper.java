@@ -22,6 +22,11 @@ public interface TicketMapper {
 			@Param("orderId") UUID orderId,
 			@Param("eventSeatId") UUID eventSeatId);
 
+	List<TicketRecord> findByOrderId(@Param("orderId") UUID orderId);
+
+	/** Voids every unused ticket of the order and returns how many were voided. */
+	int cancelActiveByOrderId(@Param("orderId") UUID orderId);
+
 	TicketDetailRecord findDetailByIdAndUser(
 			@Param("id") UUID id,
 			@Param("userId") UUID userId);

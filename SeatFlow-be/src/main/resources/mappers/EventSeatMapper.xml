@@ -155,6 +155,16 @@
           AND permanent_status = 'AVAILABLE'
     </update>
 
+    <update id="markAvailable">
+        UPDATE event_seats
+        SET
+            permanent_status = 'AVAILABLE',
+            version = version + 1,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND permanent_status = 'SOLD'
+    </update>
+
     <select id="findPublishedLayoutByEventId" resultMap="EventSeatLayoutRowResultMap">
         SELECT
             venue_section.id AS section_id,

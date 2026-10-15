@@ -206,6 +206,11 @@ class EventSeatLayoutServiceTests {
 		}
 
 		@Override
+		public int markAvailable(UUID id) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public int markSold(UUID id) {
 			throw new UnsupportedOperationException();
 		}

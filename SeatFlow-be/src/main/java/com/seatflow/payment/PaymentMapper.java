@@ -18,6 +18,9 @@ public interface PaymentMapper {
 
 	PaymentRecord findById(@Param("id") UUID id);
 
+	/** The payment that settled the order; a database index guarantees there is at most one. */
+	PaymentRecord findSucceededByOrderId(@Param("orderId") UUID orderId);
+
 	int updateStatus(
 			@Param("id") UUID id,
 			@Param("expectedStatus") PaymentStatus expectedStatus,

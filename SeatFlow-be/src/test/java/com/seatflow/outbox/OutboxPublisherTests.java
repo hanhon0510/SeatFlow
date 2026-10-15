@@ -104,6 +104,21 @@ class OutboxPublisherTests {
 	}
 
 	@Test
+	void refundEventsGoToTheOrderEventsTopic() {
+		OutboxEventRecord event = event("OrderRefunded", "{}", 0);
+		when(claimPending(50)).thenReturn(List.of(event));
+		when(eventPublisher.publish(eq(kafkaProperties.topics().orderEvents()), any(EventEnvelope.class)))
+				.thenReturn(CompletableFuture.completedFuture(null));
+		when(outboxMapper.markPublished(EVENT_ID, NOW)).thenReturn(1);
+
+		assertThat(publisher.publishPending()).isEqualTo(1);
+
+		ArgumentCaptor<EventEnvelope> envelopeCaptor = ArgumentCaptor.forClass(EventEnvelope.class);
+		verify(eventPublisher).publish(eq(kafkaProperties.topics().orderEvents()), envelopeCaptor.capture());
+		assertThat(envelopeCaptor.getValue().eventType()).isEqualTo("OrderRefunded");
+	}
+
+	@Test
 	void kafkaFailureLeavesEventPendingAndSchedulesRetry() {
 		OutboxEventRecord event = orderPaidEvent("{}");
 		CompletableFuture<SendResult<Object, Object>> failed = new CompletableFuture<>();

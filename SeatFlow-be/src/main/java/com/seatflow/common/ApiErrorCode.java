@@ -70,6 +70,8 @@ public enum ApiErrorCode {
 			"DUPLICATE_PROMO_CODE", "A promo code with that value already exists."),
 	INVALID_PROMO_CODE_REQUEST("invalid-promo-code-request", "Invalid promo code request",
 			HttpStatus.BAD_REQUEST, "INVALID_PROMO_CODE_REQUEST", "Promo code request is invalid."),
+	ORDER_NOT_REFUNDABLE("order-not-refundable", "Order cannot be refunded", HttpStatus.CONFLICT,
+			"ORDER_NOT_REFUNDABLE", "The order is not in a state that can be refunded."),
 	INVALID_PAYMENT_TOKEN("invalid-payment-token", "Invalid payment token", HttpStatus.BAD_REQUEST,
 			"INVALID_PAYMENT_TOKEN", "Payment token is invalid."),
 	PAYMENT_CONFLICT("payment-conflict", "Payment conflict", HttpStatus.CONFLICT, "PAYMENT_CONFLICT",

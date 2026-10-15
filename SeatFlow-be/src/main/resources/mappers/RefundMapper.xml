@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.refund.RefundMapper">
+    <resultMap id="RefundRecordResultMap" type="com.seatflow.refund.RefundRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="order_id" javaType="java.util.UUID" />
+            <arg column="payment_id" javaType="java.util.UUID" />
+            <arg column="amount" javaType="java.math.BigDecimal" />
+            <arg column="currency" javaType="java.lang.String" />
+            <arg column="reason" javaType="java.lang.String" />
+            <arg column="refunded_by" javaType="java.util.UUID" />
+            <arg column="created_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO refunds (
+            id,
+            order_id,
+            payment_id,
+            amount,
+            currency,
+            reason,
+            refunded_by,
+            created_at
+        )
+        VALUES (
+            #{id},
+            #{orderId},
+            #{paymentId},
+            #{amount},
+            #{currency},
+            #{reason},
+            #{refundedBy},
+            #{createdAt}
+        )
+    </insert>
+
+    <select id="findByOrderId" resultMap="RefundRecordResultMap">
+        SELECT
+            id,
+            order_id,
+            payment_id,
+            amount,
+            currency,
+            reason,
+            refunded_by,
+            created_at
+        FROM refunds
+        WHERE order_id = #{orderId}
+    </select>
+</mapper>

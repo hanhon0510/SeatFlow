@@ -55,6 +55,7 @@ import com.seatflow.promo.InvalidPromoCodeRequestException;
 import com.seatflow.promo.PromoCodeNotFoundException;
 import com.seatflow.promo.PromoCodeRejectedException;
 import com.seatflow.ratelimit.RateLimitExceededException;
+import com.seatflow.refund.OrderNotRefundableException;
 import com.seatflow.ratelimit.RateLimitResult;
 import com.seatflow.ratelimit.RateLimitStorageException;
 import com.seatflow.reservation.ReservationConflictException;
@@ -321,6 +322,13 @@ public class GlobalExceptionHandler {
 			InvalidPromoCodeRequestException ex,
 			HttpServletRequest request) {
 		return error(request, ApiErrorCode.INVALID_PROMO_CODE_REQUEST, ex);
+	}
+
+	@ExceptionHandler(OrderNotRefundableException.class)
+	public ResponseEntity<ApiErrorResponse> handleOrderNotRefundable(
+			OrderNotRefundableException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.ORDER_NOT_REFUNDABLE, ex);
 	}
 
 	@ExceptionHandler(OrderConflictException.class)

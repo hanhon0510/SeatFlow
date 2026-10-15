@@ -29,6 +29,16 @@ public interface OrderMapper {
 			@Param("id") UUID id,
 			@Param("userId") UUID userId);
 
+	/** Locks the order row for the rest of the transaction, whoever owns it. */
+	OrderRecord findByIdForUpdate(@Param("id") UUID id);
+
+	/** Compare-and-set on status for staff actions, which act on any user's order. */
+	int transition(
+			@Param("id") UUID id,
+			@Param("expectedStatus") OrderStatus expectedStatus,
+			@Param("newStatus") OrderStatus newStatus,
+			@Param("updatedAt") Instant updatedAt);
+
 	long countByUser(@Param("userId") UUID userId);
 
 	List<OrderRecord> findPageByUser(

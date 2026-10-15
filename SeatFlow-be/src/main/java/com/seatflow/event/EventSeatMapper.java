@@ -23,6 +23,9 @@ public interface EventSeatMapper {
 
 	int markSold(@Param("id") UUID id);
 
+	/** Puts a sold seat back on sale; a seat in any other state is left alone. */
+	int markAvailable(@Param("id") UUID id);
+
 	List<EventSeatLayoutRow> findPublishedLayoutByEventId(
 			@Param("eventId") UUID eventId,
 			@Param("sectionId") UUID sectionId);

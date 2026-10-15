@@ -26,6 +26,7 @@ public class OutboxPublisher {
 	private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
 
 	private static final String ORDER_PAID_EVENT = "OrderPaid";
+	private static final String ORDER_REFUNDED_EVENT = "OrderRefunded";
 	private static final int MAX_FAILURE_REASON_LENGTH = 500;
 
 	private final OutboxMapper outboxMapper;
@@ -208,7 +209,7 @@ public class OutboxPublisher {
 	 * unnoticed. Treat it as the programming error it is instead.
 	 */
 	private String topic(OutboxEventRecord event) {
-		if (ORDER_PAID_EVENT.equals(event.eventType())) {
+		if (ORDER_PAID_EVENT.equals(event.eventType()) || ORDER_REFUNDED_EVENT.equals(event.eventType())) {
 			return kafkaProperties.topics().orderEvents();
 		}
 		throw new IllegalStateException("No topic mapped for outbox event type " + event.eventType());

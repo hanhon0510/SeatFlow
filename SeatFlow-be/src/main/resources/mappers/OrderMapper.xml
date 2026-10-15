@@ -95,6 +95,23 @@
           AND user_id = #{userId}
     </select>
 
+    <select id="findByIdForUpdate" resultMap="OrderRecordResultMap">
+        SELECT
+            <include refid="OrderColumns" />
+        FROM orders
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
+    <update id="transition">
+        UPDATE orders
+        SET
+            status = #{newStatus},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND status = #{expectedStatus}
+    </update>
+
     <select id="countByUser" resultType="long">
         SELECT COUNT(*)
         FROM orders

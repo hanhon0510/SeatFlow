@@ -63,6 +63,9 @@ class OrderControllerSecurityTests {
 	@MockitoBean
 	private OrderService orderService;
 
+	@MockitoBean
+	private OrderCancellationService orderCancellationService;
+
 	@Test
 	void authenticatedUserCanCreateRetrieveAndListOrders() throws Exception {
 		OrderResponse order = orderResponse();
@@ -100,6 +103,8 @@ class OrderControllerSecurityTests {
 						.content(requestBody()))
 				.andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/orders/{orderId}", ORDER_ID))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(post("/api/v1/orders/{orderId}/cancel", ORDER_ID))
 				.andExpect(status().isUnauthorized());
 		mockMvc.perform(get("/api/v1/users/me/orders"))
 				.andExpect(status().isUnauthorized());
@@ -151,6 +156,26 @@ class OrderControllerSecurityTests {
 						.header(HttpHeaders.AUTHORIZATION, bearerToken()))
 				.andExpect(status().isNotFound())
 				.andExpect(jsonPath("$.title").value("Order not found"));
+	}
+
+	@Test
+	void foreignOrderCannotBeCancelledAndOwnCancellationIsReturned() throws Exception {
+		when(orderCancellationService.cancelOrder(ORDER_ID, USER_ID)).thenThrow(new OrderNotFoundException());
+
+		mockMvc.perform(post("/api/v1/orders/{orderId}/cancel", ORDER_ID)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken()))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.title").value("Order not found"));
+	}
+
+	@Test
+	void cancellingAnOrderThatCannotBeCancelledIsAConflict() throws Exception {
+		when(orderCancellationService.cancelOrder(ORDER_ID, USER_ID)).thenThrow(new OrderConflictException());
+
+		mockMvc.perform(post("/api/v1/orders/{orderId}/cancel", ORDER_ID)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken()))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("ORDER_CONFLICT"));
 	}
 
 	private String bearerToken() {

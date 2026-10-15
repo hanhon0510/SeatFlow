@@ -56,6 +56,21 @@
         WHERE id = #{id}
     </select>
 
+    <select id="findSucceededByOrderId" resultMap="PaymentRecordResultMap">
+        SELECT
+            id,
+            order_id,
+            status,
+            amount,
+            provider_reference,
+            failure_reason,
+            created_at,
+            updated_at
+        FROM payments
+        WHERE order_id = #{orderId}
+          AND status = 'SUCCEEDED'
+    </select>
+
     <update id="updateStatus">
         UPDATE payments
         SET

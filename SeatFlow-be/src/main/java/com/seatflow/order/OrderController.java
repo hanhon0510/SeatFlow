@@ -22,9 +22,11 @@ import jakarta.validation.Valid;
 public class OrderController {
 
 	private final OrderService orderService;
+	private final OrderCancellationService orderCancellationService;
 
-	public OrderController(OrderService orderService) {
+	public OrderController(OrderService orderService, OrderCancellationService orderCancellationService) {
 		this.orderService = orderService;
+		this.orderCancellationService = orderCancellationService;
 	}
 
 	@PostMapping
@@ -40,6 +42,13 @@ public class OrderController {
 			@PathVariable UUID orderId,
 			@AuthenticationPrincipal Jwt jwt) {
 		return orderService.getOrder(orderId, userId(jwt));
+	}
+
+	@PostMapping("/{orderId}/cancel")
+	public OrderResponse cancelOrder(
+			@PathVariable UUID orderId,
+			@AuthenticationPrincipal Jwt jwt) {
+		return orderCancellationService.cancelOrder(orderId, userId(jwt));
 	}
 
 	private static UUID userId(Jwt jwt) {

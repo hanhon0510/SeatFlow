@@ -120,6 +120,21 @@
           AND event_seat_id = #{eventSeatId}
     </select>
 
+    <select id="findByOrderId" resultMap="TicketRecordResultMap">
+        SELECT
+            <include refid="TicketColumns" />
+        FROM tickets
+        WHERE order_id = #{orderId}
+        ORDER BY id
+    </select>
+
+    <update id="cancelActiveByOrderId">
+        UPDATE tickets
+        SET status = 'CANCELLED'
+        WHERE order_id = #{orderId}
+          AND status = 'ACTIVE'
+    </update>
+
     <select id="findDetailByIdAndUser" resultMap="TicketDetailRecordResultMap">
         SELECT
             <include refid="TicketDetailColumns" />
