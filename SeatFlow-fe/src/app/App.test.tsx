@@ -18,12 +18,15 @@ import type {
   EventSectionConfiguration,
 } from '../features/admin/events/types'
 import type { AdminDashboard } from '../features/admin/dashboard/types'
+import type { RefundResponse } from '../features/admin/orders/types'
 import type { EventSeatLayout, PublicEvent, PublicEventPage } from '../features/events/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
 import type {
   OrderResponse,
   PaymentResponse,
   PaymentStatus,
+  PromoCodeValidationRequest,
+  PromoCodeValidationResponse,
   ReservationResponse,
 } from '../features/checkout/types'
 import type { SeatHold } from '../features/holds/types'
@@ -357,10 +360,18 @@ const eventSalesReport: EventSalesReport = {
     soldValue: 4500000,
   },
   revenue: [
-    { currency: 'VND', paidAmount: 4500000, paidOrders: 21, pendingAmount: 300000, pendingOrders: 2 },
+    {
+      currency: 'VND',
+      paidAmount: 4500000,
+      paidOrders: 21,
+      pendingAmount: 300000,
+      pendingOrders: 2,
+      refundedAmount: 0,
+      refundedOrders: 0,
+    },
   ],
   orders: {
-    counts: { total: 25, paid: 21, pending: 2, failed: 1, cancelled: 1 },
+    counts: { total: 25, paid: 21, pending: 2, failed: 1, cancelled: 1, refunded: 0 },
     recent: [
       {
         orderId: 'cbe8dcf4-2b0a-4c4b-9d3e-8b3e0f2a1f10',
@@ -490,6 +501,12 @@ function rejectedResponse(config: InternalAxiosRequestConfig, status: number, me
   )
 }
 
+function rejectedWithCode(config: InternalAxiosRequestConfig, status: number, code: string, detail: string) {
+  return Promise.reject(
+    new AxiosError(detail, undefined, config, {}, response(config, status, { code, detail, title: detail })),
+  )
+}
+
 function endpoint(config: InternalAxiosRequestConfig) {
   return `${config.method?.toUpperCase()} ${config.url}`
 }
@@ -579,11 +596,19 @@ function installCheckoutMock({
   hold = activeSeatHold(),
   status = 'SUCCEEDED',
   paymentSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>(),
+  orderSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>(),
+  cancelSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>(),
+  releaseSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>(),
+  paymentUnavailable = false,
   tickets,
 }: {
   hold?: SeatHold
   status?: PaymentStatus
   paymentSpy?: PaymentSpy
+  orderSpy?: PaymentSpy
+  cancelSpy?: PaymentSpy
+  releaseSpy?: PaymentSpy
+  paymentUnavailable?: boolean
   tickets?: Ticket[]
 } = {}) {
   const reservation = reservationResponse(hold)
@@ -616,12 +641,41 @@ function installCheckoutMock({
     }
 
     if (endpoint(config) === 'POST /orders') {
+      orderSpy(config)
       return response<OrderResponse>(config, 201, order)
     }
 
     if (endpoint(config) === `POST /orders/${order.id}/payments`) {
       paymentSpy(config)
+      if (paymentUnavailable) {
+        return rejectedResponse(config, 503, 'Payment service unavailable')
+      }
       return response<PaymentResponse>(config, 201, paymentResponse(order, status))
+    }
+
+    if (endpoint(config) === `POST /orders/${order.id}/cancel`) {
+      cancelSpy(config)
+      return response<OrderResponse>(config, 200, { ...order, status: 'CANCELLED' })
+    }
+
+    if (endpoint(config) === `DELETE /holds/${hold.holdId}`) {
+      releaseSpy(config)
+      return response(config, 204, undefined)
+    }
+
+    if (endpoint(config) === 'POST /promo-codes/validate') {
+      const request = requestBody<PromoCodeValidationRequest>(config)
+      if (request.code.toUpperCase() !== 'SAVE10') {
+        return rejectedWithCode(config, 422, 'PROMO_CODE_REJECTED', 'rejected')
+      }
+      const discountAmount = request.subtotal / 10
+      return response<PromoCodeValidationResponse>(config, 200, {
+        code: 'SAVE10',
+        discountType: 'PERCENT',
+        discountValue: 10,
+        discountAmount,
+        total: request.subtotal - discountAmount,
+      })
     }
 
     if (endpoint(config) === 'GET /users/me/tickets') {
@@ -631,7 +685,48 @@ function installCheckoutMock({
     return rejectedResponse(config, 500, 'Unexpected request')
   })
 
-  return { hold, reservation, order, tickets: issuedTickets, paymentSpy }
+  return { hold, reservation, order, tickets: issuedTickets, paymentSpy, orderSpy, cancelSpy, releaseSpy }
+}
+
+const refundableOrderId = eventSalesReport.orders.recent[0].orderId
+
+function reportWithOrderStatus(status: EventSalesReport['orders']['recent'][number]['status']): EventSalesReport {
+  return {
+    ...eventSalesReport,
+    orders: {
+      ...eventSalesReport.orders,
+      recent: eventSalesReport.orders.recent.map((order) => ({ ...order, status })),
+    },
+  }
+}
+
+function installAdminEventDetailMock(
+  report: () => EventSalesReport,
+  refund: ApiHandler = (config) => rejectedResponse(config, 500, 'Unexpected request'),
+) {
+  installApiMock((config) => {
+    if (endpoint(config) === 'POST /auth/refresh') {
+      return response<LoginResponse>(config, 200, loginResponse)
+    }
+
+    if (endpoint(config) === 'GET /users/me') {
+      return response<AuthUser>(config, 200, adminUser)
+    }
+
+    if (endpoint(config) === `GET /admin/events/${event.id}/sales`) {
+      return response<EventSalesReport>(config, 200, report())
+    }
+
+    if (endpoint(config) === `GET /admin/events/${event.id}/seat-map`) {
+      return response<AdminSeatMap>(config, 200, adminSeatMap)
+    }
+
+    if (endpoint(config) === `POST /admin/orders/${refundableOrderId}/refund`) {
+      return refund(config)
+    }
+
+    return rejectedResponse(config, 500, 'Unexpected request')
+  })
 }
 
 describe('App', () => {
@@ -1390,6 +1485,188 @@ describe('App', () => {
     expect(screen.getByText(ticket.qrData)).toBeInTheDocument()
     expect(screen.getByText(/row A, seat A1/)).toBeInTheDocument()
   }, 10000)
+
+  it('refunds a paid order after the admin confirms and refreshes the report', async () => {
+    const user = userEvent.setup()
+    const refundSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    let refunded = false
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(
+      () => reportWithOrderStatus(refunded ? 'REFUNDED' : 'PAID'),
+      (config) => {
+        refundSpy(config)
+        refunded = true
+        return response<RefundResponse>(config, 200, {
+          id: 'f3a4b0f5-6d1c-4c0e-8f58-0e1d6f6a9a01',
+          orderId: refundableOrderId,
+          orderStatus: 'REFUNDED',
+          amount: 200000,
+          currency: 'VND',
+          reason: 'Duplicate purchase',
+          refundedAt: '2026-09-01T09:00:00.000Z',
+        })
+      },
+    )
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Refund order for buyer@example.com' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('This cannot be undone')).toBeInTheDocument()
+    expect(refundSpy).not.toHaveBeenCalled()
+
+    await user.type(within(dialog).getByLabelText('Reason (optional)'), '  Duplicate purchase ')
+    await user.click(within(dialog).getByRole('button', { name: 'Refund 200,000 VND' }))
+
+    await waitFor(() => expect(refundSpy).toHaveBeenCalledOnce())
+    expect(requestBody(refundSpy.mock.calls[0][0] as InternalAxiosRequestConfig)).toEqual({
+      reason: 'Duplicate purchase',
+    })
+    expect(await screen.findByText('Order refunded')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(await screen.findByText('REFUNDED')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Refund order for buyer@example.com' }),
+    ).not.toBeInTheDocument()
+  }, 20000)
+
+  it('only offers a refund for paid orders', async () => {
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(() => reportWithOrderStatus('PENDING'))
+
+    render(<App />)
+
+    expect(await screen.findByText('PENDING')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Refund order for/ })).not.toBeInTheDocument()
+  }, 15000)
+
+  it('keeps the refund dialog open and explains why when the refund is refused', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(
+      () => reportWithOrderStatus('PAID'),
+      (config) => rejectedWithCode(config, 409, 'ORDER_NOT_REFUNDABLE', 'not refundable'),
+    )
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Refund order for buyer@example.com' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Refund 200,000 VND' }))
+
+    expect(await within(dialog).findByText(/cannot be refunded/i)).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Keep order' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  }, 20000)
+
+  it('cancels the unpaid order before releasing the hold', async () => {
+    const user = userEvent.setup()
+    const { hold, cancelSpy, releaseSpy } = installCheckoutMock({ paymentUnavailable: true })
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+
+    render(<App />)
+
+    await screen.findByText('Reservation summary')
+    await user.click(screen.getByRole('button', { name: 'Pay now' }))
+    // Shown both inline and as a notification.
+    expect((await screen.findAllByText('Payment service unavailable')).length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'Release hold' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Release hold' }))
+
+    await waitFor(() => expect(releaseSpy).toHaveBeenCalledOnce())
+    expect(cancelSpy).toHaveBeenCalledOnce()
+    expect(cancelSpy.mock.invocationCallOrder[0]).toBeLessThan(releaseSpy.mock.invocationCallOrder[0])
+  }, 20000)
+
+  it('releases a hold without cancelling anything when no order was started', async () => {
+    const user = userEvent.setup()
+    const { hold, cancelSpy, releaseSpy } = installCheckoutMock()
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+
+    render(<App />)
+
+    await screen.findByText('Reservation summary')
+    await user.click(screen.getByRole('button', { name: 'Release hold' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Release hold' }))
+
+    await waitFor(() => expect(releaseSpy).toHaveBeenCalledOnce())
+    expect(cancelSpy).not.toHaveBeenCalled()
+  }, 20000)
+
+  it('applies a promo code at checkout and sends it with the order', async () => {
+    const user = userEvent.setup()
+    const { hold, orderSpy } = installCheckoutMock()
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+
+    render(<App />)
+
+    await screen.findByText('Reservation summary')
+    await user.type(screen.getByLabelText('Promo code'), 'save10')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+
+    expect(await screen.findByText(/SAVE10 applied, you save/)).toBeInTheDocument()
+    expect(screen.getByText('Subtotal')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Pay now' }))
+    await waitFor(() => expect(orderSpy).toHaveBeenCalledOnce())
+    expect(requestBody(orderSpy.mock.calls[0][0] as InternalAxiosRequestConfig)).toMatchObject({
+      promoCode: 'SAVE10',
+    })
+  }, 20000)
+
+  it('explains a rejected promo code and still lets the buyer pay in full', async () => {
+    const user = userEvent.setup()
+    const { hold, orderSpy } = installCheckoutMock()
+    window.history.pushState({}, '', ROUTES.checkout(hold.holdId))
+
+    render(<App />)
+
+    await screen.findByText('Reservation summary')
+    await user.type(screen.getByLabelText('Promo code'), 'nope')
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+
+    expect(await screen.findByText('This promo code cannot be applied to your purchase.')).toBeInTheDocument()
+    expect(screen.queryByText('Subtotal')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Pay now' }))
+    await waitFor(() => expect(orderSpy).toHaveBeenCalledOnce())
+    expect(requestBody<{ promoCode?: string }>(orderSpy.mock.calls[0][0] as InternalAxiosRequestConfig).promoCode)
+      .toBeUndefined()
+  }, 20000)
+
+  it('shows a refunded ticket as no longer valid', async () => {
+    const hold = activeSeatHold()
+    const ticket: Ticket = {
+      ...ticketForOrder(orderResponse(reservationResponse(hold), 'REFUNDED')),
+      status: 'CANCELLED',
+    }
+    window.history.pushState({}, '', ROUTES.ticketDetail(ticket.id))
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, authUser)
+      }
+
+      if (endpoint(config) === `GET /tickets/${ticket.id}`) {
+        return response<Ticket>(config, 200, ticket)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('This ticket is no longer valid')).toBeInTheDocument()
+    expect(screen.getByText('CANCELLED')).toBeInTheDocument()
+  }, 15000)
 
   it('validates required login fields', async () => {
     const user = userEvent.setup()

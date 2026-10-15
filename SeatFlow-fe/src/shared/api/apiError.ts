@@ -20,6 +20,9 @@ const CODE_MESSAGES: Record<string, string> = {
   SEAT_HOLD_NOT_FOUND: 'This seat hold is no longer available.',
   RESERVATION_CONFLICT: 'The reservation cannot be completed.',
   ORDER_CONFLICT: 'The order cannot be completed.',
+  ORDER_NOT_REFUNDABLE:
+    'This order cannot be refunded. Only paid orders whose tickets are unused can be refunded.',
+  PROMO_CODE_REJECTED: 'This promo code cannot be applied to your purchase.',
   PAYMENT_CONFLICT: 'The payment cannot be completed.',
   INVALID_PAYMENT_TOKEN: 'Choose a valid payment option.',
   RATE_LIMIT_EXCEEDED: 'Too many attempts. Please wait and try again.',

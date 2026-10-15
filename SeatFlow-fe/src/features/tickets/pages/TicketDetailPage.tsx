@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../../../shared/api/apiError'
 import { ROUTES } from '../../../shared/constants/routes'
 import { formatDateTime } from '../../events/utils/eventFormatters'
 import { getTicket, ticketQueryKeys } from '../api/ticketsApi'
+import { TicketStatusTag } from '../components/TicketStatusTag'
 
 export function TicketDetailPage() {
   const { ticketId } = useParams()
@@ -63,14 +64,28 @@ export function TicketDetailPage() {
           <Space direction="vertical" size={8}>
             <Typography.Title level={1}>{ticket.event.name}</Typography.Title>
             <Space wrap>
-              <Tag color={ticket.status === 'ACTIVE' ? 'green' : 'default'}>{ticket.status}</Tag>
+              <TicketStatusTag status={ticket.status} />
               <Tag>{ticket.seat.sectionName} {ticket.seat.seatLabel}</Tag>
             </Space>
           </Space>
-          <div className="ticket-qr-panel">
-            <QRCode type="svg" value={ticket.qrData} size={180} />
-          </div>
+          {ticket.status === 'ACTIVE' ? (
+            <div className="ticket-qr-panel">
+              <QRCode type="svg" value={ticket.qrData} size={180} />
+            </div>
+          ) : null}
         </div>
+
+        {ticket.status === 'ACTIVE' ? null : (
+          <Alert
+            showIcon
+            style={{ marginBottom: 16 }}
+            type={ticket.status === 'CANCELLED' ? 'error' : 'info'}
+            message={ticket.status === 'CANCELLED' ? 'This ticket is no longer valid' : 'This ticket has been used'}
+            description={ticket.status === 'CANCELLED'
+              ? 'It was cancelled because the order was refunded. It will not be accepted at the venue.'
+              : 'It was already scanned at the venue.'}
+          />
+        )}
 
         <Descriptions bordered column={1}>
           <Descriptions.Item label="Ticket">{ticket.id}</Descriptions.Item>

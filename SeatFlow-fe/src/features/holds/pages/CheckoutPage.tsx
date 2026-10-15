@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import {
+  cancelOrder,
   createOrder,
   createPayment,
   createReservation,
@@ -177,7 +178,15 @@ export function CheckoutPage() {
   })
 
   const releaseMutation = useMutation({
-    mutationFn: releaseSeatHold,
+    mutationFn: async (heldId: string) => {
+      // A payment attempt may already have created an order; cancel it first so it does not
+      // linger as pending, then free the seats. Both calls are safe to repeat.
+      const { orderId } = getCheckoutDraft(heldId)
+      if (orderId) {
+        await cancelOrder(orderId)
+      }
+      await releaseSeatHold(heldId)
+    },
     onSuccess: async () => {
       if (hold) {
         queryClient.removeQueries({ queryKey: seatHoldQueryKeys.detail(hold.holdId) })
@@ -242,7 +251,7 @@ export function CheckoutPage() {
   const confirmRelease = () => {
     modal.confirm({
       title: 'Release held seats?',
-      content: 'Your selected seats will become available to other users.',
+      content: 'Your selected seats will become available to other users, and any unpaid order for them will be cancelled.',
       okText: 'Release hold',
       okButtonProps: { danger: true },
       onOk: () => releaseMutation.mutateAsync(hold.holdId),

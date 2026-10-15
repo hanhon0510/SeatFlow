@@ -25,7 +25,7 @@ export type ReservationResponse = {
   updatedAt: string
 }
 
-export type OrderStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED'
+export type OrderStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED'
 
 export type OrderResponse = {
   id: string

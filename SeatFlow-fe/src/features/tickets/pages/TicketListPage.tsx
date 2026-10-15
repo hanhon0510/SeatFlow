@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../../../shared/api/apiError'
 import { ROUTES } from '../../../shared/constants/routes'
 import { formatDateTime } from '../../events/utils/eventFormatters'
 import { listTickets, ticketQueryKeys } from '../api/ticketsApi'
+import { TicketStatusTag } from '../components/TicketStatusTag'
 
 export function TicketListPage() {
   const ticketsQuery = useQuery({
@@ -55,7 +56,7 @@ export function TicketListPage() {
                       <span>{formatDateTime(ticket.event.startTime, ticket.event.venueTimezone)}</span>
                       <Tag>{ticket.event.venueName}</Tag>
                       <Tag>{ticket.seat.sectionName} {ticket.seat.seatLabel}</Tag>
-                      <Tag color={ticket.status === 'ACTIVE' ? 'green' : 'default'}>{ticket.status}</Tag>
+                      <TicketStatusTag status={ticket.status} />
                     </Space>
                   )}
                 />

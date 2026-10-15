@@ -35,3 +35,8 @@ export async function validatePromoCode(request: PromoCodeValidationRequest) {
   const response = await apiClient.post<PromoCodeValidationResponse>('/promo-codes/validate', request)
   return response.data
 }
+
+export async function cancelOrder(orderId: string) {
+  const response = await apiClient.post<OrderResponse>(`/orders/${orderId}/cancel`)
+  return response.data
+}

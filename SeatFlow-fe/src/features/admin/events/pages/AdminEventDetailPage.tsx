@@ -1,4 +1,4 @@
-import { ArrowLeftOutlined, EditOutlined, ReloadOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, EditOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import {
   Alert,
@@ -15,10 +15,13 @@ import {
   Typography,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
 import { apiErrorMessage } from '../../../../shared/api/apiError'
 import { ROUTES } from '../../../../shared/constants/routes'
+import { RefundOrderModal } from '../../orders/components/RefundOrderModal'
+import type { RefundableOrder } from '../../orders/types'
 import { eventQueryKeys, getEventSales } from '../api/eventsApi'
 import { EventSalesStatusTag } from '../components/EventSalesStatusTag'
 import { EventStatusTag } from '../components/EventStatusTag'
@@ -31,10 +34,12 @@ const orderStatusColor: Record<EventSalesRecentOrder['status'], string> = {
   PENDING: 'gold',
   FAILED: 'red',
   CANCELLED: 'default',
+  REFUNDED: 'purple',
 }
 
 export function AdminEventDetailPage() {
   const { eventId } = useParams()
+  const [orderToRefund, setOrderToRefund] = useState<RefundableOrder | null>(null)
 
   const salesQuery = useQuery({
     queryKey: eventQueryKeys.sales(eventId ?? 'missing'),
@@ -154,6 +159,14 @@ export function AdminEventDetailPage() {
                     {entry.paidOrders} paid, {entry.pendingOrders} awaiting payment (
                     {formatMoney(entry.pendingAmount, entry.currency)})
                   </Typography.Text>
+                  {entry.refundedOrders > 0 ? (
+                    <>
+                      <br />
+                      <Typography.Text type="secondary">
+                        {entry.refundedOrders} refunded ({formatMoney(entry.refundedAmount, entry.currency)})
+                      </Typography.Text>
+                    </>
+                  ) : null}
                 </div>
               ))}
             </Space>
@@ -190,6 +203,7 @@ export function AdminEventDetailPage() {
               <Tag color="gold">{orders.counts.pending} pending</Tag>
               {orders.counts.failed > 0 ? <Tag color="red">{orders.counts.failed} failed</Tag> : null}
               {orders.counts.cancelled > 0 ? <Tag>{orders.counts.cancelled} cancelled</Tag> : null}
+              {orders.counts.refunded > 0 ? <Tag color="purple">{orders.counts.refunded} refunded</Tag> : null}
               <Typography.Text type="secondary">{orders.counts.total} in total</Typography.Text>
             </Space>
           </Descriptions.Item>
@@ -228,7 +242,7 @@ export function AdminEventDetailPage() {
           <Empty description="No orders yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <Table<EventSalesRecentOrder>
-            columns={orderColumns}
+            columns={buildOrderColumns(setOrderToRefund)}
             dataSource={orders.recent}
             pagination={false}
             rowKey="orderId"
@@ -236,6 +250,7 @@ export function AdminEventDetailPage() {
           />
         )}
       </Card>
+      <RefundOrderModal order={orderToRefund} onClose={() => setOrderToRefund(null)} />
     </section>
   )
 }
@@ -300,42 +315,65 @@ const sectionColumns: ColumnsType<EventSalesSection> = [
   },
 ]
 
-const orderColumns: ColumnsType<EventSalesRecentOrder> = [
-  {
-    title: 'Buyer',
-    dataIndex: 'buyerEmail',
-    key: 'buyerEmail',
-  },
-  {
-    title: 'Status',
-    dataIndex: 'status',
-    key: 'status',
-    width: 130,
-    render: (status: EventSalesRecentOrder['status']) => (
-      <Tag color={orderStatusColor[status]}>{status}</Tag>
-    ),
-  },
-  {
-    title: 'Seats',
-    dataIndex: 'seatCount',
-    key: 'seatCount',
-    align: 'right',
-    width: 90,
-  },
-  {
-    title: 'Total',
-    key: 'totalAmount',
-    align: 'right',
-    render: (_, order) => formatMoney(order.totalAmount, order.currency),
-  },
-  {
-    title: 'Placed',
-    dataIndex: 'createdAt',
-    key: 'createdAt',
-    responsive: ['md'],
-    render: (value: string) => formatDateTime(value),
-  },
-]
+function buildOrderColumns(
+  onRefund: (order: RefundableOrder) => void,
+): ColumnsType<EventSalesRecentOrder> {
+  return [
+    {
+      title: 'Buyer',
+      dataIndex: 'buyerEmail',
+      key: 'buyerEmail',
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 130,
+      render: (status: EventSalesRecentOrder['status']) => (
+        <Tag color={orderStatusColor[status]}>{status}</Tag>
+      ),
+    },
+    {
+      title: 'Seats',
+      dataIndex: 'seatCount',
+      key: 'seatCount',
+      align: 'right',
+      width: 90,
+    },
+    {
+      title: 'Total',
+      key: 'totalAmount',
+      align: 'right',
+      render: (_, order) => formatMoney(order.totalAmount, order.currency),
+    },
+    {
+      title: 'Placed',
+      dataIndex: 'createdAt',
+      key: 'createdAt',
+      responsive: ['md'],
+      render: (value: string) => formatDateTime(value),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      align: 'right',
+      width: 120,
+      render: (_, order) => (
+        order.status === 'PAID' ? (
+          <Button
+            aria-label={`Refund order for ${order.buyerEmail}`}
+            danger
+            icon={<RollbackOutlined />}
+            size="small"
+            onClick={() => onRefund(order)}
+          >
+            Refund
+          </Button>
+        ) : null
+      ),
+    },
+  ]
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat(undefined, {

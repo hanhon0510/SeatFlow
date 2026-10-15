@@ -105,6 +105,8 @@ export type EventSalesRevenue = {
   paidOrders: number
   pendingAmount: number
   pendingOrders: number
+  refundedAmount: number
+  refundedOrders: number
 }
 
 export type EventSalesOrderCounts = {
@@ -113,6 +115,7 @@ export type EventSalesOrderCounts = {
   pending: number
   failed: number
   cancelled: number
+  refunded: number
 }
 
 export type EventSalesRecentOrder = {
