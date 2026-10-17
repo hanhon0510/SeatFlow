@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.checkin.CheckInMapper">
+    <resultMap id="CheckInTicketResultMap" type="com.seatflow.checkin.CheckInTicket">
+        <constructor>
+            <idArg column="ticket_id" javaType="java.util.UUID" />
+            <arg column="status" javaType="com.seatflow.ticket.TicketStatus" />
+            <arg column="used_at" javaType="java.time.Instant" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="section_name" javaType="java.lang.String" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="seat_label" javaType="java.lang.String" />
+            <arg column="buyer_email" javaType="java.lang.String" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="CheckInCountsResultMap" type="com.seatflow.checkin.CheckInCounts">
+        <constructor>
+            <arg column="valid" javaType="_long" />
+            <arg column="checked_in" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="CheckInEntryResultMap" type="com.seatflow.checkin.CheckInEntry">
+        <constructor>
+            <idArg column="ticket_id" javaType="java.util.UUID" />
+            <arg column="section_name" javaType="java.lang.String" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="seat_label" javaType="java.lang.String" />
+            <arg column="buyer_email" javaType="java.lang.String" />
+            <arg column="checked_in_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <select id="findByCode" resultMap="CheckInTicketResultMap">
+        SELECT
+            ticket.id AS ticket_id,
+            ticket.status,
+            ticket.used_at,
+            event_seat.event_id,
+            venue_section.name AS section_name,
+            seat.row_label,
+            seat.seat_label,
+            buyer.email AS buyer_email
+        FROM tickets ticket
+        JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        JOIN venue_sections venue_section ON venue_section.id = seat.section_id
+        JOIN orders purchase_order ON purchase_order.id = ticket.order_id
+        JOIN users buyer ON buyer.id = purchase_order.user_id
+        WHERE ticket.ticket_code = #{code}
+        <if test="ticketId != null">
+          AND ticket.id = #{ticketId}
+        </if>
+    </select>
+
+    <update id="markUsed">
+        UPDATE tickets
+        SET
+            status = 'USED',
+            used_at = #{usedAt},
+            checked_in_by = #{checkedInBy}
+        WHERE id = #{ticketId}
+          AND status = 'ACTIVE'
+    </update>
+
+    <select id="countsForEvent" resultMap="CheckInCountsResultMap">
+        SELECT
+            COUNT(*) FILTER (WHERE ticket.status IN ('ACTIVE', 'USED')) AS valid,
+            COUNT(*) FILTER (WHERE ticket.status = 'USED') AS checked_in
+        FROM tickets ticket
+        JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
+        WHERE event_seat.event_id = #{eventId}
+    </select>
+
+    <select id="findRecentForEvent" resultMap="CheckInEntryResultMap">
+        SELECT
+            ticket.id AS ticket_id,
+            venue_section.name AS section_name,
+            seat.row_label,
+            seat.seat_label,
+            buyer.email AS buyer_email,
+            ticket.used_at AS checked_in_at
+        FROM tickets ticket
+        JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        JOIN venue_sections venue_section ON venue_section.id = seat.section_id
+        JOIN orders purchase_order ON purchase_order.id = ticket.order_id
+        JOIN users buyer ON buyer.id = purchase_order.user_id
+        WHERE event_seat.event_id = #{eventId}
+          AND ticket.status = 'USED'
+        ORDER BY ticket.used_at DESC, ticket.id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>
