@@ -13,6 +13,7 @@ import type {
 import type {
   AdminSeatMap,
   Event,
+  EventCancellation,
   EventPublishResponse,
   EventSalesReport,
   EventSectionConfiguration,
@@ -701,9 +702,40 @@ function reportWithOrderStatus(status: EventSalesReport['orders']['recent'][numb
   }
 }
 
+const upcomingStartTime = '2099-09-01T19:00:00.000Z'
+
+function reportForCancellation(
+  status: EventSalesReport['event']['status'],
+  paidOrders: number,
+  startTime = upcomingStartTime,
+): EventSalesReport {
+  return {
+    ...eventSalesReport,
+    event: { ...eventSalesReport.event, status, startTime },
+    orders: {
+      ...eventSalesReport.orders,
+      counts: { ...eventSalesReport.orders.counts, paid: paidOrders, pending: 2 },
+    },
+  }
+}
+
+function cancellation(overrides: Partial<EventCancellation> = {}): EventCancellation {
+  return {
+    eventId: event.id,
+    status: 'CANCELLED',
+    cancelledAt: '2026-09-01T09:00:00.000Z',
+    reason: null,
+    refundedOrders: 0,
+    remainingRefunds: 0,
+    ordersNeedingAttention: 0,
+    ...overrides,
+  }
+}
+
 function installAdminEventDetailMock(
   report: () => EventSalesReport,
   refund: ApiHandler = (config) => rejectedResponse(config, 500, 'Unexpected request'),
+  cancel: ApiHandler = (config) => rejectedResponse(config, 500, 'Unexpected request'),
 ) {
   installApiMock((config) => {
     if (endpoint(config) === 'POST /auth/refresh') {
@@ -724,6 +756,10 @@ function installAdminEventDetailMock(
 
     if (endpoint(config) === `POST /admin/orders/${refundableOrderId}/refund`) {
       return refund(config)
+    }
+
+    if (endpoint(config) === `POST /admin/events/${event.id}/cancel`) {
+      return cancel(config)
     }
 
     return rejectedResponse(config, 500, 'Unexpected request')
@@ -1616,6 +1652,168 @@ describe('App', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Keep order' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   }, 20000)
+
+  it('cancels an event after the admin types its name and refunds in batches', async () => {
+    const user = userEvent.setup()
+    const cancelSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    const batches = [
+      cancellation({ reason: 'Venue flooded', refundedOrders: 10, remainingRefunds: 11 }),
+      cancellation({ reason: 'Venue flooded', refundedOrders: 21, remainingRefunds: 0 }),
+    ]
+    let calls = 0
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(
+      () => reportForCancellation(calls === 0 ? 'PUBLISHED' : 'CANCELLED', calls === 0 ? 21 : 0),
+      undefined,
+      (config) => {
+        cancelSpy(config)
+        return response<EventCancellation>(config, 200, batches[Math.min(calls++, batches.length - 1)])
+      },
+    )
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel event' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/21 paid orders will be refunded in full/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/2 unpaid checkouts will be closed/)).toBeInTheDocument()
+    const confirm = within(dialog).getByRole('button', { name: 'Cancel event and refund' })
+    expect(confirm).toBeDisabled()
+
+    await user.type(within(dialog).getByLabelText(/Reason/), '  Venue flooded ')
+    await user.type(within(dialog).getByLabelText(/to confirm/), 'Opening')
+    expect(confirm).toBeDisabled()
+    await user.type(within(dialog).getByLabelText(/to confirm/), ' Night')
+    expect(confirm).toBeEnabled()
+    await user.click(confirm)
+
+    expect(await within(dialog).findByText('21 of 21 paid orders refunded.')).toBeInTheDocument()
+    expect(within(dialog).getByText('The event is cancelled and everyone has been refunded')).toBeInTheDocument()
+    expect(cancelSpy).toHaveBeenCalledTimes(2)
+    expect(requestBody(cancelSpy.mock.calls[0][0] as InternalAxiosRequestConfig)).toEqual({
+      reason: 'Venue flooded',
+    })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Done' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(await screen.findByText(/This event was cancelled/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel event' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Edit event' })).not.toBeInTheDocument()
+  }, 30000)
+
+  it('stops and offers to continue when a batch refunds nothing', async () => {
+    const user = userEvent.setup()
+    const cancelSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(
+      () => reportForCancellation('PUBLISHED', 3),
+      undefined,
+      (config) => {
+        cancelSpy(config)
+        return response<EventCancellation>(config, 200, cancellation({ refundedOrders: 1, remainingRefunds: 2 }))
+      },
+    )
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel event' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText(/to confirm/), event.name)
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel event and refund' }))
+
+    expect(await within(dialog).findByText('2 orders could not be refunded yet')).toBeInTheDocument()
+    // One batch to start, one more that made no progress, then it gives up instead of looping.
+    expect(cancelSpy).toHaveBeenCalledTimes(2)
+    expect(within(dialog).getByText('1 of 3 paid orders refunded.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Continue refunds' })).toBeEnabled()
+  }, 30000)
+
+  it('flags orders whose tickets were already scanned', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(
+      () => reportForCancellation('PUBLISHED', 3),
+      undefined,
+      (config) => response<EventCancellation>(
+        config,
+        200,
+        cancellation({ refundedOrders: 2, remainingRefunds: 0, ordersNeedingAttention: 1 }),
+      ),
+    )
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel event' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText(/to confirm/), event.name)
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel event and refund' }))
+
+    expect(await within(dialog).findByText('1 order has tickets that were already scanned')).toBeInTheDocument()
+    expect(within(dialog).getByText('The event is cancelled')).toBeInTheDocument()
+  }, 20000)
+
+  it('keeps the form and explains when the event cannot be cancelled', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(
+      () => reportForCancellation('PUBLISHED', 0),
+      undefined,
+      (config) => rejectedWithCode(config, 409, 'EVENT_STATE_CONFLICT', 'The event state does not allow this operation.'),
+    )
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel event' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/No orders have been paid yet/)).toBeInTheDocument()
+    await user.type(within(dialog).getByLabelText(/to confirm/), event.name)
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel event and refund' }))
+
+    expect(await within(dialog).findByText('The event state does not allow this operation.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Cancel event and refund' })).toBeEnabled()
+  }, 20000)
+
+  it('does not offer cancellation for an event that has already started', async () => {
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(() => reportForCancellation('PUBLISHED', 3, '2020-01-01T19:00:00.000Z'))
+
+    render(<App />)
+
+    expect(await screen.findByRole('link', { name: /Check-in/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel event' })).not.toBeInTheDocument()
+  }, 15000)
+
+  it('lets an admin finish the refunds of an event that is already cancelled', async () => {
+    const user = userEvent.setup()
+    const cancelSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    let finished = false
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(
+      () => reportForCancellation('CANCELLED', finished ? 0 : 4),
+      undefined,
+      (config) => {
+        cancelSpy(config)
+        finished = true
+        return response<EventCancellation>(config, 200, cancellation({ refundedOrders: 4, remainingRefunds: 0 }))
+      },
+    )
+
+    render(<App />)
+
+    expect(await screen.findByText(/4 paid orders are still waiting for a refund/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel event' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Finish refunds' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByLabelText(/to confirm/)).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Refund remaining orders' }))
+
+    expect(await within(dialog).findByText('4 of 4 paid orders refunded.')).toBeInTheDocument()
+    expect(cancelSpy).toHaveBeenCalledOnce()
+    await user.click(within(dialog).getByRole('button', { name: 'Done' }))
+    expect(await screen.findByText(/its orders have been refunded/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Finish refunds' })).not.toBeInTheDocument()
+  }, 30000)
 
   it('cancels the unpaid order before releasing the hold', async () => {
     const user = userEvent.setup()

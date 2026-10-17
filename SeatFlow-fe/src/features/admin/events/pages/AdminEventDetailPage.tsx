@@ -1,4 +1,11 @@
-import { ArrowLeftOutlined, EditOutlined, ReloadOutlined, RollbackOutlined, ScanOutlined } from '@ant-design/icons'
+import {
+  ArrowLeftOutlined,
+  CloseCircleOutlined,
+  EditOutlined,
+  ReloadOutlined,
+  RollbackOutlined,
+  ScanOutlined,
+} from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import {
   Alert,
@@ -24,6 +31,7 @@ import { RefundOrderModal } from '../../orders/components/RefundOrderModal'
 import type { RefundableOrder } from '../../orders/types'
 import { eventQueryKeys, getEventSales } from '../api/eventsApi'
 import { EventSalesStatusTag } from '../components/EventSalesStatusTag'
+import { CancelEventModal } from '../components/CancelEventModal'
 import { EventStatusTag } from '../components/EventStatusTag'
 import { AdminSeatMap } from '../components/AdminSeatMap'
 import { SalesTrendChart } from '../components/SalesTrendChart'
@@ -40,6 +48,7 @@ const orderStatusColor: Record<EventSalesRecentOrder['status'], string> = {
 export function AdminEventDetailPage() {
   const { eventId } = useParams()
   const [orderToRefund, setOrderToRefund] = useState<RefundableOrder | null>(null)
+  const [cancelMode, setCancelMode] = useState<'cancel' | 'resume' | null>(null)
 
   const salesQuery = useQuery({
     queryKey: eventQueryKeys.sales(eventId ?? 'missing'),
@@ -81,6 +90,11 @@ export function AdminEventDetailPage() {
   const { event, inventory, revenue, orders, tickets, sections, dailySales, generatedAt } =
     salesQuery.data
   const sellThrough = inventory.seatsTotal === 0 ? 0 : (inventory.seatsSold / inventory.seatsTotal) * 100
+  // Only events that have not started can be cancelled (judged at report time, which keeps render pure);
+  // a cancelled event may still owe refunds.
+  const canCancel =
+    (event.status === 'DRAFT' || event.status === 'PUBLISHED') && new Date(event.startTime).getTime() > new Date(generatedAt).getTime()
+  const awaitingRefunds = event.status === 'CANCELLED' ? orders.counts.paid : 0
 
   return (
     <section className="page-surface admin-page admin-event-detail">
@@ -106,12 +120,24 @@ export function AdminEventDetailPage() {
           >
             Refresh
           </Button>
-          <Button icon={<EditOutlined />} type="primary">
-            <Link to={ROUTES.adminEventEdit(event.id)}>Edit event</Link>
-          </Button>
+          {event.status !== 'CANCELLED' ? (
+            <Button icon={<EditOutlined />} type="primary">
+              <Link to={ROUTES.adminEventEdit(event.id)}>Edit event</Link>
+            </Button>
+          ) : null}
           {event.status === 'PUBLISHED' ? (
             <Button icon={<ScanOutlined />}>
               <Link to={ROUTES.adminEventCheckIn(event.id)}>Check-in</Link>
+            </Button>
+          ) : null}
+          {canCancel ? (
+            <Button
+              aria-label="Cancel event"
+              danger
+              icon={<CloseCircleOutlined />}
+              onClick={() => setCancelMode('cancel')}
+            >
+              Cancel event
             </Button>
           ) : null}
           <Button icon={<ArrowLeftOutlined />}>
@@ -119,6 +145,26 @@ export function AdminEventDetailPage() {
           </Button>
         </Space>
       </div>
+
+      {event.status === 'CANCELLED' ? (
+        <Alert
+          action={
+            awaitingRefunds > 0 ? (
+              <Button size="small" onClick={() => setCancelMode('resume')}>
+                Finish refunds
+              </Button>
+            ) : undefined
+          }
+          className="admin-inline-alert"
+          showIcon
+          title={
+            awaitingRefunds > 0
+              ? `This event was cancelled. ${awaitingRefunds} paid ${awaitingRefunds === 1 ? 'order is' : 'orders are'} still waiting for a refund.`
+              : 'This event was cancelled. It is closed for sale and its orders have been refunded.'
+          }
+          type="warning"
+        />
+      ) : null}
 
       {event.status === 'DRAFT' ? (
         <Alert
@@ -256,6 +302,13 @@ export function AdminEventDetailPage() {
         )}
       </Card>
       <RefundOrderModal order={orderToRefund} onClose={() => setOrderToRefund(null)} />
+      <CancelEventModal
+        event={cancelMode ? event : null}
+        mode={cancelMode ?? 'cancel'}
+        paidOrders={orders.counts.paid}
+        pendingOrders={orders.counts.pending}
+        onClose={() => setCancelMode(null)}
+      />
     </section>
   )
 }

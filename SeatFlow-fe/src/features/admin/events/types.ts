@@ -184,3 +184,17 @@ export type EventSalesReport = {
   dailySales: EventSalesDailyPoint[]
   generatedAt: string
 }
+
+export type CancelEventRequest = {
+  reason?: string
+}
+
+export type EventCancellation = {
+  eventId: string
+  status: EventStatus
+  cancelledAt: string
+  reason: string | null
+  refundedOrders: number
+  remainingRefunds: number
+  ordersNeedingAttention: number
+}

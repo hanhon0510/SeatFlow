@@ -1,6 +1,8 @@
 import { apiClient } from '../../../../shared/api/httpClient'
 import type {
+  CancelEventRequest,
   Event,
+  EventCancellation,
   EventFormValues,
   EventPage,
   EventPublishResponse,
@@ -84,4 +86,34 @@ function eventRequest(values: EventFormValues): EventRequest {
     salesStartTime: values.salesStartTime.toDate().toISOString(),
     salesEndTime: values.salesEndTime.toDate().toISOString(),
   }
+}
+
+export async function cancelEvent(eventId: string, request: CancelEventRequest) {
+  const response = await apiClient.post<EventCancellation>(`/admin/events/${eventId}/cancel`, request)
+  return response.data
+}
+
+/**
+ * Cancels the event and keeps asking for the next batch of refunds until none are left. Repeating
+ * the request is safe, so this is also how an interrupted cancellation is finished. It gives up
+ * once a batch refunds nothing, so an order that cannot be refunded does not spin forever.
+ */
+export async function cancelEventAndRefund(
+  eventId: string,
+  request: CancelEventRequest,
+  onProgress: (progress: EventCancellation) => void,
+) {
+  let latest = await cancelEvent(eventId, request)
+  onProgress(latest)
+
+  while (latest.remainingRefunds > 0) {
+    const refundedBefore = latest.refundedOrders
+    latest = await cancelEvent(eventId, request)
+    onProgress(latest)
+    if (latest.refundedOrders <= refundedBefore) {
+      break
+    }
+  }
+
+  return latest
 }
