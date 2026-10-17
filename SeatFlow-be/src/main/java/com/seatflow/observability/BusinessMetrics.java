@@ -19,6 +19,7 @@ public class BusinessMetrics {
 	private final Counter orderRefunded;
 	private final Counter orderCancelled;
 	private final Counter ticketCheckedIn;
+	private final Counter eventCancelled;
 	private final Counter outboxPublishFailure;
 	private final Counter outboxEventAbandoned;
 	private final Counter kafkaConsumerFailure;
@@ -35,6 +36,7 @@ public class BusinessMetrics {
 		this.orderRefunded = counter(registry, "order_refunded", "Paid orders refunded");
 		this.orderCancelled = counter(registry, "order_cancelled", "Pending orders cancelled by the buyer");
 		this.ticketCheckedIn = counter(registry, "ticket_checked_in", "Tickets scanned in at the door");
+		this.eventCancelled = counter(registry, "event_cancelled", "Events cancelled by staff");
 		this.outboxPublishFailure = counter(registry, "outbox_publish_failure", "Outbox publish failures");
 		this.outboxEventAbandoned = counter(
 				registry,
@@ -75,6 +77,10 @@ public class BusinessMetrics {
 
 	public void orderRefunded() {
 		orderRefunded.increment();
+	}
+
+	public void eventCancelled() {
+		eventCancelled.increment();
 	}
 
 	public void ticketCheckedIn() {

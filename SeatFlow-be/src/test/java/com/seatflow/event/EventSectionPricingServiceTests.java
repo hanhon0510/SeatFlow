@@ -208,6 +208,16 @@ class EventSectionPricingServiceTests {
 		}
 
 		@Override
+		public EventRecord findByIdForShare(UUID id) {
+			return findById(id);
+		}
+
+		@Override
+		public int cancel(UUID id) {
+			return 0;
+		}
+
+		@Override
 		public List<EventRecord> findPage(int limit, long offset) {
 			return events.stream()
 					.sorted(Comparator.comparing(EventRecord::startTime)

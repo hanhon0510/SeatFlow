@@ -87,6 +87,10 @@
             permanent_status
         FROM event_seats
         WHERE event_id = #{eventId}
+          AND EXISTS (
+              SELECT 1 FROM events event
+              WHERE event.id = event_seats.event_id AND event.status &lt;&gt; 'CANCELLED'
+          )
           AND id IN
           <foreach collection="eventSeatIds" item="eventSeatId" open="(" separator="," close=")">
               #{eventSeatId}

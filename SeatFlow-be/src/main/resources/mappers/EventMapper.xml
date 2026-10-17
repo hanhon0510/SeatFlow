@@ -177,6 +177,7 @@
             sales_end_time = #{salesEndTime},
             updated_at = NOW()
         WHERE id = #{id}
+          AND status &lt;&gt; 'CANCELLED'
           AND (status &lt;&gt; 'PUBLISHED' OR venue_id = #{venueId})
     </update>
 
@@ -187,6 +188,15 @@
             updated_at = NOW()
         WHERE id = #{id}
           AND status = 'DRAFT'
+    </update>
+
+    <update id="cancel">
+        UPDATE events
+        SET
+            status = 'CANCELLED',
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status IN ('DRAFT', 'PUBLISHED')
     </update>
 
     <select id="findById" resultMap="EventRecordResultMap">
@@ -202,6 +212,14 @@
         FROM events
         WHERE id = #{id}
         FOR UPDATE
+    </select>
+
+    <select id="findByIdForShare" resultMap="EventRecordResultMap">
+        SELECT
+            <include refid="EventColumns" />
+        FROM events
+        WHERE id = #{id}
+        FOR SHARE
     </select>
 
     <select id="findPage" resultMap="EventRecordResultMap">

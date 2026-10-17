@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.cancellation.EventCancellationMapper">
+    <resultMap id="EventCancellationRecordResultMap" type="com.seatflow.cancellation.EventCancellationRecord">
+        <constructor>
+            <idArg column="event_id" javaType="java.util.UUID" />
+            <arg column="reason" javaType="java.lang.String" />
+            <arg column="cancelled_by" javaType="java.util.UUID" />
+            <arg column="cancelled_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="OpenHoldResultMap" type="com.seatflow.cancellation.OpenHold">
+        <constructor>
+            <arg column="hold_id" javaType="java.util.UUID" />
+            <arg column="user_id" javaType="java.util.UUID" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="RefundCountsResultMap" type="com.seatflow.cancellation.CancellationRefundCounts">
+        <constructor>
+            <arg column="refunded" javaType="_long" />
+            <arg column="remaining" javaType="_long" />
+            <arg column="needs_attention" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO event_cancellations (event_id, reason, cancelled_by, cancelled_at)
+        VALUES (#{eventId}, #{reason}, #{cancelledBy}, #{cancelledAt})
+        ON CONFLICT (event_id) DO NOTHING
+    </insert>
+
+    <select id="findByEventId" resultMap="EventCancellationRecordResultMap">
+        SELECT event_id, reason, cancelled_by, cancelled_at
+        FROM event_cancellations
+        WHERE event_id = #{eventId}
+    </select>
+
+    <select id="findOpenHolds" resultMap="OpenHoldResultMap">
+        SELECT hold_id, user_id
+        FROM reservations
+        WHERE event_id = #{eventId}
+          AND status = 'PENDING_PAYMENT'
+    </select>
+
+    <update id="cancelPendingOrders">
+        UPDATE orders
+        SET status = 'CANCELLED', updated_at = #{now}
+        WHERE status = 'PENDING'
+          AND reservation_id IN (SELECT id FROM reservations WHERE event_id = #{eventId})
+    </update>
+
+    <update id="cancelOpenReservations">
+        UPDATE reservations
+        SET status = 'CANCELLED', updated_at = #{now}
+        WHERE event_id = #{eventId}
+          AND status = 'PENDING_PAYMENT'
+    </update>
+
+    <select id="findRefundableOrderIds" resultType="java.util.UUID">
+        SELECT o.id
+        FROM orders o
+        JOIN reservations r ON r.id = o.reservation_id
+        WHERE r.event_id = #{eventId}
+          AND o.status = 'PAID'
+          AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.order_id = o.id AND t.status = 'USED')
+        ORDER BY o.created_at ASC, o.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="refundCounts" resultMap="RefundCountsResultMap">
+        SELECT
+            COUNT(*) FILTER (WHERE o.status = 'REFUNDED') AS refunded,
+            COUNT(*) FILTER (
+                WHERE o.status = 'PAID'
+                  AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.order_id = o.id AND t.status = 'USED')
+            ) AS remaining,
+            COUNT(*) FILTER (
+                WHERE o.status = 'PAID'
+                  AND EXISTS (SELECT 1 FROM tickets t WHERE t.order_id = o.id AND t.status = 'USED')
+            ) AS needs_attention
+        FROM orders o
+        JOIN reservations r ON r.id = o.reservation_id
+        WHERE r.event_id = #{eventId}
+    </select>
+</mapper>

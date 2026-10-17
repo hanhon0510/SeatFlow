@@ -10,9 +10,12 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.seatflow.event.EventMapper;
+import com.seatflow.event.EventRecord;
 import com.seatflow.event.EventSeatMapper;
 import com.seatflow.event.EventSeatRecord;
 import com.seatflow.event.EventSeatStatus;
+import com.seatflow.event.EventStatus;
 import com.seatflow.hold.SeatHoldRecord;
 import com.seatflow.hold.SeatHoldStorageException;
 import com.seatflow.hold.SeatHoldStore;
@@ -36,6 +39,7 @@ public class PaymentService {
 	private final OrderMapper orderMapper;
 	private final ReservationMapper reservationMapper;
 	private final ReservationItemMapper reservationItemMapper;
+	private final EventMapper eventMapper;
 	private final EventSeatMapper eventSeatMapper;
 	private final TicketService ticketService;
 	private final SeatHoldStore seatHoldStore;
@@ -49,6 +53,7 @@ public class PaymentService {
 			OrderMapper orderMapper,
 			ReservationMapper reservationMapper,
 			ReservationItemMapper reservationItemMapper,
+			EventMapper eventMapper,
 			EventSeatMapper eventSeatMapper,
 			TicketService ticketService,
 			SeatHoldStore seatHoldStore,
@@ -60,6 +65,7 @@ public class PaymentService {
 		this.orderMapper = orderMapper;
 		this.reservationMapper = reservationMapper;
 		this.reservationItemMapper = reservationItemMapper;
+		this.eventMapper = eventMapper;
 		this.eventSeatMapper = eventSeatMapper;
 		this.ticketService = ticketService;
 		this.seatHoldStore = seatHoldStore;
@@ -84,6 +90,7 @@ public class PaymentService {
 		if (reservation == null) {
 			throw new PaymentConflictException();
 		}
+		requireEventNotCancelled(reservation.eventId());
 		List<ReservationItemRecord> reservationItems = reservationItemMapper.findByReservationId(reservation.id());
 		List<UUID> orderedEventSeatIds = orderedEventSeatIds(reservationItems);
 		List<EventSeatRecord> lockedSeats = eventSeatMapper.lockByIds(orderedEventSeatIds);
@@ -139,6 +146,18 @@ public class PaymentService {
 			businessMetrics.paymentFailure();
 		}
 		return PaymentResponse.from(payment);
+	}
+
+	/**
+	 * Holding the event row shared until the payment commits means cancelling the event (which needs
+	 * it exclusively) cannot slip in between this check and the payment: it either waits for us and
+	 * then refunds the order, or it has already won and we refuse to charge for a cancelled event.
+	 */
+	private void requireEventNotCancelled(UUID eventId) {
+		EventRecord event = eventMapper.findByIdForShare(eventId);
+		if (event == null || event.status() == EventStatus.CANCELLED) {
+			throw new PaymentConflictException();
+		}
 	}
 
 	private void completeSuccessfulPayment(

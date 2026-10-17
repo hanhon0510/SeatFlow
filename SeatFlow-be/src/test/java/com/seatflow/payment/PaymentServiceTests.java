@@ -26,9 +26,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import com.seatflow.event.EventMapper;
+import com.seatflow.event.EventRecord;
 import com.seatflow.event.EventSeatMapper;
 import com.seatflow.event.EventSeatRecord;
 import com.seatflow.event.EventSeatStatus;
+import com.seatflow.event.EventStatus;
 import com.seatflow.hold.SeatHoldRecord;
 import com.seatflow.hold.SeatHoldStore;
 import com.seatflow.order.OrderMapper;
@@ -76,6 +79,9 @@ class PaymentServiceTests {
 	private ReservationItemMapper reservationItemMapper;
 
 	@Mock
+	private EventMapper eventMapper;
+
+	@Mock
 	private EventSeatMapper eventSeatMapper;
 
 	@Mock
@@ -102,6 +108,7 @@ class PaymentServiceTests {
 				orderMapper,
 				reservationMapper,
 				reservationItemMapper,
+				eventMapper,
 				eventSeatMapper,
 				ticketService,
 				seatHoldStore,
@@ -252,6 +259,23 @@ class PaymentServiceTests {
 	}
 
 	@Test
+	void cancelledEventCannotBePaidFor() {
+		when(orderMapper.findByIdAndUser(ORDER_ID, USER_ID)).thenReturn(order(OrderStatus.PENDING));
+		when(reservationMapper.findByIdAndUser(RESERVATION_ID, USER_ID))
+				.thenReturn(reservation(ReservationStatus.PENDING_PAYMENT, NOW.plusSeconds(60)));
+		when(eventMapper.findByIdForShare(EVENT_ID)).thenReturn(event(EventStatus.CANCELLED));
+
+		assertThatThrownBy(() -> paymentService.createPayment(
+				ORDER_ID,
+				USER_ID,
+				new PaymentCreateRequest("tok_success")))
+				.isInstanceOf(PaymentConflictException.class);
+
+		verify(eventSeatMapper, never()).lockByIds(any());
+		verify(paymentMapper, never()).insertPending(any(), any(), any(), any(), any());
+	}
+
+	@Test
 	void wrongOwnerCannotCreatePayment() {
 		when(orderMapper.findByIdAndUser(ORDER_ID, OTHER_USER_ID)).thenReturn(null);
 
@@ -303,6 +327,7 @@ class PaymentServiceTests {
 	}
 
 	private void stubPurchaseData(ReservationRecord reservation) {
+		when(eventMapper.findByIdForShare(EVENT_ID)).thenReturn(event(EventStatus.PUBLISHED));
 		when(orderMapper.findByIdAndUser(ORDER_ID, USER_ID)).thenReturn(order(OrderStatus.PENDING));
 		when(reservationMapper.findByIdAndUser(RESERVATION_ID, USER_ID)).thenReturn(reservation);
 		when(reservationItemMapper.findByReservationId(RESERVATION_ID)).thenReturn(List.of(
@@ -312,6 +337,20 @@ class PaymentServiceTests {
 				.thenReturn(List.of(
 						eventSeat(EVENT_SEAT_ID_1, SEAT_ID_1),
 						eventSeat(EVENT_SEAT_ID_2, SEAT_ID_2)));
+	}
+
+	private static EventRecord event(EventStatus status) {
+		return new EventRecord(
+				EVENT_ID,
+				UUID.randomUUID(),
+				"Concert",
+				null,
+				NOW.plusSeconds(86_400),
+				NOW.minusSeconds(86_400),
+				NOW.plusSeconds(3_600),
+				status,
+				NOW.minusSeconds(86_400),
+				NOW.minusSeconds(86_400));
 	}
 
 	private static OrderRecord order(OrderStatus status) {
