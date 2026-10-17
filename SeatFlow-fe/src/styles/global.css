@@ -414,6 +414,72 @@ body {
   margin-bottom: 0;
 }
 
+.check-in-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  margin-bottom: 8px;
+}
+
+.check-in-result {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 20px;
+  margin-top: 20px;
+  padding: 20px 24px;
+  border: 2px solid;
+  border-radius: 8px;
+}
+
+.check-in-result-icon {
+  font-size: 3.5rem;
+  line-height: 1;
+}
+
+.check-in-result-headline.ant-typography {
+  margin: 0 0 4px;
+  color: inherit;
+  font-size: 2rem;
+}
+
+.check-in-result-advice {
+  color: inherit;
+  font-size: 1.0625rem;
+}
+
+.check-in-result-details {
+  display: grid;
+  gap: 2px;
+  margin-top: 12px;
+  font-size: 1.0625rem;
+}
+
+.check-in-result-success {
+  border-color: #389e0d;
+  background: #f6ffed;
+  color: #135200;
+}
+
+.check-in-result-warning {
+  border-color: #d48806;
+  background: #fffbe6;
+  color: #613400;
+}
+
+.check-in-result-error {
+  border-color: #cf1322;
+  background: #fff1f0;
+  color: #5c0011;
+}
+
+@media (max-width: 640px) {
+  .check-in-result {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+}
+
 .admin-dashboard {
   display: grid;
   gap: 20px;

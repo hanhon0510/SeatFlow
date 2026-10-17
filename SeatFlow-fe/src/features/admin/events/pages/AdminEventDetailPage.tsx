@@ -1,4 +1,4 @@
-import { ArrowLeftOutlined, EditOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, EditOutlined, ReloadOutlined, RollbackOutlined, ScanOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import {
   Alert,
@@ -109,6 +109,11 @@ export function AdminEventDetailPage() {
           <Button icon={<EditOutlined />} type="primary">
             <Link to={ROUTES.adminEventEdit(event.id)}>Edit event</Link>
           </Button>
+          {event.status === 'PUBLISHED' ? (
+            <Button icon={<ScanOutlined />}>
+              <Link to={ROUTES.adminEventCheckIn(event.id)}>Check-in</Link>
+            </Button>
+          ) : null}
           <Button icon={<ArrowLeftOutlined />}>
             <Link to={ROUTES.adminEvents}>Back to events</Link>
           </Button>

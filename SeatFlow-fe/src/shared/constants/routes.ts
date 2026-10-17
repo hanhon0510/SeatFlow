@@ -18,6 +18,8 @@ export const ROUTES = {
   adminEventNew: '/admin/events/new',
   adminEventDetailPattern: '/admin/events/:eventId',
   adminEventDetail: (eventId: string) => `/admin/events/${eventId}`,
+  adminEventCheckInPattern: '/admin/events/:eventId/check-in',
+  adminEventCheckIn: (eventId: string) => `/admin/events/${eventId}/check-in`,
   adminEventEditPattern: '/admin/events/:eventId/edit',
   adminEventEdit: (eventId: string) => `/admin/events/${eventId}/edit`,
   adminVenueNew: '/admin/venues/new',

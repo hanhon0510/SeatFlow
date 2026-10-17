@@ -18,6 +18,7 @@ import type {
   EventSectionConfiguration,
 } from '../features/admin/events/types'
 import type { AdminDashboard } from '../features/admin/dashboard/types'
+import type { CheckInResult, CheckInSummary } from '../features/admin/check-in/types'
 import type { RefundResponse } from '../features/admin/orders/types'
 import type { EventSeatLayout, PublicEvent, PublicEventPage } from '../features/events/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
@@ -723,6 +724,61 @@ function installAdminEventDetailMock(
 
     if (endpoint(config) === `POST /admin/orders/${refundableOrderId}/refund`) {
       return refund(config)
+    }
+
+    return rejectedResponse(config, 500, 'Unexpected request')
+  })
+}
+
+function checkInSummary(checkedIn: number): CheckInSummary {
+  return {
+    eventId: event.id,
+    eventName: event.name,
+    valid: 10,
+    checkedIn,
+    remaining: 10 - checkedIn,
+    recent: checkedIn === 0
+      ? []
+      : [{
+        ticketId: 'f2287e38-c265-4841-b20b-57d2d7ba1b9d',
+        sectionName: 'Orchestra',
+        rowLabel: 'A',
+        seatLabel: 'A1',
+        buyerEmail: 'holder@example.com',
+        checkedInAt: '2026-09-01T09:00:00.000Z',
+      }],
+  }
+}
+
+function checkInResult(outcome: CheckInResult['outcome'], overrides: Partial<CheckInResult> = {}): CheckInResult {
+  return {
+    outcome,
+    ticketId: 'f2287e38-c265-4841-b20b-57d2d7ba1b9d',
+    sectionName: 'Orchestra',
+    rowLabel: 'A',
+    seatLabel: 'A1',
+    buyerEmail: 'holder@example.com',
+    usedAt: '2026-09-01T09:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function installCheckInMock(scan: ApiHandler, summary: () => CheckInSummary = () => checkInSummary(0)) {
+  installApiMock((config) => {
+    if (endpoint(config) === 'POST /auth/refresh') {
+      return response<LoginResponse>(config, 200, loginResponse)
+    }
+
+    if (endpoint(config) === 'GET /users/me') {
+      return response<AuthUser>(config, 200, adminUser)
+    }
+
+    if (endpoint(config) === `GET /admin/events/${event.id}/check-in`) {
+      return response<CheckInSummary>(config, 200, summary())
+    }
+
+    if (endpoint(config) === `POST /admin/events/${event.id}/check-in`) {
+      return scan(config)
     }
 
     return rejectedResponse(config, 500, 'Unexpected request')
@@ -1666,6 +1722,113 @@ describe('App', () => {
 
     expect(await screen.findByText('This ticket is no longer valid')).toBeInTheDocument()
     expect(screen.getByText('CANCELLED')).toBeInTheDocument()
+  }, 15000)
+
+  it('admits a valid ticket, clears the field for the next scan and updates the count', async () => {
+    const user = userEvent.setup()
+    const scanSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    let checkedIn = 0
+    window.history.pushState({}, '', ROUTES.adminEventCheckIn(event.id))
+    installCheckInMock(
+      (config) => {
+        scanSpy(config)
+        checkedIn = 1
+        return response<CheckInResult>(config, 200, checkInResult('CHECKED_IN'))
+      },
+      () => checkInSummary(checkedIn),
+    )
+
+    render(<App />)
+
+    const input = await screen.findByLabelText('Ticket code')
+    expect(screen.getByText('of 10')).toBeInTheDocument()
+    await user.type(input, '  seatflow:ticket:abc{Enter}')
+
+    expect(await screen.findByText('Admit')).toBeInTheDocument()
+    expect(within(screen.getByRole('status')).getByText('Orchestra, row A, seat A1')).toBeInTheDocument()
+    expect(requestBody(scanSpy.mock.calls[0][0] as InternalAxiosRequestConfig)).toEqual({
+      code: 'seatflow:ticket:abc',
+    })
+    expect(input).toHaveValue('')
+    await waitFor(() => expect(input).toHaveFocus())
+    // The progress and the latest-admissions list follow the scan.
+    await waitFor(() => expect(screen.getAllByText('Orchestra, row A, seat A1')).toHaveLength(2))
+    expect(screen.getByText('Still expected')).toBeInTheDocument()
+  }, 20000)
+
+  it.each([
+    ['ALREADY_USED', 'Already checked in', /Do not admit/, /First scanned at/],
+    ['CANCELLED', 'Ticket cancelled', /refunded/, null],
+    ['WRONG_EVENT', 'Wrong event', /different event/, null],
+    ['NOT_FOUND', 'Ticket not recognised', /Scan again/, null],
+  ] as const)('tells the door staff not to admit on %s', async (outcome, headline, advice, detail) => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.adminEventCheckIn(event.id))
+    const refused = outcome === 'WRONG_EVENT' || outcome === 'NOT_FOUND'
+    installCheckInMock((config) => response<CheckInResult>(
+      config,
+      200,
+      refused
+        ? checkInResult(outcome, {
+          ticketId: null, sectionName: null, rowLabel: null, seatLabel: null, buyerEmail: null, usedAt: null,
+        })
+        : checkInResult(outcome),
+    ))
+
+    render(<App />)
+
+    await user.type(await screen.findByLabelText('Ticket code'), 'x'.repeat(43))
+    await user.click(screen.getByRole('button', { name: 'Check in' }))
+
+    expect(await screen.findByText(headline)).toBeInTheDocument()
+    expect(screen.getByText(advice)).toBeInTheDocument()
+    if (detail) {
+      expect(screen.getByText(detail)).toBeInTheDocument()
+    }
+    expect(screen.getByRole('status')).toHaveTextContent(headline)
+  }, 20000)
+
+  it('does not send a blank scan', async () => {
+    const user = userEvent.setup()
+    const scanSpy = vi.fn<(config: InternalAxiosRequestConfig) => void>()
+    window.history.pushState({}, '', ROUTES.adminEventCheckIn(event.id))
+    installCheckInMock((config) => {
+      scanSpy(config)
+      return response<CheckInResult>(config, 200, checkInResult('CHECKED_IN'))
+    })
+
+    render(<App />)
+
+    const input = await screen.findByLabelText('Ticket code')
+    expect(screen.getByRole('button', { name: 'Check in' })).toBeDisabled()
+    await user.type(input, '   {Enter}')
+
+    expect(scanSpy).not.toHaveBeenCalled()
+  }, 15000)
+
+  it('keeps what was typed and says so when a scan cannot be processed', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.adminEventCheckIn(event.id))
+    installCheckInMock((config) => rejectedResponse(config, 503, 'Scanning is unavailable'))
+
+    render(<App />)
+
+    const input = await screen.findByLabelText('Ticket code')
+    await user.type(input, 'abc{Enter}')
+
+    expect(await screen.findByText('Scanning is unavailable')).toBeInTheDocument()
+    expect(input).toHaveValue('abc')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  }, 15000)
+
+  it('links to check-in from a published event', async () => {
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(() => eventSalesReport)
+
+    render(<App />)
+
+    const link = await screen.findByRole('link', { name: /Check-in/ })
+    expect(link).toHaveAttribute('href', ROUTES.adminEventCheckIn(event.id))
   }, 15000)
 
   it('validates required login fields', async () => {
