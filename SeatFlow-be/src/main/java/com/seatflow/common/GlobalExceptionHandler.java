@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.seatflow.auth.AuthenticationFailedException;
+import com.seatflow.auth.InvalidPasswordResetTokenException;
 import com.seatflow.auth.InvalidRefreshTokenException;
 import com.seatflow.auth.UserAlreadyExistsException;
 import com.seatflow.event.DuplicateEventSectionException;
@@ -154,6 +155,13 @@ public class GlobalExceptionHandler {
 			InvalidRefreshTokenException ex,
 			HttpServletRequest request) {
 		return error(request, ApiErrorCode.INVALID_REFRESH_TOKEN, ex);
+	}
+
+	@ExceptionHandler(InvalidPasswordResetTokenException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidPasswordResetToken(
+			InvalidPasswordResetTokenException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_PASSWORD_RESET_TOKEN, ex);
 	}
 
 	@ExceptionHandler(AccessDeniedException.class)

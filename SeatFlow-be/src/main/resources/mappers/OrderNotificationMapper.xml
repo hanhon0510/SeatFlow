@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.notification.OrderNotificationMapper">
+    <resultMap id="OrderEmailDetailsResultMap" type="com.seatflow.notification.OrderEmailDetails">
+        <constructor>
+            <idArg column="order_id" javaType="java.util.UUID" />
+            <arg column="buyer_email" javaType="java.lang.String" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="event_name" javaType="java.lang.String" />
+            <arg column="event_start_time" javaType="java.time.Instant" />
+            <arg column="venue_name" javaType="java.lang.String" />
+            <arg column="venue_address" javaType="java.lang.String" />
+            <arg column="venue_city" javaType="java.lang.String" />
+            <arg column="venue_timezone" javaType="java.lang.String" />
+            <arg column="total_amount" javaType="java.math.BigDecimal" />
+            <arg column="discount_amount" javaType="java.math.BigDecimal" />
+            <arg column="promo_code" javaType="java.lang.String" />
+            <arg column="currency" javaType="java.lang.String" />
+            <arg column="event_cancelled" javaType="_boolean" />
+            <arg column="cancellation_reason" javaType="java.lang.String" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="OrderEmailSeatResultMap" type="com.seatflow.notification.OrderEmailSeat">
+        <constructor>
+            <idArg column="ticket_id" javaType="java.util.UUID" />
+            <arg column="section_name" javaType="java.lang.String" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="seat_label" javaType="java.lang.String" />
+        </constructor>
+    </resultMap>
+
+    <select id="findOrderDetails" resultMap="OrderEmailDetailsResultMap">
+        SELECT
+            o.id AS order_id,
+            u.email AS buyer_email,
+            e.id AS event_id,
+            e.name AS event_name,
+            e.start_time AS event_start_time,
+            v.name AS venue_name,
+            v.address AS venue_address,
+            v.city AS venue_city,
+            v.timezone AS venue_timezone,
+            o.total_amount,
+            o.discount_amount,
+            o.promo_code,
+            o.currency,
+            (c.event_id IS NOT NULL) AS event_cancelled,
+            c.reason AS cancellation_reason
+        FROM orders o
+        JOIN users u ON u.id = o.user_id
+        JOIN reservations r ON r.id = o.reservation_id
+        JOIN events e ON e.id = r.event_id
+        JOIN venues v ON v.id = e.venue_id
+        LEFT JOIN event_cancellations c ON c.event_id = e.id
+        WHERE o.id = #{orderId}
+    </select>
+
+    <select id="findSeats" resultMap="OrderEmailSeatResultMap">
+        SELECT
+            ticket.id AS ticket_id,
+            venue_section.name AS section_name,
+            seat.row_label,
+            seat.seat_label
+        FROM tickets ticket
+        JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        JOIN venue_sections venue_section ON venue_section.id = seat.section_id
+        WHERE ticket.order_id = #{orderId}
+        ORDER BY venue_section.display_order, seat.row_label, seat.seat_number, seat.id
+    </select>
+</mapper>

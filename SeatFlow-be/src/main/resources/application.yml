@@ -36,6 +36,20 @@ spring:
       timeout: ${REDIS_TIMEOUT:2s}
       connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
 
+  mail:
+    # Only used when seatflow.mail.enabled is true. MailHog (docker compose) listens on 1025.
+    host: ${SEATFLOW_MAIL_HOST:localhost}
+    port: ${SEATFLOW_MAIL_PORT:1025}
+    username: ${SEATFLOW_MAIL_USERNAME:}
+    password: ${SEATFLOW_MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SEATFLOW_MAIL_SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SEATFLOW_MAIL_STARTTLS:false}
+      # A dead mail server must not hold a consumer thread (and its transaction) for minutes.
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     admin:
@@ -87,6 +101,9 @@ logging:
 
 management:
   health:
+    mail:
+      # The mail server is optional; its absence must not turn the whole health report DOWN.
+      enabled: false
     kafka:
       enabled: ${SEATFLOW_KAFKA_ENABLED:false}
   endpoints:
@@ -117,6 +134,9 @@ seatflow:
     expires-in-seconds: ${SEATFLOW_REFRESH_TOKEN_EXPIRES_IN_SECONDS}
     cookie-secure: ${SEATFLOW_REFRESH_TOKEN_COOKIE_SECURE}
     same-site: ${SEATFLOW_REFRESH_TOKEN_SAME_SITE}
+  password-reset:
+    # How long an emailed reset link stays valid.
+    ttl: ${SEATFLOW_PASSWORD_RESET_TTL:1h}
   holds:
     ttl: ${SEATFLOW_HOLD_TTL:5m}
     max-seats: ${SEATFLOW_HOLD_MAX_SEATS:8}
@@ -138,6 +158,9 @@ seatflow:
     register:
       limit: ${SEATFLOW_RATE_LIMIT_REGISTER_LIMIT:3}
       window: ${SEATFLOW_RATE_LIMIT_REGISTER_WINDOW:10m}
+    password-reset:
+      limit: ${SEATFLOW_RATE_LIMIT_PASSWORD_RESET_LIMIT:5}
+      window: ${SEATFLOW_RATE_LIMIT_PASSWORD_RESET_WINDOW:15m}
     holds:
       limit: ${SEATFLOW_RATE_LIMIT_HOLDS_LIMIT:20}
       window: ${SEATFLOW_RATE_LIMIT_HOLDS_WINDOW:1m}
@@ -153,6 +176,20 @@ seatflow:
   actuator:
     # Leave false unless the management surface is genuinely unroutable from outside.
     metrics-public: ${SEATFLOW_ACTUATOR_METRICS_PUBLIC:false}
+  reminders:
+    # The background job that emails buyers before the show. Turn on together with
+    # seatflow.mail.enabled, otherwise orders would be marked as reminded without any email.
+    enabled: ${SEATFLOW_REMINDERS_ENABLED:false}
+    # Used for events whose reminder time nobody has set. Admins change it per event.
+    default-hours-before: ${SEATFLOW_REMINDERS_DEFAULT_HOURS_BEFORE:24}
+    batch-size: ${SEATFLOW_REMINDERS_BATCH_SIZE:100}
+    fixed-delay-ms: ${SEATFLOW_REMINDERS_FIXED_DELAY_MS:60000}
+  mail:
+    # false logs each email instead of sending it, so a fresh checkout needs no mail server.
+    enabled: ${SEATFLOW_MAIL_ENABLED:false}
+    from: ${SEATFLOW_MAIL_FROM:SeatFlow <no-reply@seatflow.local>}
+    # Where the links in emails point (the web app).
+    frontend-base-url: ${SEATFLOW_FRONTEND_BASE_URL:http://localhost:5173}
   kafka:
     enabled: ${SEATFLOW_KAFKA_ENABLED:false}
     # Only applied to topics that do not exist yet.

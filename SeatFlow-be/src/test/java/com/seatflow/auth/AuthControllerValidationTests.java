@@ -79,6 +79,7 @@ class AuthControllerValidationTests {
 						mock(LoginService.class),
 						mock(RefreshTokenService.class),
 						mock(RefreshTokenCookieService.class),
+						mock(PasswordResetService.class),
 						mock(RateLimitService.class)))
 				.setControllerAdvice(new GlobalExceptionHandler())
 				.setValidator(validator)

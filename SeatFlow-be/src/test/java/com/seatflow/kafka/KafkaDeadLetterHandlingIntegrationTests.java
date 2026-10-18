@@ -85,7 +85,7 @@ class KafkaDeadLetterHandlingIntegrationTests extends KafkaTestContainerSupport 
 			publisher.publish(kafkaProperties.topics().orderEvents(),
 					envelope(validEventId, UUID.randomUUID(), UUID.randomUUID(), 1)).get();
 			awaitRows("order_paid_analytics", 1);
-			assertThat(countRows("processed_events")).isEqualTo(1);
+			assertThat(analyticsClaims()).isEqualTo(1);
 		}
 	}
 
@@ -98,7 +98,7 @@ class KafkaDeadLetterHandlingIntegrationTests extends KafkaTestContainerSupport 
 				envelope(eventId, UUID.randomUUID(), UUID.randomUUID(), 1)).get();
 
 		awaitRows("order_paid_analytics", 1);
-		assertThat(countRows("processed_events")).isEqualTo(1);
+		assertThat(analyticsClaims()).isEqualTo(1);
 		assertThat(jdbcTemplate.queryForObject(
 				"SELECT last_value FROM seatflow_test_analytics_attempts",
 				Long.class)).isEqualTo(3L);
@@ -132,6 +132,12 @@ class KafkaDeadLetterHandlingIntegrationTests extends KafkaTestContainerSupport 
 			Thread.sleep(100);
 		}
 		throw new AssertionError("Expected %s rows in %s".formatted(expectedRows, table));
+	}
+
+	/** The email consumer reads the same topic and records its own claims, so only count the analytics ones. */
+	private int analyticsClaims() {
+		return jdbcTemplate.queryForObject(
+				"SELECT COUNT(*) FROM processed_events WHERE consumer_name = 'order-paid-analytics'", Integer.class);
 	}
 
 	private int countRows(String table) {

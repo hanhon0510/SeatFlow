@@ -97,6 +97,9 @@ class AuthWebSecurityTests {
 	private RegistrationService registrationService;
 
 	@MockitoBean
+	private PasswordResetService passwordResetService;
+
+	@MockitoBean
 	private RateLimitService rateLimitService;
 
 	@MockitoBean

@@ -21,6 +21,7 @@ public class AuthController {
 	private final LoginService loginService;
 	private final RefreshTokenService refreshTokenService;
 	private final RefreshTokenCookieService refreshTokenCookieService;
+	private final PasswordResetService passwordResetService;
 	private final RateLimitService rateLimitService;
 
 	public AuthController(
@@ -28,11 +29,13 @@ public class AuthController {
 			LoginService loginService,
 			RefreshTokenService refreshTokenService,
 			RefreshTokenCookieService refreshTokenCookieService,
+			PasswordResetService passwordResetService,
 			RateLimitService rateLimitService) {
 		this.registrationService = registrationService;
 		this.loginService = loginService;
 		this.refreshTokenService = refreshTokenService;
 		this.refreshTokenCookieService = refreshTokenCookieService;
+		this.passwordResetService = passwordResetService;
 		this.rateLimitService = rateLimitService;
 	}
 
@@ -59,6 +62,25 @@ public class AuthController {
 		AuthSession session = refreshTokenService.refresh(refreshTokenCookieService.requireToken(request));
 		refreshTokenCookieService.writeToken(response, session.refreshToken());
 		return session.accessToken();
+	}
+
+	/** Always answers the same way, so it cannot be used to discover which addresses have accounts. */
+	@PostMapping("/forgot-password")
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	public void forgotPassword(
+			@Valid @RequestBody ForgotPasswordRequest request,
+			HttpServletRequest servletRequest) {
+		rateLimitService.checkPasswordReset(servletRequest, request.email());
+		passwordResetService.requestReset(request.email());
+	}
+
+	@PostMapping("/reset-password")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void resetPassword(
+			@Valid @RequestBody ResetPasswordRequest request,
+			HttpServletRequest servletRequest) {
+		rateLimitService.checkPasswordReset(servletRequest, null);
+		passwordResetService.resetPassword(request.token(), request.password());
 	}
 
 	@PostMapping("/logout")

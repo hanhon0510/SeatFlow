@@ -46,6 +46,16 @@ public class RateLimitService {
 	}
 
 	/**
+	 * Covers both asking for a link (scoped to address and email, so one inbox cannot be flooded
+	 * from one place) and using one (scoped to the address alone, which caps token guessing).
+	 */
+	public void checkPasswordReset(HttpServletRequest request, String email) {
+		String clientIp = clientIpResolver.resolve(request);
+		String scope = email == null ? clientIp : clientIp + "|" + normalizeEmail(email);
+		check(email == null ? "password-reset-use" : "password-reset", scope, properties.passwordReset());
+	}
+
+	/**
 	 * The seat layout is the heaviest read in the system and is served unauthenticated, so it
 	 * needs an address-scoped bucket of its own rather than inheriting the write-path limits.
 	 */

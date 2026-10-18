@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.List;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 @ConfigurationProperties(prefix = "seatflow.rate-limit")
 public record RateLimitProperties(
@@ -13,6 +14,7 @@ public record RateLimitProperties(
 		Policy login,
 		Policy loginPerIp,
 		Policy register,
+		Policy passwordReset,
 		Policy holds,
 		Policy payments,
 		Policy seatLayout) {
@@ -20,6 +22,8 @@ public record RateLimitProperties(
 	private static final boolean DEFAULT_ENABLED = true;
 	private static final boolean DEFAULT_TRUST_PROXY_HEADERS = false;
 
+	// The convenience constructor below leaves Spring unable to pick a binding constructor on its own.
+	@ConstructorBinding
 	public RateLimitProperties {
 		enabled = enabled == null ? DEFAULT_ENABLED : enabled;
 		trustProxyHeaders = trustProxyHeaders == null ? DEFAULT_TRUST_PROXY_HEADERS : trustProxyHeaders;
@@ -27,9 +31,25 @@ public record RateLimitProperties(
 		login = Policy.withDefaults(login, 5, Duration.ofMinutes(1), "login");
 		loginPerIp = Policy.withDefaults(loginPerIp, 30, Duration.ofMinutes(15), "login-per-ip");
 		register = Policy.withDefaults(register, 3, Duration.ofMinutes(10), "register");
+		passwordReset = Policy.withDefaults(passwordReset, 5, Duration.ofMinutes(15), "password-reset");
 		holds = Policy.withDefaults(holds, 20, Duration.ofMinutes(1), "holds");
 		payments = Policy.withDefaults(payments, 10, Duration.ofMinutes(1), "payments");
 		seatLayout = Policy.withDefaults(seatLayout, 60, Duration.ofMinutes(1), "seat-layout");
+	}
+
+	/** Keeps the constructor from before password reset had a policy of its own. */
+	public RateLimitProperties(
+			Boolean enabled,
+			Boolean trustProxyHeaders,
+			List<String> trustedProxies,
+			Policy login,
+			Policy loginPerIp,
+			Policy register,
+			Policy holds,
+			Policy payments,
+			Policy seatLayout) {
+		this(enabled, trustProxyHeaders, trustedProxies, login, loginPerIp, register, null, holds, payments,
+				seatLayout);
 	}
 
 	public boolean isEnabled() {

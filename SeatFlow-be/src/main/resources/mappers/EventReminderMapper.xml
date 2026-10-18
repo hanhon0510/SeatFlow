@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.reminder.EventReminderMapper">
+    <resultMap id="SettingsResultMap" type="com.seatflow.reminder.EventReminderSettingsRecord">
+        <constructor>
+            <idArg column="event_id" javaType="java.util.UUID" />
+            <arg column="enabled" javaType="_boolean" />
+            <arg column="hours_before" javaType="_int" />
+            <arg column="updated_by" javaType="java.util.UUID" />
+            <arg column="updated_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <select id="findSettings" resultMap="SettingsResultMap">
+        SELECT event_id, enabled, hours_before, updated_by, updated_at
+        FROM event_reminder_settings
+        WHERE event_id = #{eventId}
+    </select>
+
+    <insert id="upsertSettings">
+        INSERT INTO event_reminder_settings (event_id, enabled, hours_before, updated_by, updated_at)
+        VALUES (#{eventId}, #{enabled}, #{hoursBefore}, #{updatedBy}, #{updatedAt})
+        ON CONFLICT (event_id) DO UPDATE
+        SET enabled = EXCLUDED.enabled,
+            hours_before = EXCLUDED.hours_before,
+            updated_by = EXCLUDED.updated_by,
+            updated_at = EXCLUDED.updated_at
+    </insert>
+
+    <select id="findDueOrderIds" resultType="java.util.UUID">
+        SELECT o.id
+        FROM orders o
+        JOIN reservations r ON r.id = o.reservation_id
+        JOIN events e ON e.id = r.event_id
+        LEFT JOIN event_reminder_settings s ON s.event_id = e.id
+        WHERE o.status = 'PAID'
+          AND e.status = 'PUBLISHED'
+          AND e.start_time &gt; #{now}
+          AND COALESCE(s.enabled, TRUE)
+          AND e.start_time - make_interval(hours => COALESCE(s.hours_before, #{defaultHoursBefore})) &lt;= #{now}
+          AND o.updated_at &lt;= e.start_time - make_interval(hours => COALESCE(s.hours_before, #{defaultHoursBefore}))
+          AND NOT EXISTS (SELECT 1 FROM order_reminders reminder WHERE reminder.order_id = o.id)
+          AND EXISTS (SELECT 1 FROM tickets t WHERE t.order_id = o.id AND t.status = 'ACTIVE')
+        ORDER BY e.start_time ASC, o.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="claim">
+        INSERT INTO order_reminders (order_id, sent_at)
+        VALUES (#{orderId}, #{sentAt})
+        ON CONFLICT (order_id) DO NOTHING
+    </insert>
+
+    <select id="countSent" resultType="long">
+        SELECT COUNT(*)
+        FROM order_reminders reminder
+        JOIN orders o ON o.id = reminder.order_id
+        JOIN reservations r ON r.id = o.reservation_id
+        WHERE r.event_id = #{eventId}
+    </select>
+</mapper>
