@@ -14,7 +14,7 @@ SeatFlow is a full-stack seat reservation and booking platform scaffolded with t
 .
 |-- SeatFlow-be/       Spring Boot 3.5 backend, Java 21, MyBatis, Flyway
 |-- SeatFlow-fe/       React 19, TypeScript, Vite, Ant Design
-|-- docker-compose.yml PostgreSQL, Redis, Kafka
+|-- docker-compose.yml PostgreSQL, Redis, Kafka, Mailpit (optional)
 |-- docs/              Project notes and generated documentation
 `-- README.md
 ```
@@ -140,6 +140,49 @@ Kafka consumers retry transient failures with the configured backoff. Permanent
 validation errors and exhausted transient failures are published to the
 dead-letter topic with safe metadata headers for original event id, topic,
 partition, correlation id, and error category; stack traces are kept in logs.
+
+### Email Notifications
+
+Buyers get an email when an order is paid (their seats and total) and when it is
+refunded, including the refunds that follow an event being cancelled. A consumer
+in its own Kafka consumer group reads the order events topic, so a slow mail
+server never delays the analytics consumer. A failed send is retried and then
+dead-lettered; an event that was already emailed is skipped.
+
+Sending is off by default and the app only logs which email it would have sent,
+so no mail server is needed. To try it locally:
+
+```sh
+docker compose up -d mailpit
+```
+
+then set `SEATFLOW_MAIL_ENABLED=true` and `SEATFLOW_KAFKA_ENABLED=true`
+(and `SEATFLOW_OUTBOX_PUBLISHER_ENABLED=true`) in `.env`. Mailpit catches every
+message and shows it at `http://localhost:8025`. For a real provider, point
+`SEATFLOW_MAIL_HOST`, `SEATFLOW_MAIL_PORT`, `SEATFLOW_MAIL_USERNAME`,
+`SEATFLOW_MAIL_PASSWORD` (plus `SEATFLOW_MAIL_SMTP_AUTH` and
+`SEATFLOW_MAIL_STARTTLS`) at any SMTP service and set `SEATFLOW_MAIL_FROM` and
+`SEATFLOW_FRONTEND_BASE_URL` (used for links in the emails).
+
+#### Password reset
+
+"Forgot your password?" on the login page emails a single-use link that expires
+after `SEATFLOW_PASSWORD_RESET_TTL` (default `1h`). Only a hash of the link's
+token is stored. The request always answers the same way, so it cannot be used
+to find out who has an account, and it is rate limited
+(`SEATFLOW_RATE_LIMIT_PASSWORD_RESET_*`). Choosing a new password signs the
+account out on every device and sends a "password changed" notice.
+
+#### Event reminders
+
+Buyers get one reminder email per order before the show. Admins choose how many
+hours before the start (1 to 336) or turn reminders off per event, in the
+"Reminder email" card on the event page; events nobody configured use
+`SEATFLOW_REMINDERS_DEFAULT_HOURS_BEFORE` (default `24`). A background job sends
+them every minute. It is off by default so orders are never marked as reminded
+without a real email going out: set `SEATFLOW_REMINDERS_ENABLED=true` together
+with `SEATFLOW_MAIL_ENABLED=true`. Orders placed after the reminder time are
+not reminded again, since they were told everything when they bought.
 
 Health endpoints:
 

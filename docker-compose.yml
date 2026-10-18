@@ -55,6 +55,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+  # Catches every email the app sends so nothing leaves the machine. Web UI: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: seatflow-mailpit
+    ports:
+      - "${MAIL_SMTP_PORT:-1025}:1025"
+      - "${MAIL_UI_PORT:-8025}:8025"
 volumes:
   postgres_data:
   redis_data:
