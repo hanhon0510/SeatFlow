@@ -2,6 +2,8 @@ export const ROUTES = {
   home: '/',
   login: '/login',
   register: '/register',
+  forgotPassword: '/forgot-password',
+  resetPassword: '/reset-password',
   events: '/events',
   eventDetailPattern: '/events/:eventId',
   eventDetail: (eventId: string) => `/events/${eventId}`,

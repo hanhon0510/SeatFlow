@@ -24,6 +24,7 @@ const CODE_MESSAGES: Record<string, string> = {
     'This order cannot be refunded. Only paid orders whose tickets are unused can be refunded.',
   PROMO_CODE_REJECTED: 'This promo code cannot be applied to your purchase.',
   PAYMENT_CONFLICT: 'The payment cannot be completed.',
+  INVALID_PASSWORD_RESET_TOKEN: 'This password reset link is invalid or has expired.',
   INVALID_PAYMENT_TOKEN: 'Choose a valid payment option.',
   RATE_LIMIT_EXCEEDED: 'Too many attempts. Please wait and try again.',
   TICKET_NOT_FOUND: 'Ticket not found.',

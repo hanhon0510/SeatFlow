@@ -75,6 +75,10 @@ export function LoginPage() {
       </Form>
 
       <Typography.Paragraph className="auth-alt-action">
+        <Link to={ROUTES.forgotPassword}>Forgot your password?</Link>
+      </Typography.Paragraph>
+
+      <Typography.Paragraph className="auth-alt-action">
         New to SeatFlow? <Link to={ROUTES.register}>Create an account</Link>
       </Typography.Paragraph>
     </section>

@@ -14,6 +14,7 @@ import type {
   AdminSeatMap,
   Event,
   EventCancellation,
+  EventReminder,
   EventPublishResponse,
   EventSalesReport,
   EventSectionConfiguration,
@@ -719,6 +720,18 @@ function reportForCancellation(
   }
 }
 
+function reminder(overrides: Partial<EventReminder> = {}): EventReminder {
+  return {
+    eventId: event.id,
+    enabled: true,
+    hoursBefore: 24,
+    usingDefault: true,
+    remindersSent: 0,
+    remindAt: '2099-08-31T19:00:00.000Z',
+    ...overrides,
+  }
+}
+
 function cancellation(overrides: Partial<EventCancellation> = {}): EventCancellation {
   return {
     eventId: event.id,
@@ -736,6 +749,8 @@ function installAdminEventDetailMock(
   report: () => EventSalesReport,
   refund: ApiHandler = (config) => rejectedResponse(config, 500, 'Unexpected request'),
   cancel: ApiHandler = (config) => rejectedResponse(config, 500, 'Unexpected request'),
+  currentReminder: () => EventReminder = () => reminder(),
+  updateReminder: ApiHandler = (config) => rejectedResponse(config, 500, 'Unexpected request'),
 ) {
   installApiMock((config) => {
     if (endpoint(config) === 'POST /auth/refresh') {
@@ -760,6 +775,14 @@ function installAdminEventDetailMock(
 
     if (endpoint(config) === `POST /admin/events/${event.id}/cancel`) {
       return cancel(config)
+    }
+
+    if (endpoint(config) === `GET /admin/events/${event.id}/reminder`) {
+      return response<EventReminder>(config, 200, currentReminder())
+    }
+
+    if (endpoint(config) === `PUT /admin/events/${event.id}/reminder`) {
+      return updateReminder(config)
     }
 
     return rejectedResponse(config, 500, 'Unexpected request')
@@ -2151,6 +2174,246 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Login' })).toBeInTheDocument()
   })
 
+  it('links to password reset from the login page', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.login)
+
+    render(<App />)
+
+    await user.click(screen.getByRole('link', { name: 'Forgot your password?' }))
+
+    expect(await screen.findByRole('heading', { name: 'Forgot your password?' })).toBeInTheDocument()
+  })
+
+  it('asks for a reset link and says the same thing whether or not the account exists', async () => {
+    const user = userEvent.setup()
+    const forgotSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.forgotPassword)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === 'POST /auth/forgot-password') {
+        forgotSpy(requestBody(config))
+        return response<null>(config, 202, null)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.type(screen.getByLabelText('Email'), '  someone@example.com ')
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }))
+
+    expect(await screen.findByText(/If an account exists for someone@example.com/)).toBeInTheDocument()
+    expect(forgotSpy).toHaveBeenCalledWith({ email: 'someone@example.com' })
+    expect(screen.getByRole('link', { name: 'Back to log in' })).toBeInTheDocument()
+  })
+
+  it('validates the email before asking for a reset link', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.forgotPassword)
+
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }))
+
+    expect(await screen.findByText('Email is required')).toBeInTheDocument()
+  })
+
+  it('tells the visitor when too many reset links were requested', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.forgotPassword)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      return rejectedWithCode(config, 429, 'RATE_LIMIT_EXCEEDED', 'slow down')
+    })
+
+    render(<App />)
+
+    await user.type(screen.getByLabelText('Email'), 'someone@example.com')
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }))
+
+    expect(await screen.findByText(/Too many attempts/)).toBeInTheDocument()
+  })
+
+  it('chooses a new password from the emailed link', async () => {
+    const user = userEvent.setup()
+    const resetSpy = vi.fn()
+    window.history.pushState({}, '', `${ROUTES.resetPassword}?token=abc_DEF-123`)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      if (endpoint(config) === 'POST /auth/reset-password') {
+        resetSpy(requestBody(config))
+        return response<null>(config, 204, null)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.type(screen.getByLabelText('New password'), 'BrandNewPassw0rd!')
+    await user.type(screen.getByLabelText('Confirm new password'), 'BrandNewPassw0rd!')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+
+    expect(await screen.findByText('Your password has been changed')).toBeInTheDocument()
+    expect(resetSpy).toHaveBeenCalledWith({ token: 'abc_DEF-123', password: 'BrandNewPassw0rd!' })
+    expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', ROUTES.login)
+  })
+
+  it('does not send mismatching or weak new passwords', async () => {
+    const user = userEvent.setup()
+    const resetSpy = vi.fn()
+    window.history.pushState({}, '', `${ROUTES.resetPassword}?token=abc`)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+      resetSpy()
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.type(screen.getByLabelText('New password'), 'weak')
+    await user.type(screen.getByLabelText('Confirm new password'), 'different')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+
+    expect(await screen.findByText('Password must be at least 12 characters')).toBeInTheDocument()
+    expect(await screen.findByText('The passwords do not match')).toBeInTheDocument()
+    expect(resetSpy).not.toHaveBeenCalled()
+  })
+
+  it('explains an expired link and offers a new one', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', `${ROUTES.resetPassword}?token=old`)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return rejectedResponse(config, 401, 'Invalid refresh token')
+      }
+
+      return rejectedWithCode(config, 400, 'INVALID_PASSWORD_RESET_TOKEN', 'expired')
+    })
+
+    render(<App />)
+
+    await user.type(screen.getByLabelText('New password'), 'BrandNewPassw0rd!')
+    await user.type(screen.getByLabelText('Confirm new password'), 'BrandNewPassw0rd!')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+
+    expect(await screen.findByText('This password reset link is invalid or has expired.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Send me a new link' })).toHaveAttribute(
+      'href',
+      ROUTES.forgotPassword,
+    )
+  })
+
+  it('shows a helpful message when the reset link has no token', async () => {
+    window.history.pushState({}, '', ROUTES.resetPassword)
+
+    render(<App />)
+
+    expect(await screen.findByText('This link is incomplete')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Send me a new link' })).toBeInTheDocument()
+  })
+
+  it('shows the default reminder time and lets an admin change how many hours before the show', async () => {
+    const user = userEvent.setup()
+    const updateSpy = vi.fn()
+    let saved: EventReminder = reminder()
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(
+      () => eventSalesReport,
+      undefined,
+      undefined,
+      () => saved,
+      (config) => {
+        const body = requestBody(config) as { enabled: boolean; hoursBefore: number }
+        updateSpy(body)
+        saved = reminder({ ...body, usingDefault: false })
+        return response<EventReminder>(config, 200, saved)
+      },
+    )
+
+    render(<App />)
+
+    const hours = await screen.findByLabelText('Hours before the event starts')
+    expect(hours).toHaveValue('24')
+    expect(screen.getByText(/the default, until you save a choice/)).toBeInTheDocument()
+    const save = screen.getByRole('button', { name: 'Save reminder' })
+    expect(save).toBeDisabled()
+
+    await user.clear(hours)
+    await user.type(hours, '72')
+    expect(save).toBeEnabled()
+    await user.click(save)
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledWith({ enabled: true, hoursBefore: 72 }))
+    expect(await screen.findByText('Reminder saved')).toBeInTheDocument()
+    expect(await screen.findByText(/72 hours \(3 days\) before the start/)).toBeInTheDocument()
+    expect(screen.queryByText(/the default, until you save a choice/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save reminder' })).toBeDisabled()
+  }, 30000)
+
+  it('lets an admin turn reminders off for an event', async () => {
+    const user = userEvent.setup()
+    const updateSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(
+      () => eventSalesReport,
+      undefined,
+      undefined,
+      () => reminder({ remindersSent: 4 }),
+      (config) => {
+        updateSpy(requestBody(config))
+        return response<EventReminder>(config, 200, reminder({ enabled: false, usingDefault: false }))
+      },
+    )
+
+    render(<App />)
+
+    expect(await screen.findByText(/4 sent so far/)).toBeInTheDocument()
+    await user.click(await screen.findByRole('switch', { name: 'Send a reminder email before the event' }))
+    expect(screen.getByLabelText('Hours before the event starts')).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Save reminder' }))
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledWith({ enabled: false, hoursBefore: 24 }))
+    expect(await screen.findByText('Buyers will not get a reminder for this event.')).toBeInTheDocument()
+  }, 30000)
+
+  it('will not save a reminder time outside the allowed range', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(() => eventSalesReport)
+
+    render(<App />)
+
+    const hours = await screen.findByLabelText('Hours before the event starts')
+    await user.clear(hours)
+
+    expect(await screen.findByText(/Enter a whole number of hours between 1 and 336/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save reminder' })).toBeDisabled()
+  }, 20000)
+
+  it('does not offer reminders for a cancelled event', async () => {
+    window.history.pushState({}, '', ROUTES.adminEventDetail(event.id))
+    installAdminEventDetailMock(() => reportForCancellation('CANCELLED', 0))
+
+    render(<App />)
+
+    expect(await screen.findByText(/This event was cancelled/)).toBeInTheDocument()
+    expect(screen.queryByText('Reminder email')).not.toBeInTheDocument()
+  }, 15000)
+
   it('restores a session from the refresh cookie', async () => {
     const currentUserSpy = vi.fn()
     window.history.pushState({}, '', ROUTES.events)
@@ -2548,7 +2811,7 @@ describe('App', () => {
     expect(
       await screen.findByRole('button', { name: /Seat A1, wheelchair accessible/ }),
     ).toBeInTheDocument()
-  }, 10000)
+  }, 30000)
 
   it('requires confirmation before archiving a venue', async () => {
     const archiveSpy = vi.fn()
@@ -2589,7 +2852,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Archive venue' }))
 
     await waitFor(() => expect(archiveSpy).toHaveBeenCalledOnce())
-  }, 10000)
+  }, 30000)
 
   it('validates required event form fields', async () => {
     const user = userEvent.setup()

@@ -6,6 +6,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { ROUTES } from '../../../shared/constants/routes'
 import { useAuth } from '../context/useAuth'
+import { passwordRules } from '../passwordRules'
 import type { RegisterRequest } from '../types'
 
 export function RegisterPage() {
@@ -57,30 +58,7 @@ export function RegisterPage() {
         <Form.Item
           label="Password"
           name="password"
-          rules={[
-            { required: true, message: 'Password is required' },
-            { min: 12, message: 'Password must be at least 12 characters' },
-            {
-              pattern: /[a-z]/,
-              message: 'Password must include a lowercase letter',
-            },
-            {
-              pattern: /[A-Z]/,
-              message: 'Password must include an uppercase letter',
-            },
-            {
-              pattern: /\d/,
-              message: 'Password must include a number',
-            },
-            {
-              pattern: /[^A-Za-z0-9]/,
-              message: 'Password must include a special character',
-            },
-            {
-              pattern: /^\S+$/,
-              message: 'Password cannot contain spaces',
-            },
-          ]}
+          rules={passwordRules}
         >
           <Input.Password autoComplete="new-password" prefix={<LockOutlined />} />
         </Form.Item>

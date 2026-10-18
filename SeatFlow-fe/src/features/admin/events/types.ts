@@ -198,3 +198,17 @@ export type EventCancellation = {
   remainingRefunds: number
   ordersNeedingAttention: number
 }
+
+export type EventReminder = {
+  eventId: string
+  enabled: boolean
+  hoursBefore: number
+  usingDefault: boolean
+  remindersSent: number
+  remindAt: string | null
+}
+
+export type EventReminderRequest = {
+  enabled: boolean
+  hoursBefore: number
+}

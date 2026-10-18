@@ -5,7 +5,9 @@ import { CustomerRoute } from '../../features/auth/components/CustomerRoute'
 import { ProtectedRoute } from '../../features/auth/components/ProtectedRoute'
 import { HomeRoute } from './HomeRoute'
 import { LoginPage } from '../../features/auth/pages/LoginPage'
+import { ForgotPasswordPage } from '../../features/auth/pages/ForgotPasswordPage'
 import { RegisterPage } from '../../features/auth/pages/RegisterPage'
+import { ResetPasswordPage } from '../../features/auth/pages/ResetPasswordPage'
 import { VenueFormPage } from '../../features/admin/venues/pages/VenueFormPage'
 import { VenueListPage } from '../../features/admin/venues/pages/VenueListPage'
 import { PromoCodeGeneratorPage } from '../../features/admin/promo-codes/pages/PromoCodeGeneratorPage'
@@ -29,6 +31,8 @@ export function AppRouter() {
         <Route index element={<HomeRoute />} />
         <Route path={ROUTES.login} element={<LoginPage />} />
         <Route path={ROUTES.register} element={<RegisterPage />} />
+        <Route path={ROUTES.forgotPassword} element={<ForgotPasswordPage />} />
+        <Route path={ROUTES.resetPassword} element={<ResetPasswordPage />} />
         <Route element={<CustomerRoute />}>
           <Route path={ROUTES.events} element={<EventCatalogPage />} />
           <Route path={ROUTES.eventDetailPattern} element={<EventDetailPage />} />

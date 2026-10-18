@@ -3,6 +3,8 @@ import type {
   CancelEventRequest,
   Event,
   EventCancellation,
+  EventReminder,
+  EventReminderRequest,
   EventFormValues,
   EventPage,
   EventPublishResponse,
@@ -22,6 +24,7 @@ export const eventQueryKeys = {
   sections: (eventId: string) => [...eventQueryKeys.all, 'sections', eventId] as const,
   sales: (eventId: string) => [...eventQueryKeys.all, 'sales', eventId] as const,
   seatMap: (eventId: string) => [...eventQueryKeys.all, 'seat-map', eventId] as const,
+  reminder: (eventId: string) => [...eventQueryKeys.all, 'reminder', eventId] as const,
 }
 
 export async function listEvents(page: number, size: number) {
@@ -116,4 +119,14 @@ export async function cancelEventAndRefund(
   }
 
   return latest
+}
+
+export async function getEventReminder(eventId: string) {
+  const response = await apiClient.get<EventReminder>(`/admin/events/${eventId}/reminder`)
+  return response.data
+}
+
+export async function updateEventReminder(eventId: string, request: EventReminderRequest) {
+  const response = await apiClient.put<EventReminder>(`/admin/events/${eventId}/reminder`, request)
+  return response.data
 }
