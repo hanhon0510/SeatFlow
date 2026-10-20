@@ -5,6 +5,7 @@ public record MaintenanceSummary(
 		int closedOrders,
 		int purgedIdempotencyRecords,
 		int purgedRefreshTokens,
+		int purgedPasswordResetTokens,
 		int purgedOutboxEvents,
 		int purgedProcessedEvents) {
 
@@ -13,6 +14,7 @@ public record MaintenanceSummary(
 				&& closedOrders == 0
 				&& purgedIdempotencyRecords == 0
 				&& purgedRefreshTokens == 0
+				&& purgedPasswordResetTokens == 0
 				&& purgedOutboxEvents == 0
 				&& purgedProcessedEvents == 0;
 	}

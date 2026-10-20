@@ -1,6 +1,7 @@
 package com.seatflow.maintenance;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.function.IntSupplier;
 
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.seatflow.auth.PasswordResetMapper;
 import com.seatflow.auth.RefreshTokenService;
 import com.seatflow.consumer.ProcessedEventMapper;
 import com.seatflow.idempotency.IdempotencyMapper;
@@ -29,12 +31,16 @@ public class MaintenanceService {
 
 	private static final Logger log = LoggerFactory.getLogger(MaintenanceService.class);
 
+	/** Reset links are kept this long after they expire, so a support question about one can still be answered. */
+	static final Duration PASSWORD_RESET_GRACE = Duration.ofDays(1);
+
 	private final ReservationMapper reservationMapper;
 	private final OrderMapper orderMapper;
 	private final IdempotencyMapper idempotencyMapper;
 	private final OutboxMapper outboxMapper;
 	private final ProcessedEventMapper processedEventMapper;
 	private final RefreshTokenService refreshTokenService;
+	private final PasswordResetMapper passwordResetMapper;
 	private final MaintenanceProperties properties;
 	private final BusinessMetrics businessMetrics;
 	private final Clock clock;
@@ -46,6 +52,7 @@ public class MaintenanceService {
 			OutboxMapper outboxMapper,
 			ProcessedEventMapper processedEventMapper,
 			RefreshTokenService refreshTokenService,
+			PasswordResetMapper passwordResetMapper,
 			MaintenanceProperties properties,
 			BusinessMetrics businessMetrics,
 			Clock clock) {
@@ -55,6 +62,7 @@ public class MaintenanceService {
 		this.outboxMapper = outboxMapper;
 		this.processedEventMapper = processedEventMapper;
 		this.refreshTokenService = refreshTokenService;
+		this.passwordResetMapper = passwordResetMapper;
 		this.properties = properties;
 		this.businessMetrics = businessMetrics;
 		this.clock = clock;
@@ -69,6 +77,9 @@ public class MaintenanceService {
 		int closedOrders = drain("close-orders", () -> orderMapper.closeForClosedReservations(now, batchSize));
 		int idempotencyRecords = drain("purge-idempotency", () -> idempotencyMapper.deleteExpired(now, batchSize));
 		int refreshTokens = drain("purge-refresh-tokens", () -> refreshTokenService.deleteExpiredTokens(batchSize));
+		int passwordResetTokens = drain("purge-password-reset-tokens", () -> passwordResetMapper.deleteExpired(
+				now.minus(PASSWORD_RESET_GRACE),
+				batchSize));
 		int outboxEvents = drain("purge-outbox", () -> outboxMapper.deletePublishedBefore(
 				now.minus(properties.outboxRetention()),
 				batchSize));
@@ -82,6 +93,7 @@ public class MaintenanceService {
 				closedOrders,
 				idempotencyRecords,
 				refreshTokens,
+				passwordResetTokens,
 				outboxEvents,
 				processedEvents);
 		if (!summary.isEmpty()) {
