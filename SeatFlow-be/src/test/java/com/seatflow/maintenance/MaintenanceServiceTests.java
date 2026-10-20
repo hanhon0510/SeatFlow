@@ -1,6 +1,7 @@
 package com.seatflow.maintenance;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -22,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import com.seatflow.auth.PasswordResetMapper;
 import com.seatflow.auth.RefreshTokenService;
 import com.seatflow.consumer.ProcessedEventMapper;
 import com.seatflow.idempotency.IdempotencyMapper;
@@ -57,6 +59,9 @@ class MaintenanceServiceTests {
 	@Mock
 	private RefreshTokenService refreshTokenService;
 
+	@Mock
+	private PasswordResetMapper passwordResetMapper;
+
 	private SimpleMeterRegistry meterRegistry;
 	private MaintenanceService service;
 
@@ -81,6 +86,7 @@ class MaintenanceServiceTests {
 
 		verify(idempotencyMapper).deleteExpired(NOW, BATCH_SIZE);
 		verify(refreshTokenService).deleteExpiredTokens(BATCH_SIZE);
+		verify(passwordResetMapper).deleteExpired(NOW.minus(MaintenanceService.PASSWORD_RESET_GRACE), BATCH_SIZE);
 		verify(outboxMapper).deletePublishedBefore(NOW.minus(Duration.ofDays(7)), BATCH_SIZE);
 		verify(processedEventMapper).deleteProcessedBefore(NOW.minus(Duration.ofDays(2)), BATCH_SIZE);
 	}
@@ -108,6 +114,16 @@ class MaintenanceServiceTests {
 	}
 
 	@Test
+	void expiredPasswordResetLinksAreCountedInTheSummary() {
+		when(passwordResetMapper.deleteExpired(any(), anyInt())).thenReturn(3);
+
+		MaintenanceSummary summary = service.sweep();
+
+		assertThat(summary.purgedPasswordResetTokens()).isEqualTo(3);
+		assertThat(summary.isEmpty()).isFalse();
+	}
+
+	@Test
 	void anIdleSweepReportsNothing() {
 		assertThat(service.sweep().isEmpty()).isTrue();
 	}
@@ -120,6 +136,7 @@ class MaintenanceServiceTests {
 				outboxMapper,
 				processedEventMapper,
 				refreshTokenService,
+				passwordResetMapper,
 				properties,
 				new BusinessMetrics(meterRegistry),
 				Clock.fixed(NOW, ZoneOffset.UTC));
