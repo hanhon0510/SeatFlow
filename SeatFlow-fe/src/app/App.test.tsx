@@ -1214,7 +1214,9 @@ describe('App', () => {
 
       if (endpoint(config) === `POST /events/${publishedEvent.id}/holds`) {
         createHoldSpy(requestBody(config))
-        return response<SeatHold>(config, 201, hold)
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(response<SeatHold>(config, 201, hold)), 300)
+        })
       }
 
       if (endpoint(config) === `GET /holds/${hold.holdId}`) {
@@ -3059,9 +3061,10 @@ describe('App', () => {
         venueId: venue.id,
         name: event.name,
         description: event.description,
-        startTime: '2026-09-01T12:00:00.000Z',
-        salesStartTime: '2026-07-31T17:00:00.000Z',
-        salesEndTime: '2026-09-01T11:00:00.000Z',
+        // Typed in the browser's time zone, so the UTC values depend on where the test runs.
+        startTime: new Date(2026, 8, 1, 19, 0).toISOString(),
+        salesStartTime: new Date(2026, 7, 1, 0, 0).toISOString(),
+        salesEndTime: new Date(2026, 8, 1, 18, 0).toISOString(),
       }),
     )
     expect(await screen.findByRole('heading', { name: 'Edit event' })).toBeInTheDocument()
