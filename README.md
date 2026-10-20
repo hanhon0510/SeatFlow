@@ -1,5 +1,7 @@
 # SeatFlow
 
+[![CI](https://github.com/hanhon0510/SeatFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/hanhon0510/SeatFlow/actions/workflows/ci.yml)
+
 SeatFlow is a full-stack seat reservation and booking platform scaffolded with the same tech stack and project conventions as CentralAuth.
 
 ## Contents
@@ -7,6 +9,7 @@ SeatFlow is a full-stack seat reservation and booking platform scaffolded with t
 - [Repository Layout](#repository-layout)
 - [Local Setup](#local-setup)
 - [Configuration](#configuration)
+- [Continuous Integration](#continuous-integration)
 
 ## Repository Layout
 
@@ -192,6 +195,26 @@ Health endpoints:
 - `GET /api/v1/health/database` — PostgreSQL health through MyBatis
 - `GET /api/v1/health/redis` — Redis health through PING
 - `GET /api/v1/health/kafka` — Kafka health when Kafka is enabled, otherwise `DISABLED`
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on every pull
+request. Two jobs run in parallel:
+
+- **Backend** — `./mvnw verify` in `SeatFlow-be`. The integration tests start
+  PostgreSQL with Testcontainers and apply every Flyway migration to an empty
+  database, so a migration that does not apply from scratch fails the build.
+  The surefire reports are kept as an artifact when it fails.
+- **Frontend** — `npm ci`, `npm run lint`, `npm run build` (type-checks first),
+  then `npm test` in `SeatFlow-fe`.
+
+No `.env` file or secrets are needed; the tests supply their own configuration.
+To run the same checks locally:
+
+```sh
+cd SeatFlow-be && ./mvnw verify                      # needs Docker running
+cd SeatFlow-fe && npm ci && npm run lint && npm run build && npm test
+```
 
 ## Backend Conventions
 
