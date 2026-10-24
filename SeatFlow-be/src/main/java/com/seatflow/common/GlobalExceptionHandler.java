@@ -20,6 +20,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.seatflow.account.InvalidCurrentPasswordException;
+import com.seatflow.account.PasswordUnchangedException;
 import com.seatflow.auth.AuthenticationFailedException;
 import com.seatflow.auth.InvalidPasswordResetTokenException;
 import com.seatflow.auth.InvalidRefreshTokenException;
@@ -162,6 +164,20 @@ public class GlobalExceptionHandler {
 			InvalidPasswordResetTokenException ex,
 			HttpServletRequest request) {
 		return error(request, ApiErrorCode.INVALID_PASSWORD_RESET_TOKEN, ex);
+	}
+
+	@ExceptionHandler(InvalidCurrentPasswordException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidCurrentPassword(
+			InvalidCurrentPasswordException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_CURRENT_PASSWORD, ex);
+	}
+
+	@ExceptionHandler(PasswordUnchangedException.class)
+	public ResponseEntity<ApiErrorResponse> handlePasswordUnchanged(
+			PasswordUnchangedException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.PASSWORD_UNCHANGED, ex);
 	}
 
 	@ExceptionHandler(AccessDeniedException.class)

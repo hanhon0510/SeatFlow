@@ -10,6 +10,8 @@ import {
   LogoutOutlined,
   MenuOutlined,
   QrcodeOutlined,
+  UnorderedListOutlined,
+  UserOutlined,
   UserAddOutlined,
 } from '@ant-design/icons'
 import { Button, Drawer, Layout, Menu, Space, Typography } from 'antd'
@@ -39,8 +41,11 @@ const catalogNavItem = {
   icon: <CalendarOutlined />,
 } satisfies NavItem
 
+const accountNavItem = { key: ROUTES.account, label: 'Account', icon: <UserOutlined /> } satisfies NavItem
+
 const customerNavItems = [
   { key: ROUTES.tickets, label: 'Tickets', icon: <QrcodeOutlined /> },
+  { key: ROUTES.orders, label: 'Orders', icon: <UnorderedListOutlined /> },
 ] satisfies NavItem[]
 
 const adminNavItems = [
@@ -90,8 +95,8 @@ export function AppShell() {
   const isAdmin = user?.role === 'ADMIN'
   const visibleNavItems = isAuthenticated
     ? isAdmin
-      ? [adminHomeNavItem, ...adminNavItems, logoutNavItem]
-      : [catalogNavItem, ...customerNavItems, logoutNavItem]
+      ? [adminHomeNavItem, ...adminNavItems, accountNavItem, logoutNavItem]
+      : [catalogNavItem, ...customerNavItems, accountNavItem, logoutNavItem]
     : [catalogNavItem, ...guestNavItems]
 
   const handleLogout = async () => {

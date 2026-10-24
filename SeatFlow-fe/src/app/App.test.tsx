@@ -22,6 +22,7 @@ import type {
 import type { AdminDashboard } from '../features/admin/dashboard/types'
 import type { CheckInResult, CheckInSummary } from '../features/admin/check-in/types'
 import type { RefundResponse } from '../features/admin/orders/types'
+import type { OrderHistoryItem, OrderHistoryPage } from '../features/orders/types'
 import type { EventSeatLayout, PublicEvent, PublicEventPage } from '../features/events/types'
 import type { AuthUser, LoginResponse, RegisterResponse } from '../features/auth/types'
 import type {
@@ -841,6 +842,52 @@ function installCheckInMock(scan: ApiHandler, summary: () => CheckInSummary = ()
     }
 
     return rejectedResponse(config, 500, 'Unexpected request')
+  })
+}
+
+function orderHistoryItem(overrides: Partial<OrderHistoryItem> = {}): OrderHistoryItem {
+  return {
+    orderId: '2ae13b6b-df9b-4e08-99ae-f6b13f1997b0',
+    status: 'PAID',
+    totalAmount: 200000,
+    discountAmount: 0,
+    promoCode: null,
+    currency: 'VND',
+    createdAt: '2026-08-20T09:00:00.000Z',
+    updatedAt: '2026-08-20T09:00:00.000Z',
+    event: {
+      id: publishedEvent.id,
+      name: 'Opening Night',
+      startTime: '2026-12-05T12:30:00.000Z',
+      venueName: 'Concert Hall',
+      venueTimezone: 'Asia/Ho_Chi_Minh',
+      cancelled: false,
+      cancellationReason: null,
+    },
+    seats: [
+      { ticketId: 'f2287e38-c265-4841-b20b-57d2d7ba1b9d', ticketStatus: 'ACTIVE', sectionName: 'Orchestra', rowLabel: 'A', seatLabel: 'A1' },
+      { ticketId: '0b2f4c1e-0a39-4c43-9c0d-57e8ac1c3b11', ticketStatus: 'ACTIVE', sectionName: 'Orchestra', rowLabel: 'A', seatLabel: 'A2' },
+    ],
+    refund: null,
+    ...overrides,
+  }
+}
+
+function orderHistoryPage(items: OrderHistoryItem[], overrides: Partial<OrderHistoryPage> = {}): OrderHistoryPage {
+  return { items, page: 0, size: 10, totalItems: items.length, totalPages: items.length === 0 ? 0 : 1, ...overrides }
+}
+
+function installCustomerMock(handler: ApiHandler) {
+  installApiMock((config) => {
+    if (endpoint(config) === 'POST /auth/refresh') {
+      return response<LoginResponse>(config, 200, loginResponse)
+    }
+
+    if (endpoint(config) === 'GET /users/me') {
+      return response<AuthUser>(config, 200, authUser)
+    }
+
+    return handler(config)
   })
 }
 
@@ -2416,6 +2463,285 @@ describe('App', () => {
     expect(screen.queryByText('Reminder email')).not.toBeInTheDocument()
   }, 15000)
 
+  it('lists the buyer orders with their status, seats and totals', async () => {
+    window.history.pushState({}, '', ROUTES.orders)
+    installCustomerMock((config) => {
+      if (endpoint(config) === 'GET /users/me/order-history') {
+        return response<OrderHistoryPage>(config, 200, orderHistoryPage([
+          orderHistoryItem({ discountAmount: 20000, promoCode: 'SPRING', totalAmount: 180000 }),
+          orderHistoryItem({
+            orderId: 'aaaaaaaa-0000-4000-8000-000000000001',
+            status: 'PENDING',
+            seats: [{ ticketId: null, ticketStatus: null, sectionName: 'Balcony', rowLabel: 'B', seatLabel: 'B7' }],
+          }),
+        ]))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'My orders' })).toBeInTheDocument()
+    const paid = await screen.findByLabelText('Order 2AE13B6B')
+    expect(within(paid).getByText('Opening Night')).toBeInTheDocument()
+    expect(within(paid).getByText('Paid')).toBeInTheDocument()
+    expect(within(paid).getByText(/Orchestra, row A, seat A1/)).toBeInTheDocument()
+    expect(within(paid).getByText(/Orchestra, row A, seat A2/)).toBeInTheDocument()
+    expect(within(paid).getByText('180,000 VND')).toBeInTheDocument()
+    expect(within(paid).getByText(/saved 20,000 VND with SPRING/)).toBeInTheDocument()
+    expect(within(paid).getByRole('link', { name: 'View tickets' })).toHaveAttribute('href', ROUTES.tickets)
+
+    const pending = screen.getByLabelText('Order AAAAAAAA')
+    expect(within(pending).getByText('Awaiting payment')).toBeInTheDocument()
+    expect(within(pending).getByText('This order is waiting for payment')).toBeInTheDocument()
+    expect(within(pending).queryByRole('button', { name: 'Receipt' })).not.toBeInTheDocument()
+  }, 20000)
+
+  it('explains a refund, including one caused by a cancelled event', async () => {
+    window.history.pushState({}, '', ROUTES.orders)
+    installCustomerMock((config) => {
+      if (endpoint(config) === 'GET /users/me/order-history') {
+        return response<OrderHistoryPage>(config, 200, orderHistoryPage([
+          orderHistoryItem({
+            status: 'REFUNDED',
+            refund: { amount: 200000, reason: 'Duplicate purchase', refundedAt: '2026-08-25T09:00:00.000Z' },
+            seats: [{ ticketId: 't1', ticketStatus: 'CANCELLED', sectionName: 'Orchestra', rowLabel: 'A', seatLabel: 'A1' }],
+          }),
+          orderHistoryItem({
+            orderId: 'bbbbbbbb-0000-4000-8000-000000000002',
+            status: 'REFUNDED',
+            event: {
+              id: 'e2', name: 'Summer Show', startTime: '2026-12-06T12:30:00.000Z', venueName: 'Open Air',
+              venueTimezone: 'Asia/Ho_Chi_Minh', cancelled: true, cancellationReason: 'Venue flooded',
+            },
+            refund: { amount: 100000, reason: 'Event cancelled: Venue flooded', refundedAt: '2026-08-26T09:00:00.000Z' },
+          }),
+          orderHistoryItem({
+            orderId: 'cccccccc-0000-4000-8000-000000000003',
+            status: 'PAID',
+            event: {
+              id: 'e3', name: 'Waiting Show', startTime: '2026-12-07T12:30:00.000Z', venueName: 'Hall',
+              venueTimezone: 'Asia/Ho_Chi_Minh', cancelled: true, cancellationReason: null,
+            },
+          }),
+        ]))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    const manual = await screen.findByLabelText('Order 2AE13B6B')
+    expect(within(manual).getByText('Refunded')).toBeInTheDocument()
+    expect(within(manual).getByText(/Refunded 200,000 VND on/)).toBeInTheDocument()
+    expect(within(manual).getByText('Reason: Duplicate purchase')).toBeInTheDocument()
+    expect(within(manual).getByText('CANCELLED')).toBeInTheDocument()
+
+    const cancelled = screen.getByLabelText('Order BBBBBBBB')
+    expect(within(cancelled).getByText('This event was cancelled')).toBeInTheDocument()
+    expect(within(cancelled).getByText(/You were refunded 100,000 VND on .*Reason: Venue flooded\./)).toBeInTheDocument()
+
+    const waiting = screen.getByLabelText('Order CCCCCCCC')
+    expect(within(waiting).getByText('Your refund is being processed.')).toBeInTheDocument()
+  }, 20000)
+
+  it('invites a buyer with no orders to browse events', async () => {
+    window.history.pushState({}, '', ROUTES.orders)
+    installCustomerMock((config) => {
+      if (endpoint(config) === 'GET /users/me/order-history') {
+        return response<OrderHistoryPage>(config, 200, orderHistoryPage([]))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText('You have not placed any orders yet')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Browse events' })).toHaveAttribute('href', ROUTES.events)
+  }, 15000)
+
+  it('moves between pages of orders', async () => {
+    const user = userEvent.setup()
+    const pageSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.orders)
+    installCustomerMock((config) => {
+      if (endpoint(config) === 'GET /users/me/order-history') {
+        const page = Number((config.params as { page: number }).page)
+        pageSpy(page)
+        return response<OrderHistoryPage>(config, 200, orderHistoryPage(
+          [orderHistoryItem({ orderId: page === 0 ? '11111111-0000-4000-8000-000000000000' : '22222222-0000-4000-8000-000000000000' })],
+          { page, totalItems: 11, totalPages: 2 },
+        ))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByLabelText('Order 11111111')).toBeInTheDocument()
+    await user.click(screen.getByTitle('2'))
+
+    expect(await screen.findByLabelText('Order 22222222')).toBeInTheDocument()
+    expect(pageSpy).toHaveBeenCalledWith(1)
+  }, 20000)
+
+  it('shows a receipt that can be printed', async () => {
+    const user = userEvent.setup()
+    const printSpy = vi.fn()
+    window.print = printSpy
+    window.history.pushState({}, '', ROUTES.orders)
+    installCustomerMock((config) => {
+      if (endpoint(config) === 'GET /users/me/order-history') {
+        return response<OrderHistoryPage>(config, 200, orderHistoryPage([
+          orderHistoryItem({ discountAmount: 20000, promoCode: 'SPRING', totalAmount: 180000 }),
+        ]))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Receipt' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('SeatFlow receipt')).toBeInTheDocument()
+    expect(within(dialog).getByText('Subtotal')).toBeInTheDocument()
+    expect(within(dialog).getByText('200,000 VND')).toBeInTheDocument()
+    expect(within(dialog).getByText('Discount (SPRING)')).toBeInTheDocument()
+    expect(within(dialog).getByText('-20,000 VND')).toBeInTheDocument()
+    expect(within(dialog).getByText('180,000 VND')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: /Print/ }))
+    expect(printSpy).toHaveBeenCalledOnce()
+  }, 20000)
+
+  it('says so when the orders cannot be loaded', async () => {
+    window.history.pushState({}, '', ROUTES.orders)
+    installCustomerMock((config) => rejectedResponse(config, 503, 'Orders are unavailable'))
+
+    render(<App />)
+
+    expect(await screen.findByText('Orders are unavailable')).toBeInTheDocument()
+  }, 15000)
+
+  it('links to orders and the account from the customer menu', async () => {
+    window.history.pushState({}, '', ROUTES.events)
+    installCustomerMock((config) => {
+      if (endpoint(config) === 'GET /events') {
+        return response<PublicEventPage>(config, 200, publicEventPage([publishedEvent]))
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    const nav = (await screen.findAllByRole('menu'))[0]
+    expect(await within(nav).findByRole('link', { name: 'Orders' })).toHaveAttribute('href', ROUTES.orders)
+    expect(within(nav).getByRole('link', { name: 'Account' })).toHaveAttribute('href', ROUTES.account)
+  }, 20000)
+
+  it('offers admins the account page but not the buyer order list', async () => {
+    window.history.pushState({}, '', ROUTES.admin)
+    installApiMock((config) => {
+      if (endpoint(config) === 'POST /auth/refresh') {
+        return response<LoginResponse>(config, 200, loginResponse)
+      }
+
+      if (endpoint(config) === 'GET /users/me') {
+        return response<AuthUser>(config, 200, adminUser)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+    render(<App />)
+
+    // The menu collapses into an overflow list in jsdom, so hidden links count too. Wait for an
+    // admin-only entry first: the menu briefly shows the customer entries while the user loads.
+    await screen.findByRole('link', { name: 'Event setup', hidden: true })
+    expect(await screen.findByRole('link', { name: 'Account', hidden: true })).toHaveAttribute('href', ROUTES.account)
+    expect(screen.queryByRole('link', { name: 'Orders', hidden: true })).not.toBeInTheDocument()
+  }, 20000)
+
+  it('changes the password and clears the form', async () => {
+    const user = userEvent.setup()
+    const changeSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.account)
+    installCustomerMock((config) => {
+      if (endpoint(config) === 'POST /users/me/password') {
+        changeSpy(requestBody(config))
+        return response<null>(config, 204, null)
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    expect(await screen.findByText(authUser.email)).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Current password'), 'StrongPassword123!')
+    await user.type(screen.getByLabelText('New password'), 'BrandNewPassw0rd!')
+    await user.type(screen.getByLabelText('Confirm new password'), 'BrandNewPassw0rd!')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+
+    expect(await screen.findByText('Your password has been changed')).toBeInTheDocument()
+    expect(changeSpy).toHaveBeenCalledWith({
+      currentPassword: 'StrongPassword123!',
+      newPassword: 'BrandNewPassw0rd!',
+    })
+    expect(screen.getByLabelText('Current password')).toHaveValue('')
+  }, 20000)
+
+  it('explains when the current password is wrong', async () => {
+    const user = userEvent.setup()
+    window.history.pushState({}, '', ROUTES.account)
+    installCustomerMock((config) => {
+      if (endpoint(config) === 'POST /users/me/password') {
+        return rejectedWithCode(config, 400, 'INVALID_CURRENT_PASSWORD', 'wrong')
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.type(await screen.findByLabelText('Current password'), 'NotMyPassw0rd!x')
+    await user.type(screen.getByLabelText('New password'), 'BrandNewPassw0rd!')
+    await user.type(screen.getByLabelText('Confirm new password'), 'BrandNewPassw0rd!')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+
+    expect(await screen.findByText('Your current password is incorrect.')).toBeInTheDocument()
+    expect(screen.queryByText('Your password has been changed')).not.toBeInTheDocument()
+  }, 20000)
+
+  it('does not send a weak or mismatching new password', async () => {
+    const user = userEvent.setup()
+    const changeSpy = vi.fn()
+    window.history.pushState({}, '', ROUTES.account)
+    installCustomerMock((config) => {
+      if (endpoint(config) === 'POST /users/me/password') {
+        changeSpy()
+      }
+
+      return rejectedResponse(config, 500, 'Unexpected request')
+    })
+
+    render(<App />)
+
+    await user.type(await screen.findByLabelText('Current password'), 'StrongPassword123!')
+    await user.type(screen.getByLabelText('New password'), 'weak')
+    await user.type(screen.getByLabelText('Confirm new password'), 'different')
+    await user.click(screen.getByRole('button', { name: 'Change password' }))
+
+    expect(await screen.findByText('Password must be at least 12 characters')).toBeInTheDocument()
+    expect(await screen.findByText('The passwords do not match')).toBeInTheDocument()
+    expect(changeSpy).not.toHaveBeenCalled()
+  }, 20000)
+
   it('restores a session from the refresh cookie', async () => {
     const currentUserSpy = vi.fn()
     window.history.pushState({}, '', ROUTES.events)
@@ -3068,7 +3394,7 @@ describe('App', () => {
       }),
     )
     expect(await screen.findByRole('heading', { name: 'Edit event' })).toBeInTheDocument()
-  }, 10000)
+  }, 30000)
 
   it('saves section pricing for a draft event', async () => {
     const user = userEvent.setup()

@@ -20,6 +20,8 @@ import { EventCatalogPage } from '../../features/events/pages/EventCatalogPage'
 import { EventDetailPage } from '../../features/events/pages/EventDetailPage'
 import { CheckoutPage } from '../../features/holds/pages/CheckoutPage'
 import { PaymentResultPage } from '../../features/checkout/pages/PaymentResultPage'
+import { AccountPage } from '../../features/account/pages/AccountPage'
+import { OrdersPage } from '../../features/orders/pages/OrdersPage'
 import { TicketDetailPage } from '../../features/tickets/pages/TicketDetailPage'
 import { TicketListPage } from '../../features/tickets/pages/TicketListPage'
 import { ROUTES } from '../../shared/constants/routes'
@@ -38,9 +40,11 @@ export function AppRouter() {
           <Route path={ROUTES.eventDetailPattern} element={<EventDetailPage />} />
         </Route>
         <Route element={<ProtectedRoute />}>
+          <Route path={ROUTES.account} element={<AccountPage />} />
           <Route element={<CustomerRoute />}>
             <Route path={ROUTES.checkoutPattern} element={<CheckoutPage />} />
             <Route path={ROUTES.paymentResultPattern} element={<PaymentResultPage />} />
+            <Route path={ROUTES.orders} element={<OrdersPage />} />
             <Route path={ROUTES.tickets} element={<TicketListPage />} />
             <Route path={ROUTES.ticketDetailPattern} element={<TicketDetailPage />} />
           </Route>

@@ -878,3 +878,35 @@ body {
     min-width: 0;
   }
 }
+
+.orders-page,
+.account-page {
+  width: min(100%, 960px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.order-seat-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+/* Printing the receipt hides everything else on the page, including the dialog around it. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .receipt-print,
+  .receipt-print * {
+    visibility: visible;
+  }
+
+  .receipt-print {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+}

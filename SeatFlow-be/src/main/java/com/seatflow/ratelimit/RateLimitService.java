@@ -55,6 +55,11 @@ public class RateLimitService {
 		check(email == null ? "password-reset-use" : "password-reset", scope, properties.passwordReset());
 	}
 
+	/** Changing a password asks for the current one, so guessing it from a stolen session is capped. */
+	public void checkPasswordChange(UUID userId) {
+		check("password-change", userId.toString(), properties.passwordReset());
+	}
+
 	/**
 	 * The seat layout is the heaviest read in the system and is served unauthenticated, so it
 	 * needs an address-scoped bucket of its own rather than inheriting the write-path limits.
