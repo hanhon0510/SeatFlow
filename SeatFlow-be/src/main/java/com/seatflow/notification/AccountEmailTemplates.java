@@ -36,6 +36,18 @@ public class AccountEmailTemplates {
 				to, "Your SeatFlow password was changed", body.text(GREETING, SIGN_OFF), body.html(GREETING, SIGN_OFF));
 	}
 
+	/** For a change made from inside the account, where the current device stays signed in. */
+	public EmailMessage passwordChangedInAccount(String to) {
+		EmailBody body = new EmailBody()
+				.paragraph("The password of your SeatFlow account was just changed from your account settings, "
+						+ "and your other devices were signed out.")
+				.paragraph("If this was you, there is nothing more to do. If it was not, reset your password "
+						+ "straight away and contact us.")
+				.link("Reset your password", frontendBaseUrl + "/forgot-password");
+		return new EmailMessage(
+				to, "Your SeatFlow password was changed", body.text(GREETING, SIGN_OFF), body.html(GREETING, SIGN_OFF));
+	}
+
 	private static String describe(Duration duration) {
 		long minutes = duration.toMinutes();
 		if (minutes >= 60 && minutes % 60 == 0) {

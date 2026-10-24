@@ -90,6 +90,8 @@ public class SecurityConfig {
 						.requestMatchers(HttpMethod.POST, "/api/v1/promo-codes/validate").hasAnyRole("USER", "ADMIN")
 						.requestMatchers(HttpMethod.GET, "/api/v1/orders/*").hasAnyRole("USER", "ADMIN")
 						.requestMatchers(HttpMethod.GET, "/api/v1/users/me/orders").hasAnyRole("USER", "ADMIN")
+						.requestMatchers(HttpMethod.GET, "/api/v1/users/me/order-history").hasAnyRole("USER", "ADMIN")
+						.requestMatchers(HttpMethod.POST, "/api/v1/users/me/password").hasAnyRole("USER", "ADMIN")
 						.requestMatchers(HttpMethod.GET, "/api/v1/tickets/*").hasAnyRole("USER", "ADMIN")
 						.requestMatchers(HttpMethod.GET, "/api/v1/users/me/tickets").hasAnyRole("USER", "ADMIN")
 						.requestMatchers("/api/v1/admin", "/api/v1/admin/**").hasRole("ADMIN")

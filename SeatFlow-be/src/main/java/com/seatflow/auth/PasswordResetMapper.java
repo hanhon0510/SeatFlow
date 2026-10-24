@@ -27,5 +27,14 @@ public interface PasswordResetMapper {
 
 	int updatePasswordHash(@Param("userId") UUID userId, @Param("passwordHash") String passwordHash);
 
+	/**
+	 * Signs the user out everywhere except the session identified by {@code keepTokenHash}. A null
+	 * hash keeps nothing. Used when the user changes their password while signed in.
+	 */
+	int revokeOtherSessions(
+			@Param("userId") UUID userId,
+			@Param("keepTokenHash") String keepTokenHash,
+			@Param("now") Instant now);
+
 	int deleteExpired(@Param("before") Instant before, @Param("limit") int limit);
 }

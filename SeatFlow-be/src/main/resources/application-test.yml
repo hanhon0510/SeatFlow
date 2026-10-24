@@ -28,3 +28,8 @@ seatflow:
   # Tests drive the sweep explicitly; a background thread would race their fixtures.
   maintenance:
     enabled: false
+  # A developer's .env may switch real email or reminders on; tests must never depend on that.
+  mail:
+    enabled: false
+  reminders:
+    enabled: false
