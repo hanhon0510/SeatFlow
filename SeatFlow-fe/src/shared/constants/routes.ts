@@ -11,6 +11,8 @@ export const ROUTES = {
   checkout: (holdId: string) => `/checkout/${holdId}`,
   paymentResultPattern: '/checkout/:holdId/result',
   paymentResult: (holdId: string) => `/checkout/${holdId}/result`,
+  orders: '/orders',
+  account: '/account',
   tickets: '/tickets',
   ticketDetailPattern: '/tickets/:ticketId',
   ticketDetail: (ticketId: string) => `/tickets/${ticketId}`,
