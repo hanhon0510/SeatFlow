@@ -177,6 +177,10 @@ body {
   border-radius: 8px;
 }
 
+.waitlist-card {
+  margin-bottom: 16px;
+}
+
 .seat-map-tools {
   display: grid;
   gap: 16px;

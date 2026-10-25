@@ -212,3 +212,13 @@ export type EventReminderRequest = {
   enabled: boolean
   hoursBefore: number
 }
+
+export type EventWaitlist = {
+  eventId: string
+  waiting: number
+  waitingSeats: number
+  offered: number
+  fulfilled: number
+  expired: number
+  cancelled: number
+}
