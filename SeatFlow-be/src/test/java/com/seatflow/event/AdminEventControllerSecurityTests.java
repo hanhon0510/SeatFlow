@@ -41,6 +41,7 @@ import com.seatflow.venue.VenueMapper;
 import com.seatflow.venue.VenueRecord;
 import com.seatflow.venue.VenueService;
 import com.seatflow.venue.VenueStatus;
+import com.seatflow.waitlist.WaitlistOfferGuard;
 
 @WebMvcTest(AdminEventController.class)
 @Import({
@@ -91,6 +92,9 @@ class AdminEventControllerSecurityTests {
 
 	@MockitoBean
 	private SeatHoldStore seatHoldStore;
+
+	@MockitoBean
+	private WaitlistOfferGuard waitlistOfferGuard;
 
 	@Test
 	void adminCanCreateDraftEvent() throws Exception {

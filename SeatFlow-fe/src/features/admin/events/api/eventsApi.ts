@@ -5,6 +5,7 @@ import type {
   EventCancellation,
   EventReminder,
   EventReminderRequest,
+  EventWaitlist,
   EventFormValues,
   EventPage,
   EventPublishResponse,
@@ -25,6 +26,7 @@ export const eventQueryKeys = {
   sales: (eventId: string) => [...eventQueryKeys.all, 'sales', eventId] as const,
   seatMap: (eventId: string) => [...eventQueryKeys.all, 'seat-map', eventId] as const,
   reminder: (eventId: string) => [...eventQueryKeys.all, 'reminder', eventId] as const,
+  waitlist: (eventId: string) => [...eventQueryKeys.all, 'waitlist', eventId] as const,
 }
 
 export async function listEvents(page: number, size: number) {
@@ -128,5 +130,10 @@ export async function getEventReminder(eventId: string) {
 
 export async function updateEventReminder(eventId: string, request: EventReminderRequest) {
   const response = await apiClient.put<EventReminder>(`/admin/events/${eventId}/reminder`, request)
+  return response.data
+}
+
+export async function getEventWaitlist(eventId: string) {
+  const response = await apiClient.get<EventWaitlist>(`/admin/events/${eventId}/waitlist`)
   return response.data
 }

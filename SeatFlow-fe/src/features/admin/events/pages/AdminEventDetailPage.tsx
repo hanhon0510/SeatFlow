@@ -33,6 +33,7 @@ import { eventQueryKeys, getEventSales } from '../api/eventsApi'
 import { EventSalesStatusTag } from '../components/EventSalesStatusTag'
 import { CancelEventModal } from '../components/CancelEventModal'
 import { EventReminderCard } from '../components/EventReminderCard'
+import { EventWaitlistCard } from '../components/EventWaitlistCard'
 import { EventStatusTag } from '../components/EventStatusTag'
 import { AdminSeatMap } from '../components/AdminSeatMap'
 import { SalesTrendChart } from '../components/SalesTrendChart'
@@ -268,6 +269,8 @@ export function AdminEventDetailPage() {
       </Card>
 
       {event.status === 'DRAFT' || event.status === 'PUBLISHED' ? <EventReminderCard eventId={event.id} /> : null}
+
+      {event.status === 'PUBLISHED' ? <EventWaitlistCard eventId={event.id} /> : null}
 
       <Card title="Sales by section">
         {sections.length === 0 ? (

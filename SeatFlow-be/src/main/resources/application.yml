@@ -184,6 +184,18 @@ seatflow:
     default-hours-before: ${SEATFLOW_REMINDERS_DEFAULT_HOURS_BEFORE:24}
     batch-size: ${SEATFLOW_REMINDERS_BATCH_SIZE:100}
     fixed-delay-ms: ${SEATFLOW_REMINDERS_FIXED_DELAY_MS:60000}
+  waitlist:
+    # The background job that offers freed seats to people waiting for a sold-out event and
+    # emails them. Turn on together with seatflow.mail.enabled, otherwise offers would be made
+    # without telling anyone.
+    enabled: ${SEATFLOW_WAITLIST_ENABLED:false}
+    # How long offered seats are kept for the person they were offered to.
+    offer-window: ${SEATFLOW_WAITLIST_OFFER_WINDOW:10m}
+    # Events looked at per pass.
+    batch-size: ${SEATFLOW_WAITLIST_BATCH_SIZE:50}
+    # Free seats considered per event per pass.
+    scan-limit: ${SEATFLOW_WAITLIST_SCAN_LIMIT:500}
+    fixed-delay-ms: ${SEATFLOW_WAITLIST_FIXED_DELAY_MS:15000}
   mail:
     # false logs each email instead of sending it, so a fresh checkout needs no mail server.
     enabled: ${SEATFLOW_MAIL_ENABLED:false}

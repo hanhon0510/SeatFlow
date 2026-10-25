@@ -21,6 +21,7 @@ import com.seatflow.event.EventSeatStatus;
 import com.seatflow.event.EventStatus;
 import com.seatflow.observability.BusinessMetrics;
 import com.seatflow.seatupdates.SeatStateNotifier;
+import com.seatflow.waitlist.WaitlistOfferGuard;
 
 @Service
 public class SeatHoldService {
@@ -33,6 +34,7 @@ public class SeatHoldService {
 	private final Clock clock;
 	private final SeatStateNotifier seatStateNotifier;
 	private final BusinessMetrics businessMetrics;
+	private final WaitlistOfferGuard waitlistOfferGuard;
 
 	public SeatHoldService(
 			EventSeatMapper eventSeatMapper,
@@ -40,13 +42,15 @@ public class SeatHoldService {
 			SeatHoldProperties properties,
 			Clock clock,
 			SeatStateNotifier seatStateNotifier,
-			BusinessMetrics businessMetrics) {
+			BusinessMetrics businessMetrics,
+			WaitlistOfferGuard waitlistOfferGuard) {
 		this.eventSeatMapper = eventSeatMapper;
 		this.seatHoldStore = seatHoldStore;
 		this.properties = properties;
 		this.clock = clock;
 		this.seatStateNotifier = seatStateNotifier;
 		this.businessMetrics = businessMetrics;
+		this.waitlistOfferGuard = waitlistOfferGuard;
 	}
 
 	public SeatHoldResponse createHold(UUID eventId, UUID userId, SeatHoldRequest request) {
@@ -60,6 +64,8 @@ public class SeatHoldService {
 					requestedEventSeatIds,
 					eventSeatMapper.findHoldCandidates(eventId, requestedEventSeatIds));
 			candidates.forEach(candidate -> validateHoldCandidate(candidate, now));
+			// Seats offered from the waitlist belong to the person they were offered to.
+			waitlistOfferGuard.requireNotOfferedToOthers(eventId, userId, requestedEventSeatIds);
 
 			UUID holdId = UUID.randomUUID();
 			Duration ttl = properties.ttl();
@@ -76,6 +82,7 @@ public class SeatHoldService {
 				throw new SeatHoldConflictException();
 			}
 			businessMetrics.seatHoldCreated();
+			waitlistOfferGuard.holdCreated(eventId, userId, hold.eventSeatIds());
 			notifySeatsHeld(hold);
 
 			return new SeatHoldResponse(

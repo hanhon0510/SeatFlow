@@ -2,8 +2,10 @@ package com.seatflow.event;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -16,6 +18,8 @@ import org.junit.jupiter.api.Test;
 
 import com.seatflow.hold.SeatHoldRecord;
 import com.seatflow.hold.SeatHoldStore;
+import com.seatflow.waitlist.WaitlistMapper;
+import com.seatflow.waitlist.WaitlistOfferGuard;
 
 class EventSeatLayoutServiceTests {
 
@@ -38,7 +42,7 @@ class EventSeatLayoutServiceTests {
 						EventSeatStatus.BLOCKED, false),
 				row(balconyId, "Balcony", 2, "C", UUID.randomUUID(), "C1", 1, "75000.00",
 						EventSeatStatus.AVAILABLE, false)));
-		EventSeatLayoutService service = new EventSeatLayoutService(mapper, new InMemorySeatHoldStore());
+		EventSeatLayoutService service = new EventSeatLayoutService(mapper, new InMemorySeatHoldStore(), noOffers());
 
 		EventSeatLayoutResponse response = service.getSeatLayout(eventId);
 
@@ -73,7 +77,8 @@ class EventSeatLayoutServiceTests {
 	void emptyPublishedLayoutIsUnavailablePublicly() {
 		EventSeatLayoutService service = new EventSeatLayoutService(
 				new InMemoryEventSeatMapper(List.of()),
-				new InMemorySeatHoldStore());
+				new InMemorySeatHoldStore(),
+				noOffers());
 
 		assertThatThrownBy(() -> service.getSeatLayout(UUID.randomUUID()))
 				.isInstanceOf(EventNotFoundException.class)
@@ -100,7 +105,7 @@ class EventSeatLayoutServiceTests {
 				row(sectionId, "Orchestra", 1, "A", freeSeatId, "A3", 3, "125000.00",
 						EventSeatStatus.AVAILABLE, false),
 				row(sectionId, "Orchestra", 1, "A", soldSeatId, "A4", 4, "125000.00",
-						EventSeatStatus.SOLD, false))), holdStore);
+						EventSeatStatus.SOLD, false))), holdStore, noOffers());
 
 		List<EventSeatLayoutSeatResponse> seats = service.getSeatLayout(eventId, CURRENT_USER_ID)
 				.sections().getFirst()
@@ -127,7 +132,7 @@ class EventSeatLayoutServiceTests {
 				row(sectionId, "Orchestra", 1, "A", UUID.randomUUID(), "A2", 2, "125000.00",
 						EventSeatStatus.SOLD, false),
 				row(sectionId, "Orchestra", 1, "A", UUID.randomUUID(), "A3", 3, "125000.00",
-						EventSeatStatus.BLOCKED, false))), holdStore);
+						EventSeatStatus.BLOCKED, false))), holdStore, noOffers());
 
 		List<EventSeatLayoutSeatResponse> seats = service.getSeatLayout(eventId, CURRENT_USER_ID)
 				.sections().getFirst()
@@ -276,5 +281,9 @@ class EventSeatLayoutServiceTests {
 			});
 			return owners;
 		}
+	}
+
+	private static WaitlistOfferGuard noOffers() {
+		return new WaitlistOfferGuard(mock(WaitlistMapper.class), Clock.systemUTC());
 	}
 }

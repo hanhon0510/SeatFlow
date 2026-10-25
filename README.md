@@ -187,6 +187,20 @@ without a real email going out: set `SEATFLOW_REMINDERS_ENABLED=true` together
 with `SEATFLOW_MAIL_ENABLED=true`. Orders placed after the reminder time are
 not reminded again, since they were told everything when they bought.
 
+#### Waitlist
+
+When an event has no free seats (or fewer than a buyer wants), signed-in buyers
+can join its waitlist from the event page and say how many seats they need. Seats
+come back on their own, when a hold lapses or an order is refunded, so a
+background job looks for them every 15 seconds. When enough are free for the
+first buyer in line it sets those seats aside for them, shows them as held to
+everyone else, and emails the buyer. They have `SEATFLOW_WAITLIST_OFFER_WINDOW`
+(default `10m`) to hold the seats like any others; after that the seats go to the
+next buyer. A buyer who needs more seats than are free keeps their place and is
+passed over until enough come back. The job is off by default so offers are
+never made without telling anyone: set `SEATFLOW_WAITLIST_ENABLED=true` together
+with `SEATFLOW_MAIL_ENABLED=true`. Admins see the queue on the event page.
+
 Health endpoints:
 
 - `GET /api/v1/health` — application health

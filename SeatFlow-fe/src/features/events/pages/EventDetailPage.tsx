@@ -5,6 +5,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { apiErrorMessage } from '../../../shared/api/apiError'
 import { ROUTES } from '../../../shared/constants/routes'
+import { WaitlistCard } from '../../waitlist/components/WaitlistCard'
 import { getPublicEvent, publicEventQueryKeys } from '../api/eventsApi'
 import { EventSeatMap } from '../components/EventSeatMap'
 import type { PublicEvent } from '../types'
@@ -98,7 +99,10 @@ export function EventDetailPage() {
       </Card>
 
       {isSeatSelectionOpen(event.salesStatus) ? (
-        <EventSeatMap key={event.id} eventId={event.id} />
+        <>
+          <WaitlistCard eventId={event.id} soldOut={event.salesStatus === 'SOLD_OUT'} />
+          <EventSeatMap key={event.id} eventId={event.id} />
+        </>
       ) : (
         <Alert showIcon type="info" message={closedSalesMessage(event)} />
       )}

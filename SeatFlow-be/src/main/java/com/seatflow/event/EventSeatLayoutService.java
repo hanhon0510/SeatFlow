@@ -9,16 +9,22 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 import com.seatflow.hold.SeatHoldStore;
+import com.seatflow.waitlist.WaitlistOfferGuard;
 
 @Service
 public class EventSeatLayoutService {
 
 	private final EventSeatMapper eventSeatMapper;
 	private final SeatHoldStore seatHoldStore;
+	private final WaitlistOfferGuard waitlistOfferGuard;
 
-	public EventSeatLayoutService(EventSeatMapper eventSeatMapper, SeatHoldStore seatHoldStore) {
+	public EventSeatLayoutService(
+			EventSeatMapper eventSeatMapper,
+			SeatHoldStore seatHoldStore,
+			WaitlistOfferGuard waitlistOfferGuard) {
 		this.eventSeatMapper = eventSeatMapper;
 		this.seatHoldStore = seatHoldStore;
+		this.waitlistOfferGuard = waitlistOfferGuard;
 	}
 
 	public EventSeatLayoutResponse getSeatLayout(UUID eventId) {
@@ -44,12 +50,13 @@ public class EventSeatLayoutService {
 		}
 
 		Map<UUID, UUID> holdOwnersByEventSeatId = findHoldOwners(eventId, rows);
+		Map<UUID, UUID> offerOwnersByEventSeatId = findOfferOwners(eventId);
 		Map<UUID, MutableSectionLayout> sections = new LinkedHashMap<>();
 		for (EventSeatLayoutRow row : rows) {
 			MutableSectionLayout section = sections.computeIfAbsent(
 					row.sectionId(),
 					ignored -> new MutableSectionLayout(row));
-			section.addSeat(row, status(row, holdOwnersByEventSeatId, currentUserId));
+			section.addSeat(row, status(row, holdOwnersByEventSeatId, offerOwnersByEventSeatId, currentUserId));
 		}
 
 		return new EventSeatLayoutResponse(
@@ -73,9 +80,20 @@ public class EventSeatLayoutService {
 		}
 	}
 
+	/** Seats kept for a waitlisted buyer; a failure here must not take the seat map down. */
+	private Map<UUID, UUID> findOfferOwners(UUID eventId) {
+		try {
+			return waitlistOfferGuard.openOfferOwners(eventId);
+		}
+		catch (RuntimeException ex) {
+			return Map.of();
+		}
+	}
+
 	private static EventSeatLayoutStatus status(
 			EventSeatLayoutRow row,
 			Map<UUID, UUID> holdOwnersByEventSeatId,
+			Map<UUID, UUID> offerOwnersByEventSeatId,
 			UUID currentUserId) {
 		if (row.permanentStatus() == EventSeatStatus.SOLD) {
 			return EventSeatLayoutStatus.SOLD;
@@ -86,7 +104,11 @@ public class EventSeatLayoutService {
 
 		UUID holdOwnerId = holdOwnersByEventSeatId.get(row.eventSeatId());
 		if (holdOwnerId == null) {
-			return EventSeatLayoutStatus.AVAILABLE;
+			UUID offerOwnerId = offerOwnersByEventSeatId.get(row.eventSeatId());
+			// To everyone but the buyer it was offered to, an offered seat looks held.
+			return offerOwnerId == null || offerOwnerId.equals(currentUserId)
+					? EventSeatLayoutStatus.AVAILABLE
+					: EventSeatLayoutStatus.HELD;
 		}
 		if (currentUserId != null && currentUserId.equals(holdOwnerId)) {
 			return EventSeatLayoutStatus.HELD_BY_YOU;
