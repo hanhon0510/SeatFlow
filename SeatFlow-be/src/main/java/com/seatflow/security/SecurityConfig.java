@@ -78,6 +78,7 @@ public class SecurityConfig {
 								"/error",
 								"/ws",
 								"/ws/**").permitAll()
+						.requestMatchers("/api/v1/events/*/waitlist").hasRole("USER")
 						.requestMatchers(HttpMethod.GET, "/api/v1/events", "/api/v1/events/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/v1/events/*/holds").hasRole("USER")
 						.requestMatchers(HttpMethod.GET, "/api/v1/holds/*").hasAnyRole("USER", "ADMIN")

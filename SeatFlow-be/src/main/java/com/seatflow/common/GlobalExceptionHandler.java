@@ -74,6 +74,9 @@ import com.seatflow.venue.InvalidVenuePaginationException;
 import com.seatflow.venue.InvalidVenueTimezoneException;
 import com.seatflow.venue.VenueAlreadyArchivedException;
 import com.seatflow.venue.VenueNotFoundException;
+import com.seatflow.waitlist.InvalidWaitlistRequestException;
+import com.seatflow.waitlist.WaitlistAlreadyJoinedException;
+import com.seatflow.waitlist.WaitlistUnavailableException;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -278,6 +281,27 @@ public class GlobalExceptionHandler {
 			SeatHoldConflictException ex,
 			HttpServletRequest request) {
 		return error(request, ApiErrorCode.SEAT_ALREADY_HELD, ex);
+	}
+
+	@ExceptionHandler(WaitlistUnavailableException.class)
+	public ResponseEntity<ApiErrorResponse> handleWaitlistUnavailable(
+			WaitlistUnavailableException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.WAITLIST_UNAVAILABLE, ex);
+	}
+
+	@ExceptionHandler(WaitlistAlreadyJoinedException.class)
+	public ResponseEntity<ApiErrorResponse> handleWaitlistAlreadyJoined(
+			WaitlistAlreadyJoinedException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.WAITLIST_ALREADY_JOINED, ex);
+	}
+
+	@ExceptionHandler(InvalidWaitlistRequestException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidWaitlistRequest(
+			InvalidWaitlistRequestException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_WAITLIST_REQUEST, ex);
 	}
 
 	@ExceptionHandler(InvalidSeatHoldRequestException.class)

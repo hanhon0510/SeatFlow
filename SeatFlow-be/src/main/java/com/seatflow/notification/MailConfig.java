@@ -17,4 +17,9 @@ public class MailConfig {
 	public AccountEmailTemplates accountEmailTemplates(SeatFlowMailProperties properties) {
 		return new AccountEmailTemplates(properties.frontendBaseUrl());
 	}
+
+	@Bean
+	public WaitlistEmailTemplates waitlistEmailTemplates(SeatFlowMailProperties properties) {
+		return new WaitlistEmailTemplates(properties.frontendBaseUrl());
+	}
 }

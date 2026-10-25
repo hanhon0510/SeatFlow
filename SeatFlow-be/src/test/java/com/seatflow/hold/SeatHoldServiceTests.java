@@ -3,6 +3,7 @@ package com.seatflow.hold;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -31,6 +32,8 @@ import com.seatflow.event.EventStatus;
 import com.seatflow.observability.BusinessMetrics;
 import com.seatflow.seatupdates.SeatStateChangeType;
 import com.seatflow.seatupdates.SeatStateNotifier;
+import com.seatflow.waitlist.WaitlistMapper;
+import com.seatflow.waitlist.WaitlistOfferGuard;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
@@ -615,7 +618,8 @@ class SeatHoldServiceTests {
 				new SeatHoldProperties(TTL, maxSeats),
 				clock,
 				seatStateNotifier,
-				new BusinessMetrics(new SimpleMeterRegistry()));
+				new BusinessMetrics(new SimpleMeterRegistry()),
+				new WaitlistOfferGuard(mock(WaitlistMapper.class), clock));
 	}
 
 	private static SeatHoldService service(
@@ -631,7 +635,8 @@ class SeatHoldServiceTests {
 				new SeatHoldProperties(TTL, maxSeats),
 				clock,
 				seatStateNotifier,
-				new BusinessMetrics(meterRegistry));
+				new BusinessMetrics(meterRegistry),
+				new WaitlistOfferGuard(mock(WaitlistMapper.class), clock));
 	}
 
 	private static EventSeatHoldCandidate candidate(EventStatus eventStatus, EventSeatStatus permanentStatus) {

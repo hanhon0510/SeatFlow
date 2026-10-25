@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.waitlist.WaitlistMapper">
+    <resultMap id="WaitlistEntryResultMap" type="com.seatflow.waitlist.WaitlistEntryRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="user_id" javaType="java.util.UUID" />
+            <arg column="seat_count" javaType="_int" />
+            <arg column="status" javaType="com.seatflow.waitlist.WaitlistStatus" />
+            <arg column="created_at" javaType="java.time.Instant" />
+            <arg column="offered_at" javaType="java.time.Instant" />
+            <arg column="offer_expires_at" javaType="java.time.Instant" />
+            <arg column="updated_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="FreeSeatResultMap" type="com.seatflow.waitlist.WaitlistFreeSeat">
+        <constructor>
+            <idArg column="event_seat_id" javaType="java.util.UUID" />
+            <arg column="section_id" javaType="java.util.UUID" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="seat_number" javaType="_int" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="OfferedSeatResultMap" type="com.seatflow.waitlist.WaitlistOfferedSeat">
+        <constructor>
+            <idArg column="event_seat_id" javaType="java.util.UUID" />
+            <arg column="user_id" javaType="java.util.UUID" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="StatusCountResultMap" type="com.seatflow.waitlist.WaitlistStatusCount">
+        <constructor>
+            <idArg column="status" javaType="com.seatflow.waitlist.WaitlistStatus" />
+            <arg column="entries" javaType="_long" />
+            <arg column="seats" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="OfferEmailResultMap" type="com.seatflow.notification.WaitlistOfferEmailDetails">
+        <constructor>
+            <idArg column="entry_id" javaType="java.util.UUID" />
+            <arg column="email" javaType="java.lang.String" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="event_name" javaType="java.lang.String" />
+            <arg column="event_start_time" javaType="java.time.Instant" />
+            <arg column="venue_name" javaType="java.lang.String" />
+            <arg column="venue_address" javaType="java.lang.String" />
+            <arg column="venue_city" javaType="java.lang.String" />
+            <arg column="venue_timezone" javaType="java.lang.String" />
+            <arg column="seat_count" javaType="_int" />
+            <arg column="offer_expires_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <sql id="EntryColumns">
+        entry.id,
+        entry.event_id,
+        entry.user_id,
+        entry.seat_count,
+        entry.status,
+        entry.created_at,
+        entry.offered_at,
+        entry.offer_expires_at,
+        entry.updated_at
+    </sql>
+
+    <insert id="insert">
+        INSERT INTO waitlist_entries (
+            id, event_id, user_id, seat_count, status, created_at, offered_at, offer_expires_at, updated_at
+        )
+        VALUES (
+            #{entry.id}, #{entry.eventId}, #{entry.userId}, #{entry.seatCount}, #{entry.status},
+            #{entry.createdAt}, #{entry.offeredAt}, #{entry.offerExpiresAt}, #{entry.updatedAt}
+        )
+    </insert>
+
+    <select id="findActive" resultMap="WaitlistEntryResultMap">
+        SELECT <include refid="EntryColumns" />
+        FROM waitlist_entries entry
+        WHERE entry.event_id = #{eventId}
+          AND entry.user_id = #{userId}
+          AND entry.status IN ('WAITING', 'OFFERED')
+    </select>
+
+    <select id="countWaiting" resultType="long">
+        SELECT COUNT(*)
+        FROM waitlist_entries
+        WHERE event_id = #{eventId}
+          AND status = 'WAITING'
+    </select>
+
+    <select id="countWaitingAhead" resultType="long">
+        SELECT COUNT(*)
+        FROM waitlist_entries
+        WHERE event_id = #{eventId}
+          AND status = 'WAITING'
+          AND (created_at, id) &lt; (#{createdAt}, #{id})
+    </select>
+
+    <select id="findOfferedEventSeatIds" resultType="java.util.UUID">
+        SELECT offer_seat.event_seat_id
+        FROM waitlist_offer_seats offer_seat
+        JOIN event_seats event_seat ON event_seat.id = offer_seat.event_seat_id
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        WHERE offer_seat.entry_id = #{entryId}
+        ORDER BY seat.row_label ASC, seat.seat_number ASC, offer_seat.event_seat_id ASC
+    </select>
+
+    <update id="cancelActive">
+        UPDATE waitlist_entries
+        SET status = 'CANCELLED',
+            updated_at = #{now}
+        WHERE event_id = #{eventId}
+          AND user_id = #{userId}
+          AND status IN ('WAITING', 'OFFERED')
+    </update>
+
+    <update id="fulfillOffer">
+        UPDATE waitlist_entries entry
+        SET status = 'FULFILLED',
+            updated_at = #{now}
+        WHERE entry.event_id = #{eventId}
+          AND entry.user_id = #{userId}
+          AND entry.status = 'OFFERED'
+          AND entry.offer_expires_at &gt; #{now}
+          AND EXISTS (
+              SELECT 1
+              FROM waitlist_offer_seats offer_seat
+              WHERE offer_seat.entry_id = entry.id
+                AND offer_seat.event_seat_id IN
+                <foreach collection="eventSeatIds" item="eventSeatId" open="(" separator="," close=")">
+                    #{eventSeatId}
+                </foreach>
+          )
+    </update>
+
+    <select id="findOpenOfferedSeats" resultMap="OfferedSeatResultMap">
+        SELECT offer_seat.event_seat_id, entry.user_id
+        FROM waitlist_entries entry
+        JOIN waitlist_offer_seats offer_seat ON offer_seat.entry_id = entry.id
+        WHERE entry.event_id = #{eventId}
+          AND entry.status = 'OFFERED'
+          AND entry.offer_expires_at &gt; #{now}
+    </select>
+
+    <select id="countByStatus" resultMap="StatusCountResultMap">
+        SELECT status, COUNT(*) AS entries, COALESCE(SUM(seat_count), 0) AS seats
+        FROM waitlist_entries
+        WHERE event_id = #{eventId}
+        GROUP BY status
+    </select>
+
+    <select id="lockEvent" resultType="java.lang.Integer">
+        SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(#{eventId}::text, 26))) AS locked
+    </select>
+
+    <select id="findEventIdsWithWaiting" resultType="java.util.UUID">
+        SELECT e.id
+        FROM events e
+        WHERE e.status = 'PUBLISHED'
+          AND e.sales_start_time &lt;= #{now}
+          AND e.sales_end_time &gt; #{now}
+          AND EXISTS (
+              SELECT 1 FROM waitlist_entries entry
+              WHERE entry.event_id = e.id AND entry.status = 'WAITING'
+          )
+        ORDER BY (
+            SELECT MIN(entry.created_at) FROM waitlist_entries entry
+            WHERE entry.event_id = e.id AND entry.status = 'WAITING'
+        ) ASC, e.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findWaiting" resultMap="WaitlistEntryResultMap">
+        SELECT <include refid="EntryColumns" />
+        FROM waitlist_entries entry
+        WHERE entry.event_id = #{eventId}
+          AND entry.status = 'WAITING'
+        ORDER BY entry.created_at ASC, entry.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findFreeSeatCandidates" resultMap="FreeSeatResultMap">
+        SELECT
+            event_seat.id AS event_seat_id,
+            venue_section.id AS section_id,
+            seat.row_label,
+            seat.seat_number
+        FROM event_seats event_seat
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        JOIN venue_sections venue_section ON venue_section.id = seat.section_id
+        WHERE event_seat.event_id = #{eventId}
+          AND event_seat.permanent_status = 'AVAILABLE'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM waitlist_offer_seats offer_seat
+              JOIN waitlist_entries entry ON entry.id = offer_seat.entry_id
+              WHERE offer_seat.event_seat_id = event_seat.id
+                AND entry.status = 'OFFERED'
+                AND entry.offer_expires_at &gt; #{now}
+          )
+        ORDER BY
+            venue_section.display_order ASC,
+            venue_section.name ASC,
+            venue_section.id ASC,
+            seat.row_label ASC,
+            seat.seat_number ASC,
+            event_seat.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="markOffered">
+        UPDATE waitlist_entries
+        SET status = 'OFFERED',
+            offered_at = #{offeredAt},
+            offer_expires_at = #{offerExpiresAt},
+            updated_at = #{offeredAt}
+        WHERE id = #{id}
+          AND status = 'WAITING'
+    </update>
+
+    <insert id="insertOfferSeats">
+        INSERT INTO waitlist_offer_seats (entry_id, event_seat_id)
+        VALUES
+        <foreach collection="eventSeatIds" item="eventSeatId" separator=",">
+            (#{entryId}, #{eventSeatId})
+        </foreach>
+    </insert>
+
+    <select id="findLapsedOffers" resultMap="WaitlistEntryResultMap">
+        SELECT <include refid="EntryColumns" />
+        FROM waitlist_entries entry
+        WHERE entry.status = 'OFFERED'
+          AND entry.offer_expires_at &lt;= #{now}
+        ORDER BY entry.offer_expires_at ASC, entry.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="expireOffer">
+        UPDATE waitlist_entries
+        SET status = 'EXPIRED',
+            updated_at = #{now}
+        WHERE id = #{id}
+          AND status = 'OFFERED'
+    </update>
+
+    <update id="closeEnded">
+        UPDATE waitlist_entries
+        SET status = 'EXPIRED',
+            updated_at = #{now}
+        WHERE id IN (
+            SELECT entry.id
+            FROM waitlist_entries entry
+            JOIN events e ON e.id = entry.event_id
+            WHERE entry.status IN ('WAITING', 'OFFERED')
+              AND (e.status &lt;&gt; 'PUBLISHED' OR e.sales_end_time &lt;= #{now})
+            ORDER BY entry.created_at ASC
+            LIMIT #{limit}
+        )
+    </update>
+
+    <select id="findOfferEmailDetails" resultMap="OfferEmailResultMap">
+        SELECT
+            entry.id AS entry_id,
+            u.email,
+            e.id AS event_id,
+            e.name AS event_name,
+            e.start_time AS event_start_time,
+            v.name AS venue_name,
+            v.address AS venue_address,
+            v.city AS venue_city,
+            v.timezone AS venue_timezone,
+            entry.seat_count,
+            entry.offer_expires_at
+        FROM waitlist_entries entry
+        JOIN users u ON u.id = entry.user_id
+        JOIN events e ON e.id = entry.event_id
+        JOIN venues v ON v.id = e.venue_id
+        WHERE entry.id = #{entryId}
+    </select>
+</mapper>

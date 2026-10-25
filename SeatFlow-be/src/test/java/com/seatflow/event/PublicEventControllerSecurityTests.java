@@ -33,6 +33,7 @@ import com.seatflow.support.JwtTestSupport;
 import com.seatflow.user.UserRecord;
 import com.seatflow.user.UserRole;
 import com.seatflow.user.UserStatus;
+import com.seatflow.waitlist.WaitlistOfferGuard;
 
 @WebMvcTest(PublicEventController.class)
 @Import({
@@ -69,6 +70,9 @@ class PublicEventControllerSecurityTests {
 
 	@MockitoBean
 	private SeatHoldStore seatHoldStore;
+
+	@MockitoBean
+	private WaitlistOfferGuard waitlistOfferGuard;
 
 	@MockitoBean
 	private RateLimitService rateLimitService;
