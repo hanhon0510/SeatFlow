@@ -201,6 +201,18 @@ passed over until enough come back. The job is off by default so offers are
 never made without telling anyone: set `SEATFLOW_WAITLIST_ENABLED=true` together
 with `SEATFLOW_MAIL_ENABLED=true`. Admins see the queue on the event page.
 
+#### Sales Analytics
+
+Admins open **Analytics** for sales across all events, or one, over a range of
+UTC days (the last 30 days by default, at most 366). It shows gross, refunded and
+net sales and the refund rate per currency, net sales per day, the top events,
+how many started checkouts ended in a payment, and how many waitlist offers were
+taken up. An order counts on the day it was placed, and a later refund shows as
+refunded rather than moving the sale, so past days do not change. **Export CSV**
+downloads one line per day, event and currency. Behind it:
+`GET /api/v1/admin/analytics` and `GET /api/v1/admin/analytics/export`, both with
+`from`, `to` (`YYYY-MM-DD`) and `eventId`, all optional.
+
 Health endpoints:
 
 - `GET /api/v1/health` — application health

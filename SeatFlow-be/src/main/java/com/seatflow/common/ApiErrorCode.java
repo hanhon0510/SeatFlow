@@ -30,6 +30,8 @@ public enum ApiErrorCode {
 			"The supplied timezone is not supported."),
 	INVALID_PAGINATION("invalid-pagination", "Invalid pagination", HttpStatus.BAD_REQUEST, "INVALID_PAGINATION",
 			"Pagination parameters are invalid."),
+	INVALID_ANALYTICS_RANGE("invalid-analytics-range", "Invalid analytics range", HttpStatus.BAD_REQUEST,
+			"INVALID_ANALYTICS_RANGE", "The analytics date range is invalid."),
 	INVALID_EVENT_CATALOG_QUERY("invalid-event-catalog-query", "Invalid event catalog query",
 			HttpStatus.BAD_REQUEST, "INVALID_EVENT_CATALOG_QUERY", "Event catalog query parameters are invalid."),
 	INVALID_EVENT_TIMING("invalid-event-timing", "Invalid event timing", HttpStatus.BAD_REQUEST,
