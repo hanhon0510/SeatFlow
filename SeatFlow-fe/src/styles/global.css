@@ -914,3 +914,39 @@ body {
     width: 100%;
   }
 }
+
+.analytics-filters {
+  margin-bottom: 16px;
+}
+
+.analytics-event-filter {
+  min-width: 240px;
+}
+
+.analytics-stats {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.analytics-bars {
+  align-items: flex-end;
+  display: flex;
+  gap: 2px;
+  height: 160px;
+}
+
+.analytics-bar {
+  background: var(--ant-color-primary, #1677ff);
+  border-radius: 2px 2px 0 0;
+  flex: 1 1 0;
+  min-width: 1px;
+}
+
+.analytics-axis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 8px;
+}
