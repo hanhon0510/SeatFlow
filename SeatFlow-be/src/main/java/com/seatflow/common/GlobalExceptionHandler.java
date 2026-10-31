@@ -17,10 +17,12 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.seatflow.account.InvalidCurrentPasswordException;
+import com.seatflow.analytics.InvalidAnalyticsRangeException;
 import com.seatflow.account.PasswordUnchangedException;
 import com.seatflow.auth.AuthenticationFailedException;
 import com.seatflow.auth.InvalidPasswordResetTokenException;
@@ -114,7 +116,8 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler({
 			HttpMessageNotReadableException.class,
-			MissingServletRequestParameterException.class
+			MissingServletRequestParameterException.class,
+			MethodArgumentTypeMismatchException.class
 	})
 	public ResponseEntity<ApiErrorResponse> handleMalformedRequest(Exception ex, HttpServletRequest request) {
 		return error(request, ApiErrorCode.VALIDATION_FAILED, ex);
@@ -295,6 +298,13 @@ public class GlobalExceptionHandler {
 			WaitlistAlreadyJoinedException ex,
 			HttpServletRequest request) {
 		return error(request, ApiErrorCode.WAITLIST_ALREADY_JOINED, ex);
+	}
+
+	@ExceptionHandler(InvalidAnalyticsRangeException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidAnalyticsRange(
+			InvalidAnalyticsRangeException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.INVALID_ANALYTICS_RANGE, ex);
 	}
 
 	@ExceptionHandler(InvalidWaitlistRequestException.class)

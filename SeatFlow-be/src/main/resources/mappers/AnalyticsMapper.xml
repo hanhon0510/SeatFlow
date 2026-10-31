@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.seatflow.analytics.AnalyticsMapper">
+    <resultMap id="SalesRowResultMap" type="com.seatflow.analytics.AnalyticsSalesRow">
+        <constructor>
+            <arg column="sales_date" javaType="java.time.LocalDate" />
+            <arg column="event_id" javaType="java.util.UUID" />
+            <arg column="event_name" javaType="java.lang.String" />
+            <arg column="currency" javaType="java.lang.String" />
+            <arg column="orders" javaType="_long" />
+            <arg column="seats" javaType="_long" />
+            <arg column="gross" javaType="java.math.BigDecimal" />
+            <arg column="refunded" javaType="java.math.BigDecimal" />
+            <arg column="refunded_orders" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="CheckoutResultMap" type="com.seatflow.analytics.AnalyticsCheckout">
+        <constructor>
+            <arg column="started" javaType="_long" />
+            <arg column="paid" javaType="_long" />
+            <arg column="pending" javaType="_long" />
+            <arg column="expired" javaType="_long" />
+            <arg column="failed" javaType="_long" />
+            <arg column="cancelled" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <resultMap id="WaitlistResultMap" type="com.seatflow.analytics.AnalyticsWaitlist">
+        <constructor>
+            <arg column="joined" javaType="_long" />
+            <arg column="offered" javaType="_long" />
+            <arg column="fulfilled" javaType="_long" />
+            <arg column="expired" javaType="_long" />
+            <arg column="cancelled" javaType="_long" />
+        </constructor>
+    </resultMap>
+
+    <!--
+        Orders are placed in the day they were created, the same way the per-event sales report
+        does it. An order refunded later still counts as sold and shows up as refunded, so a
+        refund never rewrites the history of the day the tickets were bought.
+    -->
+    <select id="findSalesRows" resultMap="SalesRowResultMap">
+        SELECT
+            (purchase_order.created_at AT TIME ZONE 'UTC')::date AS sales_date,
+            event.id AS event_id,
+            event.name AS event_name,
+            purchase_order.currency,
+            COUNT(*) AS orders,
+            COALESCE(SUM(seat_total.seats), 0) AS seats,
+            COALESCE(SUM(purchase_order.total_amount), 0) AS gross,
+            COALESCE(SUM(purchase_order.total_amount) FILTER (WHERE purchase_order.status = 'REFUNDED'), 0) AS refunded,
+            COUNT(*) FILTER (WHERE purchase_order.status = 'REFUNDED') AS refunded_orders
+        FROM orders purchase_order
+        JOIN reservations reservation ON reservation.id = purchase_order.reservation_id
+        JOIN events event ON event.id = reservation.event_id
+        CROSS JOIN LATERAL (
+            SELECT COUNT(*) AS seats
+            FROM reservation_items item
+            WHERE item.reservation_id = reservation.id
+        ) seat_total
+        WHERE purchase_order.status IN ('PAID', 'REFUNDED')
+          AND purchase_order.created_at &gt;= #{from}
+          AND purchase_order.created_at &lt; #{to}
+          <if test="eventId != null">AND reservation.event_id = #{eventId}</if>
+        GROUP BY
+            (purchase_order.created_at AT TIME ZONE 'UTC')::date,
+            event.id,
+            event.name,
+            purchase_order.currency
+        ORDER BY sales_date ASC, event.name ASC, event.id ASC, purchase_order.currency ASC
+    </select>
+
+    <select id="findCheckout" resultMap="CheckoutResultMap">
+        SELECT
+            COUNT(*) AS started,
+            COUNT(*) FILTER (WHERE reservation.status = 'CONFIRMED') AS paid,
+            COUNT(*) FILTER (WHERE reservation.status = 'PENDING_PAYMENT') AS pending,
+            COUNT(*) FILTER (WHERE reservation.status = 'EXPIRED') AS expired,
+            COUNT(*) FILTER (WHERE reservation.status = 'PAYMENT_FAILED') AS failed,
+            COUNT(*) FILTER (WHERE reservation.status = 'CANCELLED') AS cancelled
+        FROM reservations reservation
+        WHERE reservation.created_at &gt;= #{from}
+          AND reservation.created_at &lt; #{to}
+          <if test="eventId != null">AND reservation.event_id = #{eventId}</if>
+    </select>
+
+    <select id="findWaitlist" resultMap="WaitlistResultMap">
+        SELECT
+            COUNT(*) AS joined,
+            COUNT(*) FILTER (WHERE entry.offered_at IS NOT NULL) AS offered,
+            COUNT(*) FILTER (WHERE entry.status = 'FULFILLED') AS fulfilled,
+            COUNT(*) FILTER (WHERE entry.status = 'EXPIRED') AS expired,
+            COUNT(*) FILTER (WHERE entry.status = 'CANCELLED') AS cancelled
+        FROM waitlist_entries entry
+        WHERE entry.created_at &gt;= #{from}
+          AND entry.created_at &lt; #{to}
+          <if test="eventId != null">AND entry.event_id = #{eventId}</if>
+    </select>
+</mapper>
