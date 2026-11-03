@@ -88,6 +88,7 @@ const event: Event = {
   startTime: '2026-09-01T19:00:00.000Z',
   salesStartTime: '2026-08-01T00:00:00.000Z',
   salesEndTime: '2026-09-01T18:00:00.000Z',
+  transfersAllowed: true,
   status: 'DRAFT',
   createdAt: '2026-08-03T00:00:00Z',
   updatedAt: '2026-08-03T00:00:00Z',
@@ -291,6 +292,7 @@ function ticketForOrder(order: OrderResponse, eventSeatId = activeSeatHold().eve
       id: publishedEvent.id,
       name: publishedEvent.name,
       startTime: publishedEvent.startTime,
+      transfersAllowed: true,
       venueId: venue.id,
       venueName: venue.name,
       venueAddress: venue.address,
@@ -3391,6 +3393,7 @@ describe('App', () => {
         startTime: new Date(2026, 8, 1, 19, 0).toISOString(),
         salesStartTime: new Date(2026, 7, 1, 0, 0).toISOString(),
         salesEndTime: new Date(2026, 8, 1, 18, 0).toISOString(),
+        transfersAllowed: true,
       }),
     )
     expect(await screen.findByRole('heading', { name: 'Edit event' })).toBeInTheDocument()

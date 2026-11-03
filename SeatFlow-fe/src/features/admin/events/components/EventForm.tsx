@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { SaveOutlined } from '@ant-design/icons'
-import { Button, DatePicker, Form, Input, Select, Space, Typography } from 'antd'
+import { Button, DatePicker, Form, Input, Select, Space, Switch, Typography } from 'antd'
 
 import type { Venue } from '../../venues/types'
 import type { EventFormValues } from '../types'
@@ -55,6 +55,7 @@ export function EventForm({
       className="event-form"
       disabled={submitting}
       form={form}
+      initialValues={{ transfersAllowed: true }}
       layout="vertical"
       name="eventForm"
       requiredMark={false}
@@ -164,6 +165,15 @@ export function EventForm({
           />
         </Form.Item>
       </div>
+
+      <Form.Item
+        extra="Holders can pass a ticket to another SeatFlow account until the event starts."
+        label="Allow ticket transfers"
+        name="transfersAllowed"
+        valuePropName="checked"
+      >
+        <Switch />
+      </Form.Item>
 
       <Space wrap>
         <Button

@@ -5,6 +5,7 @@ import type {
   EventCancellation,
   EventReminder,
   EventReminderRequest,
+  EventTransfer,
   EventWaitlist,
   EventFormValues,
   EventPage,
@@ -27,6 +28,12 @@ export const eventQueryKeys = {
   seatMap: (eventId: string) => [...eventQueryKeys.all, 'seat-map', eventId] as const,
   reminder: (eventId: string) => [...eventQueryKeys.all, 'reminder', eventId] as const,
   waitlist: (eventId: string) => [...eventQueryKeys.all, 'waitlist', eventId] as const,
+  transfers: (eventId: string) => [...eventQueryKeys.all, 'transfers', eventId] as const,
+}
+
+export async function getEventTransfers(eventId: string) {
+  const response = await apiClient.get<EventTransfer[]>(`/admin/events/${eventId}/transfers`)
+  return response.data
 }
 
 export async function listEvents(page: number, size: number) {
@@ -90,6 +97,7 @@ function eventRequest(values: EventFormValues): EventRequest {
     startTime: values.startTime.toDate().toISOString(),
     salesStartTime: values.salesStartTime.toDate().toISOString(),
     salesEndTime: values.salesEndTime.toDate().toISOString(),
+    transfersAllowed: values.transfersAllowed,
   }
 }
 

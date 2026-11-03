@@ -13,6 +13,7 @@ export type Event = {
   startTime: string
   salesStartTime: string
   salesEndTime: string
+  transfersAllowed: boolean
   status: EventStatus
   createdAt: string
   updatedAt: string
@@ -33,6 +34,7 @@ export type EventFormValues = {
   startTime: Dayjs
   salesStartTime: Dayjs
   salesEndTime: Dayjs
+  transfersAllowed: boolean
 }
 
 export type EventRequest = {
@@ -42,6 +44,7 @@ export type EventRequest = {
   startTime: string
   salesStartTime: string
   salesEndTime: string
+  transfersAllowed: boolean
 }
 
 export type EventSectionConfiguration = {
@@ -221,4 +224,15 @@ export type EventWaitlist = {
   fulfilled: number
   expired: number
   cancelled: number
+}
+
+export type EventTransfer = {
+  id: string
+  ticketId: string
+  sectionName: string
+  rowLabel: string
+  seatLabel: string
+  fromEmail: string
+  toEmail: string
+  transferredAt: string
 }
