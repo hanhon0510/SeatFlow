@@ -43,13 +43,13 @@
             venue_section.name AS section_name,
             seat.row_label,
             seat.seat_label,
-            buyer.email AS buyer_email
+            holder.email AS buyer_email
         FROM tickets ticket
         JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
         JOIN seats seat ON seat.id = event_seat.seat_id
         JOIN venue_sections venue_section ON venue_section.id = seat.section_id
-        JOIN orders purchase_order ON purchase_order.id = ticket.order_id
-        JOIN users buyer ON buyer.id = purchase_order.user_id
+        <!-- The door sees whoever holds the ticket now, which after a transfer is not the buyer. -->
+        JOIN users holder ON holder.id = ticket.holder_user_id
         WHERE ticket.ticket_code = #{code}
         <if test="ticketId != null">
           AND ticket.id = #{ticketId}
@@ -81,14 +81,13 @@
             venue_section.name AS section_name,
             seat.row_label,
             seat.seat_label,
-            buyer.email AS buyer_email,
+            holder.email AS buyer_email,
             ticket.used_at AS checked_in_at
         FROM tickets ticket
         JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
         JOIN seats seat ON seat.id = event_seat.seat_id
         JOIN venue_sections venue_section ON venue_section.id = seat.section_id
-        JOIN orders purchase_order ON purchase_order.id = ticket.order_id
-        JOIN users buyer ON buyer.id = purchase_order.user_id
+        JOIN users holder ON holder.id = ticket.holder_user_id
         WHERE event_seat.event_id = #{eventId}
           AND ticket.status = 'USED'
         ORDER BY ticket.used_at DESC, ticket.id DESC

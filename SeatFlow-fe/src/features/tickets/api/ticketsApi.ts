@@ -16,3 +16,7 @@ export async function getTicket(ticketId: string) {
   const response = await apiClient.get<Ticket>(`/tickets/${ticketId}`)
   return response.data
 }
+
+export async function transferTicket(ticketId: string, recipientEmail: string) {
+  await apiClient.post(`/tickets/${ticketId}/transfers`, { recipientEmail })
+}

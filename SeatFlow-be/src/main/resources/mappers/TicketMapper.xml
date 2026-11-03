@@ -29,6 +29,7 @@
             <arg column="event_id" javaType="java.util.UUID" />
             <arg column="event_name" javaType="java.lang.String" />
             <arg column="event_start_time" javaType="java.time.Instant" />
+            <arg column="event_transfers_allowed" javaType="_boolean" />
             <arg column="venue_id" javaType="java.util.UUID" />
             <arg column="venue_name" javaType="java.lang.String" />
             <arg column="venue_address" javaType="java.lang.String" />
@@ -68,6 +69,7 @@
         event.id AS event_id,
         event.name AS event_name,
         event.start_time AS event_start_time,
+        event.transfers_allowed AS event_transfers_allowed,
         venue.id AS venue_id,
         venue.name AS venue_name,
         venue.address AS venue_address,
@@ -88,6 +90,7 @@
             id,
             order_id,
             event_seat_id,
+            holder_user_id,
             ticket_code,
             status,
             issued_at,
@@ -98,6 +101,7 @@
             #{id},
             purchase_order.id,
             reservation_item.event_seat_id,
+            purchase_order.user_id,
             #{ticketCode},
             'ACTIVE',
             #{issuedAt},
@@ -135,31 +139,30 @@
           AND status = 'ACTIVE'
     </update>
 
+    <!-- A ticket belongs to whoever holds it now, not to whoever bought it. -->
     <select id="findDetailByIdAndUser" resultMap="TicketDetailRecordResultMap">
         SELECT
             <include refid="TicketDetailColumns" />
         FROM tickets ticket
-        JOIN orders purchase_order ON purchase_order.id = ticket.order_id
         JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
         JOIN events event ON event.id = event_seat.event_id
         JOIN venues venue ON venue.id = event.venue_id
         JOIN seats seat ON seat.id = event_seat.seat_id
         JOIN venue_sections venue_section ON venue_section.id = seat.section_id
         WHERE ticket.id = #{id}
-          AND purchase_order.user_id = #{userId}
+          AND ticket.holder_user_id = #{userId}
     </select>
 
     <select id="findDetailsByUser" resultMap="TicketDetailRecordResultMap">
         SELECT
             <include refid="TicketDetailColumns" />
         FROM tickets ticket
-        JOIN orders purchase_order ON purchase_order.id = ticket.order_id
         JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
         JOIN events event ON event.id = event_seat.event_id
         JOIN venues venue ON venue.id = event.venue_id
         JOIN seats seat ON seat.id = event_seat.seat_id
         JOIN venue_sections venue_section ON venue_section.id = seat.section_id
-        WHERE purchase_order.user_id = #{userId}
+        WHERE ticket.holder_user_id = #{userId}
         ORDER BY
             event.start_time ASC,
             venue_section.display_order ASC,
@@ -168,5 +171,54 @@
             seat.seat_number ASC,
             seat.seat_label ASC,
             ticket.id ASC
+    </select>
+
+    <update id="transfer">
+        UPDATE tickets
+        SET
+            holder_user_id = #{toUserId},
+            ticket_code = #{ticketCode}
+        WHERE id = #{id}
+          AND holder_user_id = #{fromUserId}
+          AND status = 'ACTIVE'
+    </update>
+
+    <insert id="insertTransfer">
+        INSERT INTO ticket_transfers (id, ticket_id, from_user_id, to_user_id, transferred_at)
+        VALUES (#{id}, #{ticketId}, #{fromUserId}, #{toUserId}, #{transferredAt})
+    </insert>
+
+    <resultMap id="TicketTransferRecordResultMap" type="com.seatflow.ticket.TicketTransferRecord">
+        <constructor>
+            <idArg column="id" javaType="java.util.UUID" />
+            <arg column="ticket_id" javaType="java.util.UUID" />
+            <arg column="section_name" javaType="java.lang.String" />
+            <arg column="row_label" javaType="java.lang.String" />
+            <arg column="seat_label" javaType="java.lang.String" />
+            <arg column="from_email" javaType="java.lang.String" />
+            <arg column="to_email" javaType="java.lang.String" />
+            <arg column="transferred_at" javaType="java.time.Instant" />
+        </constructor>
+    </resultMap>
+
+    <select id="findTransfersByEvent" resultMap="TicketTransferRecordResultMap">
+        SELECT
+            transfer.id,
+            transfer.ticket_id,
+            venue_section.name AS section_name,
+            seat.row_label,
+            seat.seat_label,
+            sender.email AS from_email,
+            recipient.email AS to_email,
+            transfer.transferred_at
+        FROM ticket_transfers transfer
+        JOIN tickets ticket ON ticket.id = transfer.ticket_id
+        JOIN event_seats event_seat ON event_seat.id = ticket.event_seat_id
+        JOIN seats seat ON seat.id = event_seat.seat_id
+        JOIN venue_sections venue_section ON venue_section.id = seat.section_id
+        JOIN users sender ON sender.id = transfer.from_user_id
+        JOIN users recipient ON recipient.id = transfer.to_user_id
+        WHERE event_seat.event_id = #{eventId}
+        ORDER BY transfer.transferred_at DESC, transfer.id DESC
     </select>
 </mapper>

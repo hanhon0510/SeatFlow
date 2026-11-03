@@ -12,6 +12,7 @@
             <arg column="start_time" javaType="java.time.Instant" />
             <arg column="sales_start_time" javaType="java.time.Instant" />
             <arg column="sales_end_time" javaType="java.time.Instant" />
+            <arg column="transfers_allowed" javaType="_boolean" />
             <arg column="status" javaType="com.seatflow.event.EventStatus" />
             <arg column="created_at" javaType="java.time.Instant" />
             <arg column="updated_at" javaType="java.time.Instant" />
@@ -45,6 +46,7 @@
         start_time,
         sales_start_time,
         sales_end_time,
+        transfers_allowed,
         status,
         created_at,
         updated_at
@@ -153,7 +155,8 @@
             description,
             start_time,
             sales_start_time,
-            sales_end_time
+            sales_end_time,
+            transfers_allowed
         )
         VALUES (
             #{id},
@@ -162,7 +165,8 @@
             #{description},
             #{startTime},
             #{salesStartTime},
-            #{salesEndTime}
+            #{salesEndTime},
+            #{transfersAllowed}
         )
     </insert>
 
@@ -175,6 +179,7 @@
             start_time = #{startTime},
             sales_start_time = #{salesStartTime},
             sales_end_time = #{salesEndTime},
+            transfers_allowed = #{transfersAllowed},
             updated_at = NOW()
         WHERE id = #{id}
           AND status &lt;&gt; 'CANCELLED'

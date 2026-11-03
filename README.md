@@ -213,6 +213,19 @@ downloads one line per day, event and currency. Behind it:
 `GET /api/v1/admin/analytics` and `GET /api/v1/admin/analytics/export`, both with
 `from`, `to` (`YYYY-MM-DD`) and `eventId`, all optional.
 
+#### Ticket Transfer
+
+A ticket belongs to whoever holds it, which starts as the buyer. Until the event
+starts, the holder of an active ticket can open it and **Transfer ticket** to the
+email of another SeatFlow account. The ticket gets a new code, so the sender's QR
+image stops working at the door, and the recipient is emailed a link to it. The
+order, its receipt and any refund stay with the buyer, and a refund still cancels
+the ticket wherever it is. Admins switch **Allow ticket transfers** off on the
+event form to stop new transfers for that event (past ones stand), and see every
+hand-over for an event under **Ticket transfers** on its page. Behind it:
+`POST /api/v1/tickets/{ticketId}/transfers` with `recipientEmail`, and
+`GET /api/v1/admin/events/{eventId}/transfers`.
+
 Health endpoints:
 
 - `GET /api/v1/health` — application health

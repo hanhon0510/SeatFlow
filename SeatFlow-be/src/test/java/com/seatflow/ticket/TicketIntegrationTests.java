@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -26,6 +27,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -36,6 +38,7 @@ import com.seatflow.event.EventSeatMapper;
 import com.seatflow.event.EventSeatRecord;
 import com.seatflow.event.EventSectionMapper;
 import com.seatflow.event.EventSectionRecord;
+import com.seatflow.event.EventUpdateRequest;
 import com.seatflow.hold.SeatHoldRecord;
 import com.seatflow.hold.SeatHoldStore;
 import com.seatflow.order.OrderCreateRequest;
@@ -218,6 +221,92 @@ class TicketIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	@Test
+	void ticketCanBeHandedToAnotherAccountUnderANewCode() throws Exception {
+		PaidFixture fixture = createPaidFixture(
+				"transfer-sender@example.com",
+				List.of(new BigDecimal("125000.00")));
+		UserRecord recipient = insertUser("transfer-recipient@example.com");
+		UserRecord admin = insertUser("transfer-admin@example.com", UserRole.ADMIN);
+		UUID ticketId = ticketIds(fixture.order().id()).getFirst();
+		String oldCode = ticketCodes(fixture.order().id()).getFirst();
+
+		mockMvc.perform(post("/api/v1/tickets/{ticketId}/transfers", ticketId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(fixture.user()))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"recipientEmail\":\"Transfer-Recipient@Example.com\"}"))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/v1/tickets/{ticketId}", ticketId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(fixture.user())))
+				.andExpect(status().isNotFound());
+		JsonNode received = responseBody(mockMvc.perform(get("/api/v1/tickets/{ticketId}", ticketId)
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(recipient)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("ACTIVE"))
+				.andReturn());
+		assertThat(received.get("ticketCode").asText()).isNotEqualTo(oldCode);
+
+		mockMvc.perform(get("/api/v1/admin/events/{eventId}/transfers", fixture.inventory().event().id())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(admin)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(1))
+				.andExpect(jsonPath("$[0].ticketId").value(ticketId.toString()))
+				.andExpect(jsonPath("$[0].seatLabel").value("A1"))
+				.andExpect(jsonPath("$[0].fromEmail").value("transfer-sender@example.com"))
+				.andExpect(jsonPath("$[0].toEmail").value("transfer-recipient@example.com"));
+	}
+
+	@Test
+	void transferIsRefusedWhenTheEventForbidsItOrTheTicketIsUsed() throws Exception {
+		PaidFixture fixture = createPaidFixture(
+				"transfer-blocked@example.com",
+				List.of(new BigDecimal("125000.00")));
+		UserRecord admin = insertUser("transfer-blocked-admin@example.com", UserRole.ADMIN);
+		insertUser("transfer-blocked-recipient@example.com");
+		UUID ticketId = ticketIds(fixture.order().id()).getFirst();
+		EventRecord event = fixture.inventory().event();
+
+		mockMvc.perform(put("/api/v1/admin/events/{eventId}", event.id())
+						.header(HttpHeaders.AUTHORIZATION, bearerToken(admin))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(new EventUpdateRequest(
+								event.venueId(),
+								event.name(),
+								event.description(),
+								event.startTime(),
+								event.salesStartTime(),
+								event.salesEndTime(),
+								false))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.transfersAllowed").value(false));
+		mockMvc.perform(transfer(ticketId, fixture.user(), "transfer-blocked-recipient@example.com"))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("TICKET_NOT_TRANSFERABLE"));
+
+		jdbcTemplate.update("UPDATE events SET transfers_allowed = TRUE WHERE id = ?", event.id());
+		jdbcTemplate.update("UPDATE tickets SET status = 'USED', used_at = NOW() WHERE id = ?", ticketId);
+		mockMvc.perform(transfer(ticketId, fixture.user(), "transfer-blocked-recipient@example.com"))
+				.andExpect(status().isConflict());
+		assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM ticket_transfers", Integer.class)).isZero();
+	}
+
+	@Test
+	void transferNeedsAnotherExistingAccount() throws Exception {
+		PaidFixture fixture = createPaidFixture(
+				"transfer-self@example.com",
+				List.of(new BigDecimal("125000.00")));
+		UUID ticketId = ticketIds(fixture.order().id()).getFirst();
+
+		mockMvc.perform(transfer(ticketId, fixture.user(), "transfer-self@example.com"))
+				.andExpect(status().isConflict());
+		mockMvc.perform(transfer(ticketId, fixture.user(), "nobody@example.com"))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("TRANSFER_RECIPIENT_NOT_FOUND"));
+		mockMvc.perform(transfer(ticketId, fixture.user(), "not-an-email"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void ticketCodesAreUniqueAndUrlSafe() throws Exception {
 		PaidFixture fixture = createPaidFixture(
 				"ticket-code@example.com",
@@ -326,9 +415,20 @@ class TicketIntegrationTests extends PostgresTestContainerSupport {
 	}
 
 	private UserRecord insertUser(String email) {
-		UserRecord user = UserRecord.forInsert(UUID.randomUUID(), email, "{bcrypt}hash", UserRole.USER);
+		return insertUser(email, UserRole.USER);
+	}
+
+	private UserRecord insertUser(String email, UserRole role) {
+		UserRecord user = UserRecord.forInsert(UUID.randomUUID(), email, "{bcrypt}hash", role);
 		userMapper.insertWithRole(user);
 		return userMapper.findById(user.id());
+	}
+
+	private MockHttpServletRequestBuilder transfer(UUID ticketId, UserRecord sender, String recipientEmail) {
+		return post("/api/v1/tickets/{ticketId}/transfers", ticketId)
+				.header(HttpHeaders.AUTHORIZATION, bearerToken(sender))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"recipientEmail\":\"" + recipientEmail + "\"}");
 	}
 
 	private String bearerToken(UserRecord user) {

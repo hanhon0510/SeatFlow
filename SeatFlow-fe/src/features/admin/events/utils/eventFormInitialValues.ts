@@ -9,6 +9,7 @@ export function eventFormInitialValues(event: {
   startTime: string
   salesStartTime: string
   salesEndTime: string
+  transfersAllowed: boolean
 }): EventFormValues {
   return {
     venueId: event.venueId,
@@ -17,5 +18,6 @@ export function eventFormInitialValues(event: {
     startTime: dayjs(event.startTime),
     salesStartTime: dayjs(event.salesStartTime),
     salesEndTime: dayjs(event.salesEndTime),
+    transfersAllowed: event.transfersAllowed,
   }
 }
