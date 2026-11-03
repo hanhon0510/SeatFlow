@@ -128,6 +128,7 @@ class TicketControllerSecurityTests {
 						UUID.fromString("be658337-2e86-4e66-bc01-88fecb2dbe27"),
 						"Opening Night",
 						NOW.plusSeconds(3600),
+						true,
 						UUID.fromString("3db0145a-1932-46ad-b02d-6789db7a8ab2"),
 						"Main Hall",
 						"1 Center Street",

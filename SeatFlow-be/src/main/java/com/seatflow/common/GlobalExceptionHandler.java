@@ -71,6 +71,8 @@ import com.seatflow.seating.SeatNotFoundException;
 import com.seatflow.seating.SectionNotFoundException;
 import com.seatflow.ticket.TicketIssuanceException;
 import com.seatflow.ticket.TicketNotFoundException;
+import com.seatflow.ticket.TicketNotTransferableException;
+import com.seatflow.ticket.TransferRecipientNotFoundException;
 import com.seatflow.venue.ArchivedVenueCannotHostEventsException;
 import com.seatflow.venue.InvalidVenuePaginationException;
 import com.seatflow.venue.InvalidVenueTimezoneException;
@@ -420,6 +422,20 @@ public class GlobalExceptionHandler {
 			TicketIssuanceException ex,
 			HttpServletRequest request) {
 		return error(request, ApiErrorCode.TICKET_ISSUANCE_FAILED, ex);
+	}
+
+	@ExceptionHandler(TicketNotTransferableException.class)
+	public ResponseEntity<ApiErrorResponse> handleTicketNotTransferable(
+			TicketNotTransferableException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.TICKET_NOT_TRANSFERABLE, ex);
+	}
+
+	@ExceptionHandler(TransferRecipientNotFoundException.class)
+	public ResponseEntity<ApiErrorResponse> handleTransferRecipientNotFound(
+			TransferRecipientNotFoundException ex,
+			HttpServletRequest request) {
+		return error(request, ApiErrorCode.TRANSFER_RECIPIENT_NOT_FOUND, ex);
 	}
 
 	@ExceptionHandler(InvalidIdempotencyKeyException.class)

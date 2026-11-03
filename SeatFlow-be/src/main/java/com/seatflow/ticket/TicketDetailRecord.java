@@ -16,6 +16,7 @@ public record TicketDetailRecord(
 		UUID eventId,
 		String eventName,
 		Instant eventStartTime,
+		boolean eventTransfersAllowed,
 		UUID venueId,
 		String venueName,
 		String venueAddress,

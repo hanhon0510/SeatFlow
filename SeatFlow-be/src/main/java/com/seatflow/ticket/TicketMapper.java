@@ -32,4 +32,20 @@ public interface TicketMapper {
 			@Param("userId") UUID userId);
 
 	List<TicketDetailRecord> findDetailsByUser(@Param("userId") UUID userId);
+
+	/** Hands an ACTIVE ticket from its holder to another user under a new code; 0 when it is no longer theirs to give. */
+	int transfer(
+			@Param("id") UUID id,
+			@Param("fromUserId") UUID fromUserId,
+			@Param("toUserId") UUID toUserId,
+			@Param("ticketCode") String ticketCode);
+
+	void insertTransfer(
+			@Param("id") UUID id,
+			@Param("ticketId") UUID ticketId,
+			@Param("fromUserId") UUID fromUserId,
+			@Param("toUserId") UUID toUserId,
+			@Param("transferredAt") Instant transferredAt);
+
+	List<TicketTransferRecord> findTransfersByEvent(@Param("eventId") UUID eventId);
 }

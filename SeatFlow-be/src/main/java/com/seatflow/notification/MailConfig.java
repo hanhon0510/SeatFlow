@@ -22,4 +22,9 @@ public class MailConfig {
 	public WaitlistEmailTemplates waitlistEmailTemplates(SeatFlowMailProperties properties) {
 		return new WaitlistEmailTemplates(properties.frontendBaseUrl());
 	}
+
+	@Bean
+	public TicketEmailTemplates ticketEmailTemplates(SeatFlowMailProperties properties) {
+		return new TicketEmailTemplates(properties.frontendBaseUrl());
+	}
 }

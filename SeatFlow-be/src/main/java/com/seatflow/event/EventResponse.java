@@ -11,6 +11,7 @@ public record EventResponse(
 		Instant startTime,
 		Instant salesStartTime,
 		Instant salesEndTime,
+		boolean transfersAllowed,
 		EventStatus status,
 		Instant createdAt,
 		Instant updatedAt) {
@@ -24,6 +25,7 @@ public record EventResponse(
 				event.startTime(),
 				event.salesStartTime(),
 				event.salesEndTime(),
+				event.transfersAllowed(),
 				event.status(),
 				event.createdAt(),
 				event.updatedAt());

@@ -7,7 +7,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -17,7 +19,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.seatflow.notification.EmailGateway;
+import com.seatflow.notification.TicketEmailTemplates;
 import com.seatflow.observability.BusinessMetrics;
+import com.seatflow.user.UserMapper;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
@@ -34,6 +39,12 @@ class TicketServiceTests {
 	@Mock
 	private TicketCodeGenerator ticketCodeGenerator;
 
+	@Mock
+	private UserMapper userMapper;
+
+	@Mock
+	private EmailGateway emailGateway;
+
 	private SimpleMeterRegistry meterRegistry;
 	private TicketService ticketService;
 
@@ -43,7 +54,11 @@ class TicketServiceTests {
 		ticketService = new TicketService(
 				ticketMapper,
 				ticketCodeGenerator,
-				new BusinessMetrics(meterRegistry));
+				new BusinessMetrics(meterRegistry),
+				userMapper,
+				new TicketEmailTemplates("http://localhost:5173"),
+				emailGateway,
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	@Test

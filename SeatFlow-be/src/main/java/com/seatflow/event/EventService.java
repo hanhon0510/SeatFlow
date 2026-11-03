@@ -37,7 +37,8 @@ public class EventService {
 				cleanNullable(request.description()),
 				request.startTime(),
 				request.salesStartTime(),
-				request.salesEndTime());
+				request.salesEndTime(),
+				!Boolean.FALSE.equals(request.transfersAllowed()));
 		eventMapper.insert(event);
 		return EventResponse.from(findExisting(event.id()));
 	}
@@ -68,7 +69,8 @@ public class EventService {
 				cleanNullable(request.description()),
 				request.startTime(),
 				request.salesStartTime(),
-				request.salesEndTime());
+				request.salesEndTime(),
+				!Boolean.FALSE.equals(request.transfersAllowed()));
 		int updatedRows = eventMapper.update(event);
 		if (updatedRows == 1) {
 			return EventResponse.from(findExisting(id));
