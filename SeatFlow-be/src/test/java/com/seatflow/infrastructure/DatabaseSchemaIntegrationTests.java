@@ -103,12 +103,13 @@ class DatabaseSchemaIntegrationTests extends PostgresTestContainerSupport {
 				.hasMessageContaining("tickets_order_event_seat_uq");
 
 		assertThatThrownBy(() -> jdbcTemplate.update("""
-				INSERT INTO tickets (id, order_id, event_seat_id, ticket_code, status, issued_at, created_at)
-				VALUES (?, ?, ?, ?, 'VOID', ?, ?)
+				INSERT INTO tickets (id, order_id, event_seat_id, holder_user_id, ticket_code, status, issued_at, created_at)
+				VALUES (?, ?, ?, (SELECT user_id FROM orders WHERE id = ?), ?, 'VOID', ?, ?)
 				""",
 				UUID.randomUUID(),
 				fixture.orderId(),
 				fixture.secondEventSeatId(),
+				fixture.orderId(),
 				"schema-ticket-code-00000000000000000003",
 				OffsetDateTime.now(ZoneOffset.UTC),
 				OffsetDateTime.now(ZoneOffset.UTC)))
@@ -218,9 +219,9 @@ class DatabaseSchemaIntegrationTests extends PostgresTestContainerSupport {
 	private void insertTicket(UUID ticketId, UUID orderId, UUID eventSeatId, String ticketCode) {
 		OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 		jdbcTemplate.update("""
-				INSERT INTO tickets (id, order_id, event_seat_id, ticket_code, status, issued_at, created_at)
-				VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?)
-				""", ticketId, orderId, eventSeatId, ticketCode, now, now);
+				INSERT INTO tickets (id, order_id, event_seat_id, holder_user_id, ticket_code, status, issued_at, created_at)
+				VALUES (?, ?, ?, (SELECT user_id FROM orders WHERE id = ?), ?, 'ACTIVE', ?, ?)
+				""", ticketId, orderId, eventSeatId, orderId, ticketCode, now, now);
 	}
 
 	private void insertUser(UUID userId, String email) {

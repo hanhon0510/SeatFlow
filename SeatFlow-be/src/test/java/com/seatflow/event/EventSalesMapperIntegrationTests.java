@@ -466,12 +466,13 @@ class EventSalesMapperIntegrationTests extends PostgresTestContainerSupport {
 	private void insertTicket(UUID orderId, UUID eventSeatId, TicketStatus status) {
 		jdbcTemplate.update("""
 				INSERT INTO tickets (
-					id, order_id, event_seat_id, ticket_code, status, issued_at, used_at, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+					id, order_id, event_seat_id, holder_user_id, ticket_code, status, issued_at, used_at, created_at)
+				VALUES (?, ?, ?, (SELECT user_id FROM orders WHERE id = ?), ?, ?, ?, ?, ?)
 				""",
 				UUID.randomUUID(),
 				orderId,
 				eventSeatId,
+				orderId,
 				UUID.randomUUID().toString().repeat(2),
 				status.name(),
 				Timestamp.from(NOW),
