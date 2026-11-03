@@ -1,7 +1,8 @@
-import { ArrowLeftOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, SwapOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { Alert, Button, Card, Descriptions, QRCode, Result, Space, Spin, Tag, Typography } from 'antd'
+import { Alert, App as AntdApp, Button, Card, Descriptions, QRCode, Result, Space, Spin, Tag, Typography } from 'antd'
 import { isAxiosError } from 'axios'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { apiErrorMessage } from '../../../shared/api/apiError'
@@ -9,10 +10,14 @@ import { ROUTES } from '../../../shared/constants/routes'
 import { formatDateTime } from '../../events/utils/eventFormatters'
 import { getTicket, ticketQueryKeys } from '../api/ticketsApi'
 import { TicketStatusTag } from '../components/TicketStatusTag'
+import { TransferTicketModal } from '../components/TransferTicketModal'
 
 export function TicketDetailPage() {
   const { ticketId } = useParams()
   const navigate = useNavigate()
+  const { message } = AntdApp.useApp()
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [openedAt] = useState(() => Date.now())
   const ticketQuery = useQuery({
     queryKey: ticketId ? ticketQueryKeys.detail(ticketId) : ticketQueryKeys.detail(''),
     queryFn: () => getTicket(ticketId ?? ''),
@@ -53,6 +58,11 @@ export function TicketDetailPage() {
     return <TicketNotFound onTickets={() => navigate(ROUTES.tickets)} />
   }
 
+  const transferable =
+    ticket.status === 'ACTIVE'
+    && ticket.event.transfersAllowed
+    && new Date(ticket.event.startTime).getTime() > openedAt
+
   return (
     <section className="page-surface ticket-page">
       <Button icon={<ArrowLeftOutlined />} type="link" onClick={() => navigate(ROUTES.tickets)}>
@@ -67,6 +77,11 @@ export function TicketDetailPage() {
               <TicketStatusTag status={ticket.status} />
               <Tag>{ticket.seat.sectionName} {ticket.seat.seatLabel}</Tag>
             </Space>
+            {transferable ? (
+              <Button icon={<SwapOutlined />} onClick={() => setTransferOpen(true)}>
+                Transfer ticket
+              </Button>
+            ) : null}
           </Space>
           {ticket.status === 'ACTIVE' ? (
             <div className="ticket-qr-panel">
@@ -105,6 +120,19 @@ export function TicketDetailPage() {
           <Descriptions.Item label="QR data">{ticket.qrData}</Descriptions.Item>
         </Descriptions>
       </Card>
+
+      {transferable ? (
+        <TransferTicketModal
+          eventName={ticket.event.name}
+          open={transferOpen}
+          ticketId={ticket.id}
+          onClose={() => setTransferOpen(false)}
+          onTransferred={() => {
+            message.success('Ticket transferred')
+            navigate(ROUTES.tickets)
+          }}
+        />
+      ) : null}
     </section>
   )
 }

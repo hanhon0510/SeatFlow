@@ -4,6 +4,7 @@ export type TicketEvent = {
   id: string
   name: string
   startTime: string
+  transfersAllowed: boolean
   venueId: string
   venueName: string
   venueAddress: string
